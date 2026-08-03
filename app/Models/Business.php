@@ -145,6 +145,11 @@ class Business extends Model
         return $this->hasMany(ExpenseType::class);
     }
 
+    public function discounts(): HasMany
+    {
+        return $this->hasMany(Discount::class);
+    }
+
     public function paymentMethods(): array
     {
         $methods = $this->payment_methods;

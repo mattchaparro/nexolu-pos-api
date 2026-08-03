@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BusinessController;
 use App\Http\Controllers\Api\V1\ClientController;
+use App\Http\Controllers\Api\V1\DiscountController;
 use App\Http\Controllers\Api\V1\ExpenseController;
 use App\Http\Controllers\Api\V1\ExpenseTypeController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
@@ -40,6 +41,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::get('/expense-types', [ExpenseTypeController::class, 'index'])->name('expense-types.index');
             Route::post('/expense-types', [ExpenseTypeController::class, 'store'])->name('expense-types.store');
             Route::apiResource('expenses', ExpenseController::class);
+        });
+
+        Route::middleware('feature:discounts')->group(function () {
+            Route::apiResource('discounts', DiscountController::class);
         });
     });
 });
