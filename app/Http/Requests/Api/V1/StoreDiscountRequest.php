@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -39,7 +40,7 @@ class StoreDiscountRequest extends FormRequest
                 'sometimes',
                 'nullable',
                 'integer',
-                Rule::exists('products', 'id')->where('business_id', $businessId),
+                BusinessScopedExists::for('products', $businessId),
             ],
             'is_active' => ['sometimes', 'boolean'],
         ];

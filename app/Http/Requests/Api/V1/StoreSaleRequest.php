@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Api\V1;
 
 use App\Http\Requests\Concerns\ValidatesSaleItems;
+use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -42,7 +43,7 @@ class StoreSaleRequest extends FormRequest
             'cart_discount_id' => [
                 'nullable',
                 'integer',
-                Rule::exists('discounts', 'id')->where('business_id', $businessId)->where('scope', 'cart'),
+                BusinessScopedExists::for('discounts', $businessId, ['scope' => 'cart']),
             ],
             // Los montos de los cargos los calcula el servidor desde la config
             // del negocio; el cliente solo puede renunciar a un cargo habilitado.

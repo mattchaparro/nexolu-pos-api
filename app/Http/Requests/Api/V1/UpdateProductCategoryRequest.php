@@ -2,9 +2,9 @@
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class UpdateProductCategoryRequest extends FormRequest
 {
@@ -30,7 +30,7 @@ class UpdateProductCategoryRequest extends FormRequest
             'parent_id' => [
                 'sometimes',
                 'nullable',
-                Rule::exists('product_categories', 'id')->where('business_id', $this->user()?->business_id),
+                BusinessScopedExists::for('product_categories', $this->user()?->business_id),
             ],
         ];
     }

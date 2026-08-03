@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -50,7 +51,7 @@ class UpdateProductRequest extends FormRequest
             'is_active' => ['sometimes', 'boolean'],
             'category_id' => [
                 'sometimes',
-                Rule::exists('product_categories', 'id')->where('business_id', $businessId),
+                BusinessScopedExists::for('product_categories', $businessId),
             ],
         ];
     }

@@ -4,6 +4,7 @@ namespace App\Http\Requests\Api\V1;
 
 use App\Models\Expense;
 use App\Models\Product;
+use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -35,11 +36,7 @@ class UpdateExpenseRequest extends FormRequest
             'payment_method' => ['sometimes', 'nullable', Rule::in(Expense::PAYMENT_METHODS)],
             'type_id' => [
                 'sometimes',
-                Rule::exists('expense_types', 'id')->where(
-                    fn ($query) => $query->where(
-                        fn ($sub) => $sub->where('business_id', $businessId)->orWhereNull('business_id')
-                    )
-                ),
+                BusinessScopedExists::forOrGlobal('expense_types', $businessId),
             ],
             'linkable_type' => ['sometimes', 'nullable', Rule::in([Product::class])],
             'linkable_id' => [
@@ -47,7 +44,7 @@ class UpdateExpenseRequest extends FormRequest
                 'nullable',
                 'integer',
                 'required_with:linkable_type',
-                Rule::exists('products', 'id')->where('business_id', $businessId),
+                BusinessScopedExists::for('products', $businessId),
             ],
         ];
     }

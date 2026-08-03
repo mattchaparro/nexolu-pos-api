@@ -3,7 +3,7 @@
 namespace App\Http\Requests\Concerns;
 
 use App\Models\Product;
-use Illuminate\Validation\Rule;
+use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Validation\Validator;
 
 /**
@@ -25,14 +25,14 @@ trait ValidatesSaleItems
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => [
                 'required',
-                Rule::exists('products', 'id')->where('business_id', $businessId),
+                BusinessScopedExists::for('products', $businessId),
             ],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'items.*.unit_price' => ['nullable', 'numeric', 'min:0'],
             'items.*.discount_id' => [
                 'nullable',
                 'integer',
-                Rule::exists('discounts', 'id')->where('business_id', $businessId)->where('scope', 'item'),
+                BusinessScopedExists::for('discounts', $businessId, ['scope' => 'item']),
             ],
         ];
     }

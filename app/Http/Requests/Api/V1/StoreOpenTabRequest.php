@@ -4,9 +4,9 @@ namespace App\Http\Requests\Api\V1;
 
 use App\Http\Requests\Concerns\ValidatesSaleItems;
 use App\Models\Sale;
+use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class StoreOpenTabRequest extends FormRequest
@@ -36,7 +36,7 @@ class StoreOpenTabRequest extends FormRequest
                 'sometimes',
                 'nullable',
                 'integer',
-                Rule::exists('business_tables', 'id')->where('business_id', $businessId),
+                BusinessScopedExists::for('business_tables', $businessId),
             ],
             'customer_name' => ['sometimes', 'nullable', 'string', 'max:100'],
             'customer_phone' => ['sometimes', 'nullable', 'string', 'max:30'],
@@ -46,7 +46,7 @@ class StoreOpenTabRequest extends FormRequest
                 'sometimes',
                 'nullable',
                 'integer',
-                Rule::exists('discounts', 'id')->where('business_id', $businessId)->where('scope', 'cart'),
+                BusinessScopedExists::for('discounts', $businessId, ['scope' => 'cart']),
             ],
         ];
     }
