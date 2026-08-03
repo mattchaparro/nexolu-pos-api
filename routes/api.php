@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BusinessController;
+use App\Http\Controllers\Api\V1\BusinessTableController;
 use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\DiscountController;
 use App\Http\Controllers\Api\V1\ExpenseController;
@@ -50,5 +51,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::post('/sales/{sale}/reverse', [SaleController::class, 'reverse'])->name('sales.reverse');
         Route::apiResource('sales', SaleController::class)->only(['index', 'show', 'store']);
+
+        Route::middleware('feature:open_tabs')->group(function () {
+            Route::apiResource('tables', BusinessTableController::class);
+        });
     });
 });

@@ -11,10 +11,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * Solo cubre el flujo de venta directa (mostrador): nace y se cierra en el
- * mismo instante. El flujo de cuentas abiertas (status=open, table_id,
- * partialPayments, pagos mixtos via SalePaymentSplit, kitchen board) es un
- * modulo aparte que todavia no existe en esta API.
+ * Una venta puede ser directa (mostrador: nace y se cierra en el mismo
+ * instante, status='closed') o una cuenta abierta (status='open': mesa/tab que
+ * se cobra despues, con abonos parciales y posible pago dividido al cerrar).
+ * La comandera (kitchen board) lee kitchen_status pero es un modulo aparte que
+ * todavia no existe en esta API.
  */
 #[Fillable([
     'business_id',
@@ -22,6 +23,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'payment_method',
     'total',
     'status',
+    'table_id',
     'customer_name',
     'customer_phone',
     'customer_identification',
@@ -30,6 +32,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'is_non_revenue',
     'non_revenue_reason',
     'is_credit',
+    'kitchen_status',
+    'kitchen_updated_at',
     'invoice_number',
     'cart_discount_id',
     'cart_discount_amount',
@@ -53,6 +57,7 @@ class Sale extends Model
             'cart_discount_amount' => 'decimal:2',
             'service_charge_amount' => 'decimal:2',
             'ipoconsumo_amount' => 'decimal:2',
+            'kitchen_updated_at' => 'datetime',
             'closed_at' => 'datetime',
         ];
     }
@@ -92,5 +97,22 @@ class Sale extends Model
     public function cartDiscount(): BelongsTo
     {
         return $this->belongsTo(Discount::class, 'cart_discount_id');
+    }
+
+    public function table(): BelongsTo
+    {
+        return $this->belongsTo(BusinessTable::class, 'table_id');
+    }
+
+    /** Abonos registrados antes del cierre (cuenta abierta). */
+    public function partialPayments(): HasMany
+    {
+        return $this->hasMany(SalePartialPayment::class)->orderBy('id');
+    }
+
+    /** Reparto por medio de pago cuando la cuenta se cobra con varios medios a la vez. */
+    public function paymentSplits(): HasMany
+    {
+        return $this->hasMany(SalePaymentSplit::class);
     }
 }
