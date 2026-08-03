@@ -20,7 +20,12 @@ trait BelongsToBusiness
     protected static function bootBelongsToBusiness(): void
     {
         static::creating(function ($model) {
-            if (auth()->check() && ! $model->business_id) {
+            // Autoridad, no sugerencia: con usuario autenticado el business_id
+            // SIEMPRE es el suyo, sobrescribiendo cualquier valor que venga del
+            // cliente. Cierra la inyeccion de tenant (business_id esta en
+            // fillable; un create() con input crudo podria colar otro id). Sin
+            // auth (seeders, jobs, tests) se respeta el business_id explicito.
+            if (auth()->check() && auth()->user()->business_id) {
                 $model->business_id = auth()->user()->business_id;
             }
         });

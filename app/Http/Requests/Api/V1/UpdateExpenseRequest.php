@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Models\Expense;
 use App\Models\Product;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -31,7 +32,7 @@ class UpdateExpenseRequest extends FormRequest
             'description' => ['sometimes', 'string', 'max:255'],
             'value' => ['sometimes', 'numeric', 'min:100'],
             'scope' => ['sometimes', 'nullable', Rule::in(['operacional', 'administrativo'])],
-            'payment_method' => ['sometimes', 'nullable', 'string', 'max:60'],
+            'payment_method' => ['sometimes', 'nullable', Rule::in(Expense::PAYMENT_METHODS)],
             'type_id' => [
                 'sometimes',
                 Rule::exists('expense_types', 'id')->where(

@@ -25,7 +25,7 @@ class ExpenseFactory extends Factory
             'description' => fake()->sentence(4),
             'value' => fake()->numberBetween(1000, 500000),
             'scope' => 'operacional',
-            'payment_method' => fake()->randomElement(Expense::DEFAULT_PAYMENT_METHODS),
+            'payment_method' => fake()->randomElement(Expense::PAYMENT_METHODS),
             'type_id' => fn (array $attributes) => ExpenseType::factory()
                 ->create(['business_id' => $attributes['business_id']])
                 ->id,

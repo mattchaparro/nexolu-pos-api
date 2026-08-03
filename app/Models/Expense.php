@@ -25,7 +25,19 @@ class Expense extends Model
 {
     use BelongsToBusiness, HasFactory, SoftDeletes;
 
-    const DEFAULT_PAYMENT_METHODS = ['Efectivo', 'Nequi', 'Daviplata', 'Transferencia', 'Tarjeta'];
+    /**
+     * Medios de pago validos para un gasto. Es un enum cerrado, NO texto libre:
+     * el legacy solo lo restringia en el dropdown del frontend y el backend
+     * aceptaba cualquier string (via API o el bot de IA se colaba basura). Aqui
+     * se enforza en el request.
+     *
+     * Se guarda el label capitalizado (no un id en minuscula como en `sales`) a
+     * proposito: esta tabla la comparte el monolito legacy todavia en produccion,
+     * que lee/escribe estos labels; unificar el vocabulario de payment_method
+     * entre tablas (BUG CRITICO 1 del CONTEXT.md legacy) es una migracion de
+     * datos coordinada para cuando el monolito se retire, no un cambio por modulo.
+     */
+    const PAYMENT_METHODS = ['Efectivo', 'Nequi', 'Daviplata', 'Transferencia', 'Tarjeta'];
 
     protected function casts(): array
     {

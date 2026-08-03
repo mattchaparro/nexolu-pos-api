@@ -32,7 +32,7 @@ class StoreExpenseRequest extends FormRequest
             'description' => ['required', 'string', 'max:255'],
             'value' => ['required', 'numeric', 'min:100'],
             'scope' => ['sometimes', 'nullable', Rule::in(['operacional', 'administrativo'])],
-            'payment_method' => ['sometimes', 'nullable', 'string', 'max:60'],
+            'payment_method' => ['sometimes', 'nullable', Rule::in(Expense::PAYMENT_METHODS)],
             'type_id' => [
                 'required',
                 Rule::exists('expense_types', 'id')->where(
@@ -56,7 +56,7 @@ class StoreExpenseRequest extends FormRequest
     {
         return [
             'scope' => 'operacional',
-            'payment_method' => Expense::DEFAULT_PAYMENT_METHODS[0],
+            'payment_method' => Expense::PAYMENT_METHODS[0],
         ];
     }
 }

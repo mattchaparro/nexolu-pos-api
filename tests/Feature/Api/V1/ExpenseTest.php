@@ -45,7 +45,43 @@ class ExpenseTest extends TestCase
         $response->assertCreated()
             ->assertJsonPath('description', 'Arriendo local')
             ->assertJsonPath('scope', 'operacional')
-            ->assertJsonPath('payment_method', Expense::DEFAULT_PAYMENT_METHODS[0]);
+            ->assertJsonPath('payment_method', Expense::PAYMENT_METHODS[0]);
+    }
+
+    public function test_expense_rejects_a_payment_method_outside_the_allowed_set(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $type = ExpenseType::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/expenses', [
+                'date' => '2026-01-15',
+                'description' => 'Gasto raro',
+                'value' => 5000,
+                'type_id' => $type->id,
+                'payment_method' => 'Bitcoin',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['payment_method']);
+    }
+
+    public function test_expense_accepts_a_valid_payment_method(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $type = ExpenseType::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/expenses', [
+                'date' => '2026-01-15',
+                'description' => 'Pago Nequi',
+                'value' => 5000,
+                'type_id' => $type->id,
+                'payment_method' => 'Nequi',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('payment_method', 'Nequi');
     }
 
     public function test_expense_value_below_the_minimum_is_rejected(): void
