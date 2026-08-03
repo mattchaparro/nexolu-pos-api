@@ -130,6 +130,11 @@ class Business extends Model
         return $this->hasMany(Client::class);
     }
 
+    public function suppliers(): HasMany
+    {
+        return $this->hasMany(Supplier::class);
+    }
+
     public function paymentMethods(): array
     {
         $methods = $this->payment_methods;
@@ -204,6 +209,16 @@ class Business extends Model
         }
 
         return false;
+    }
+
+    /**
+     * Compras y proveedores: alineado con el hub de catalogo (inventario basico, avanzado o recetas).
+     */
+    public function canAccessPurchases(): bool
+    {
+        return $this->hasFeature('inventory_advanced')
+            || $this->hasFeature('ingredients')
+            || $this->hasFeature('inventory');
     }
 
     public function onTrial(): bool

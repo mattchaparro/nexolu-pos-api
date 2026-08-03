@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureBusinessCanAccessPurchases;
 use App\Http\Middleware\EnsureBusinessFeatureEnabled;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -21,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'feature' => EnsureBusinessFeatureEnabled::class,
+            'can-access-purchases' => EnsureBusinessCanAccessPurchases::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

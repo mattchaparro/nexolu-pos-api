@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\SettingController;
+use App\Http\Controllers\Api\V1\SupplierController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->name('api.v1.')->group(function () {
@@ -27,6 +28,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::middleware('feature:clients')->group(function () {
             Route::get('/clients/search', [ClientController::class, 'search'])->name('clients.search');
             Route::apiResource('clients', ClientController::class);
+        });
+
+        Route::middleware('can-access-purchases')->group(function () {
+            Route::apiResource('suppliers', SupplierController::class);
         });
     });
 });
