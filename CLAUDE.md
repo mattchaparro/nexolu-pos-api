@@ -171,3 +171,9 @@ This application is a Laravel application and its main Laravel ecosystems packag
 - Every migrated module must ship with feature and/or unit tests before it's considered done - no exceptions. The legacy monolith has large untested areas (see `CONTEXT.md` from the legacy repo); do not repeat that here.
 - Use `DatabaseTransactions`, not `RefreshDatabase`, since the schema comes from `database/legacy-schema/schema.sql` (loaded once into the `testing` database), not from migrations.
 - Writing tests for legacy behavior is also a bug hunt: if a test reveals the legacy logic was wrong (see the "BUGS CONOCIDOS" section of the legacy `CONTEXT.md`), fix it in the new implementation and call it out - don't silently port a known bug.
+
+### Improve as you go - don't just port
+
+- This is a migration, not a transcription. When you notice duplicated logic (e.g. the legacy pattern of the same calculation reimplemented in 4 different services/controllers - see "BUGS CONOCIDOS" in the legacy `CONTEXT.md`), a missing abstraction, a naming inconsistency, or any other real improvement while working on a module, make it - don't just flag it and move on, and don't wait for explicit approval on straightforward, well-scoped refactors.
+- This applies both to legacy code being ported and to code already written in this repo: if a later module reveals that an earlier one should be refactored (shared trait, extracted service, deduplicated validation), do that refactor as part of the current work.
+- Keep changes proportional: refactor what the current module's logic actually touches, not a speculative rewrite of unrelated areas. Every behavior change still needs test coverage.
