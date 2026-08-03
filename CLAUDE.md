@@ -157,3 +157,17 @@ This application is a Laravel application and its main Laravel ecosystems packag
 - To filter on a particular test name: `php artisan test --compact --filter=testName` (recommended after making a change to a related file).
 
 </laravel-boost-guidelines>
+
+## Project rules (nexolu-pos-api)
+
+### Language
+
+- All identifiers (classes, methods, variables, route names, config keys, table/column aliases you introduce) must be in **English**, even when porting logic from the legacy monolith that mixes English and Spanish. Rename as you port.
+- Code comments may be written in **Spanish**.
+- User-facing strings (validation messages, notification text) follow whatever the legacy app already did (Spanish, since the product is Colombia-only) unless told otherwise.
+
+### Tests are mandatory per module
+
+- Every migrated module must ship with feature and/or unit tests before it's considered done - no exceptions. The legacy monolith has large untested areas (see `CONTEXT.md` from the legacy repo); do not repeat that here.
+- Use `DatabaseTransactions`, not `RefreshDatabase`, since the schema comes from `database/legacy-schema/schema.sql` (loaded once into the `testing` database), not from migrations.
+- Writing tests for legacy behavior is also a bug hunt: if a test reveals the legacy logic was wrong (see the "BUGS CONOCIDOS" section of the legacy `CONTEXT.md`), fix it in the new implementation and call it out - don't silently port a known bug.
