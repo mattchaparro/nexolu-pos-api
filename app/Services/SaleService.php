@@ -21,6 +21,8 @@ use Illuminate\Validation\ValidationException;
  */
 class SaleService
 {
+    public function __construct(private StockService $stockService) {}
+
     public function createSale(User $user, array $data): Sale
     {
         return DB::transaction(function () use ($user, $data) {
@@ -43,7 +45,7 @@ class SaleService
                 'is_credit' => $flags['is_credit'],
             ]);
 
-            $total = $this->applyItems($sale, $business, $data['items']);
+            $total = $this->applyItems($user, $sale, $business, $data['items']);
 
             [$cartDiscountId, $cartDiscountAmount, $total] = $this->applyCartDiscount(
                 $business, $total, $data['cart_discount_id'] ?? null
@@ -73,9 +75,9 @@ class SaleService
      *
      * @throws ValidationException Si la venta genero un fiado que ya fue cobrado.
      */
-    public function reverseSale(Sale $sale): void
+    public function reverseSale(User $user, Sale $sale): void
     {
-        DB::transaction(function () use ($sale) {
+        DB::transaction(function () use ($user, $sale) {
             $sale->loadMissing('items.product');
 
             $receivable = Receivable::where('business_id', $sale->business_id)
@@ -90,8 +92,10 @@ class SaleService
 
             foreach ($sale->items as $item) {
                 $product = $item->product;
-                if ($product && $item->quantity > 0 && $product->track_stock) {
-                    $product->increaseStock((int) $item->quantity);
+                if ($product && $item->quantity > 0) {
+                    $this->stockService->registerSaleReversal(
+                        $user, $product, (int) $item->quantity, $sale, 'Reverso de venta'
+                    );
                 }
             }
 
@@ -239,7 +243,7 @@ class SaleService
      * @param  array<int, array{product_id: int, quantity: int, unit_price?: float|int|string|null, discount_id?: ?int}>  $items
      * @return float Total de los items (con descuento de item ya restado, sin cargos ni descuento de carrito).
      */
-    public function applyItems(Sale $sale, Business $business, array $items): float
+    public function applyItems(User $user, Sale $sale, Business $business, array $items): float
     {
         $discountsEnabled = $business->hasFeature('discounts');
         $total = 0.0;
@@ -282,7 +286,12 @@ class SaleService
             ]);
 
             if ($product->track_stock) {
-                $product->decreaseStock($quantity);
+                $this->stockService->registerSale($user, $product, $quantity, $sale);
+                // Ajuste en memoria (el movimiento ya persistio el cambio real en
+                // BD): si $items trae dos lineas del mismo producto, la siguiente
+                // vuelta del loop debe ver el stock ya descontado, no el que tenia
+                // $product al cargarlo bajo lockForUpdate().
+                $product->stock -= $quantity;
             }
 
             $total += $lineSubtotal - $discountAmount;

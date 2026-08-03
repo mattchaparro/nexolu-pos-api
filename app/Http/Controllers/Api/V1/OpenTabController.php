@@ -10,6 +10,7 @@ use App\Http\Requests\Api\V1\StoreOpenTabRequest;
 use App\Http\Resources\Api\V1\SaleResource;
 use App\Models\Sale;
 use App\Services\OpenTabService;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 
@@ -41,14 +42,14 @@ class OpenTabController extends Controller
 
     public function addItems(OpenTabItemsRequest $request, Sale $sale): SaleResource
     {
-        $sale = $this->openTabService->addItems($sale, $request->validated('items'));
+        $sale = $this->openTabService->addItems($request->user(), $sale, $request->validated('items'));
 
         return new SaleResource($sale);
     }
 
     public function syncItems(OpenTabItemsRequest $request, Sale $sale): SaleResource
     {
-        $sale = $this->openTabService->syncItems($sale, $request->validated('items'));
+        $sale = $this->openTabService->syncItems($request->user(), $sale, $request->validated('items'));
 
         return new SaleResource($sale);
     }
@@ -73,9 +74,9 @@ class OpenTabController extends Controller
         return new SaleResource($sale);
     }
 
-    public function destroy(Sale $sale): Response
+    public function destroy(Request $request, Sale $sale): Response
     {
-        $this->openTabService->cancelOpenTab($sale);
+        $this->openTabService->cancelOpenTab($request->user(), $sale);
 
         return response()->noContent();
     }

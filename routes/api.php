@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\ReceivableController;
 use App\Http\Controllers\Api\V1\SaleController;
 use App\Http\Controllers\Api\V1\SettingController;
+use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use Illuminate\Support\Facades\Route;
 
@@ -39,6 +40,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::middleware('can-access-purchases')->group(function () {
             Route::apiResource('suppliers', SupplierController::class);
+            Route::apiResource('stock-movements', StockMovementController::class)->only(['index', 'store']);
         });
 
         Route::middleware('feature:expenses')->group(function () {

@@ -38,9 +38,9 @@ class SaleController extends Controller
         return new SaleResource($sale->load('items.product'));
     }
 
-    public function reverse(Sale $sale): Response
+    public function reverse(Request $request, Sale $sale): Response
     {
-        $this->saleService->reverseSale($sale);
+        $this->saleService->reverseSale($request->user(), $sale);
 
         return response()->noContent();
     }

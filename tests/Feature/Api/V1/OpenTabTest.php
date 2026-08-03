@@ -7,6 +7,7 @@ use App\Models\BusinessTable;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SalePartialPayment;
+use App\Models\StockMovement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
@@ -317,6 +318,12 @@ class OpenTabTest extends TestCase
 
         $this->assertSame(10, $product->fresh()->stock);
         $this->assertDatabaseMissing('sales', ['id' => $tab['id']]);
+        $this->assertDatabaseHas('stock_movements', [
+            'product_id' => $product->id,
+            'type' => StockMovement::TYPE_ENTRY,
+            'quantity' => 3,
+            'reference' => "Ajuste venta #{$tab['id']}",
+        ]);
     }
 
     public function test_cancelling_a_tab_with_partial_payments_is_blocked(): void

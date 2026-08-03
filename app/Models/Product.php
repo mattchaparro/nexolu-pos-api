@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
 
@@ -74,20 +75,13 @@ class Product extends Model
         return $prefix.$suffix;
     }
 
-    public function decreaseStock(int $quantity): void
-    {
-        $this->stock -= $quantity;
-        $this->save();
-    }
-
-    public function increaseStock(int $quantity): void
-    {
-        $this->stock += $quantity;
-        $this->save();
-    }
-
     public function category(): BelongsTo
     {
         return $this->belongsTo(ProductCategory::class, 'category_id');
+    }
+
+    public function stockMovements(): HasMany
+    {
+        return $this->hasMany(StockMovement::class);
     }
 }

@@ -23,7 +23,7 @@ use Illuminate\Validation\ValidationException;
  */
 class OpenTabService
 {
-    public function __construct(private SaleService $saleService) {}
+    public function __construct(private SaleService $saleService, private StockService $stockService) {}
 
     public function openTab(User $user, array $data): Sale
     {
@@ -48,7 +48,7 @@ class OpenTabService
                 'kitchen_updated_at' => now(),
             ]);
 
-            $total = $this->saleService->applyItems($sale, $business, $data['items']);
+            $total = $this->saleService->applyItems($user, $sale, $business, $data['items']);
 
             [$cartDiscountId, $cartDiscountAmount, $total] = $this->saleService->applyCartDiscount(
                 $business, $total, $data['cart_discount_id'] ?? null
@@ -71,12 +71,12 @@ class OpenTabService
     /**
      * Agrega items a una cuenta abierta sin tocar los que ya tenia.
      */
-    public function addItems(Sale $sale, array $items): Sale
+    public function addItems(User $user, Sale $sale, array $items): Sale
     {
         $this->assertOpen($sale);
 
-        return DB::transaction(function () use ($sale, $items) {
-            $addedTotal = $this->saleService->applyItems($sale, $sale->business, $items);
+        return DB::transaction(function () use ($user, $sale, $items) {
+            $addedTotal = $this->saleService->applyItems($user, $sale, $sale->business, $items);
 
             $sale->increment('total', $addedTotal);
             $sale->update(['kitchen_status' => 'pending', 'kitchen_updated_at' => now()]);
@@ -91,11 +91,11 @@ class OpenTabService
      * descontando todo de nuevo - evita mover stock de mas si un producto ya
      * estaba en la cuenta con otra cantidad.
      */
-    public function syncItems(Sale $sale, array $items): Sale
+    public function syncItems(User $user, Sale $sale, array $items): Sale
     {
         $this->assertOpen($sale);
 
-        return DB::transaction(function () use ($sale, $items) {
+        return DB::transaction(function () use ($user, $sale, $items) {
             $business = $sale->business;
             $sale->loadMissing('items');
 
@@ -139,9 +139,11 @@ class OpenTabService
                             'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $product->stock.').',
                         ]);
                     }
-                    $product->decreaseStock($delta);
+                    $this->stockService->registerSale($user, $product, $delta, $sale);
                 } else {
-                    $product->increaseStock(abs($delta));
+                    $this->stockService->registerSaleReversal(
+                        $user, $product, abs($delta), $sale, 'Reduccion de cantidad al sincronizar cuenta abierta'
+                    );
                 }
             }
 
@@ -344,9 +346,9 @@ class OpenTabService
      * si ya hay abonos registrados (cierrala con el saldo pendiente en su
      * lugar, o contacta al administrador).
      */
-    public function cancelOpenTab(Sale $sale): void
+    public function cancelOpenTab(User $user, Sale $sale): void
     {
-        DB::transaction(function () use ($sale) {
+        DB::transaction(function () use ($user, $sale) {
             $sale->refresh();
             $this->assertOpen($sale);
 
@@ -359,8 +361,10 @@ class OpenTabService
             $sale->loadMissing('items.product');
             foreach ($sale->items as $item) {
                 $product = $item->product;
-                if ($product && $item->quantity > 0 && $product->track_stock) {
-                    $product->increaseStock((int) $item->quantity);
+                if ($product && $item->quantity > 0) {
+                    $this->stockService->registerSaleReversal(
+                        $user, $product, (int) $item->quantity, $sale, 'Cancelacion de cuenta abierta'
+                    );
                 }
             }
 

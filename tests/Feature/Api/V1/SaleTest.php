@@ -6,6 +6,7 @@ use App\Models\Business;
 use App\Models\Discount;
 use App\Models\Product;
 use App\Models\Sale;
+use App\Models\StockMovement;
 use App\Models\User;
 use App\Services\SaleService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -36,6 +37,11 @@ class SaleTest extends TestCase
             ->assertJsonPath('items.0.quantity', 2);
 
         $this->assertSame(18, $product->fresh()->stock);
+        $this->assertDatabaseHas('stock_movements', [
+            'product_id' => $product->id,
+            'type' => StockMovement::TYPE_SALE,
+            'quantity' => -2,
+        ]);
     }
 
     public function test_invoice_numbers_increment_sequentially(): void
@@ -302,6 +308,12 @@ class SaleTest extends TestCase
 
         $this->assertSame(10, $product->fresh()->stock);
         $this->assertDatabaseMissing('sales', ['id' => $sale['id']]);
+        $this->assertDatabaseHas('stock_movements', [
+            'product_id' => $product->id,
+            'type' => StockMovement::TYPE_ENTRY,
+            'quantity' => 3,
+            'reference' => "Ajuste venta #{$sale['id']}",
+        ]);
     }
 
     public function test_sale_service_re_checks_stock_under_lock_independent_of_the_request(): void
