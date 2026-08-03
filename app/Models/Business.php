@@ -155,6 +155,11 @@ class Business extends Model
         return $this->hasMany(Sale::class);
     }
 
+    public function receivables(): HasMany
+    {
+        return $this->hasMany(Receivable::class);
+    }
+
     public function tables(): HasMany
     {
         return $this->hasMany(BusinessTable::class);

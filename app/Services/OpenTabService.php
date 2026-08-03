@@ -333,6 +333,7 @@ class OpenTabService
 
             $fresh = $sale->fresh();
             $this->saleService->ensureInvoiceNumber($fresh);
+            $this->saleService->syncReceivable($fresh->fresh());
 
             return $fresh->fresh()->load('items.product', 'paymentSplits');
         });

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Business;
 use App\Models\Discount;
 use App\Models\Product;
+use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\User;
@@ -13,9 +14,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Solo cubre el flujo de venta directa (mostrador). Cuentas abiertas, pagos
- * mixtos, fiados (Receivable) y comandera son modulos aparte que todavia no
- * existen en esta API - ver la nota en app/Models/Sale.php.
+ * Cubre el flujo de venta directa (mostrador) y las piezas que OpenTabService
+ * reutiliza al cerrar una cuenta abierta (applyItems, applyCartDiscount,
+ * resolveCharges, syncReceivable, ensureInvoiceNumber). La comandera (kitchen
+ * board) es un modulo aparte que todavia no existe en esta API.
  */
 class SaleService
 {
@@ -58,6 +60,7 @@ class SaleService
             ]);
 
             $this->ensureInvoiceNumber($sale);
+            $this->syncReceivable($sale->fresh());
 
             return $sale->load('items.product', 'cartDiscount');
         });
@@ -67,11 +70,23 @@ class SaleService
      * Reversa (anula) una venta cerrada: restaura el stock de cada item y
      * elimina la venta. Las ventas no tienen soft deletes - es un borrado
      * definitivo, igual que en el legacy.
+     *
+     * @throws ValidationException Si la venta genero un fiado que ya fue cobrado.
      */
     public function reverseSale(Sale $sale): void
     {
         DB::transaction(function () use ($sale) {
             $sale->loadMissing('items.product');
+
+            $receivable = Receivable::where('business_id', $sale->business_id)
+                ->where('sale_id', $sale->id)
+                ->first();
+
+            if ($receivable && $receivable->status === 'paid') {
+                throw ValidationException::withMessages([
+                    'sale' => 'No se puede reversar: esta venta fiada ya fue cobrada.',
+                ]);
+            }
 
             foreach ($sale->items as $item) {
                 $product = $item->product;
@@ -80,8 +95,82 @@ class SaleService
                 }
             }
 
+            $receivable?->delete();
             $sale->delete();
         });
+    }
+
+    /**
+     * Crea/fusiona (si is_credit) o limpia (si no) el fiado pendiente asociado a
+     * $sale. Reutilizado por OpenTabService al cerrar una cuenta como fiado.
+     * Publico a proposito, igual que applyItems/applyCartDiscount/resolveCharges:
+     * es la unica logica de fiados en toda la app, no se reimplementa por flujo.
+     */
+    public function syncReceivable(Sale $sale): void
+    {
+        if (! $sale->is_credit) {
+            Receivable::where('business_id', $sale->business_id)
+                ->where('sale_id', $sale->id)
+                ->where('status', 'pending')
+                ->delete();
+
+            return;
+        }
+
+        $customerKey = $this->buildReceivableCustomerKey(
+            $sale->customer_phone, $sale->customer_identification, $sale->id
+        );
+
+        $existingPending = Receivable::where('business_id', $sale->business_id)
+            ->where('status', 'pending')
+            ->where('customer_key', $customerKey)
+            ->first();
+
+        if ($existingPending) {
+            $existingPending->update([
+                'sale_id' => $sale->id,
+                'customer_name' => $sale->customer_name ?: $existingPending->customer_name,
+                'customer_phone' => $sale->customer_phone ?: $existingPending->customer_phone,
+                'customer_identification' => $sale->customer_identification ?: $existingPending->customer_identification,
+                'amount' => (float) $existingPending->amount + (float) $sale->total,
+                'balance' => (float) $existingPending->balance + (float) $sale->total,
+            ]);
+
+            return;
+        }
+
+        Receivable::create([
+            'business_id' => $sale->business_id,
+            'sale_id' => $sale->id,
+            'customer_name' => $sale->customer_name,
+            'customer_phone' => $sale->customer_phone,
+            'customer_identification' => $sale->customer_identification,
+            'customer_key' => $customerKey,
+            'amount' => $sale->total,
+            'balance' => $sale->total,
+            'status' => 'pending',
+        ]);
+    }
+
+    /**
+     * El nombre NUNCA participa como clave de fusion: dos clientes distintos con
+     * el mismo nombre (comun sin telefono/cedula) no deben sumarse en un solo
+     * fiado. Solo un identificador fuerte (telefono o cedula) confirma que es la
+     * misma persona; sin uno, cada venta es un fiado independiente.
+     */
+    private function buildReceivableCustomerKey(?string $customerPhone, ?string $customerIdentification, int $saleId): string
+    {
+        $normalizedPhone = preg_replace('/\D+/', '', (string) ($customerPhone ?? ''));
+        if ($normalizedPhone !== '') {
+            return "phone:{$normalizedPhone}";
+        }
+
+        $normalizedIdentification = strtolower(trim((string) ($customerIdentification ?? '')));
+        if ($normalizedIdentification !== '') {
+            return "id:{$normalizedIdentification}";
+        }
+
+        return "sale:{$saleId}";
     }
 
     /**

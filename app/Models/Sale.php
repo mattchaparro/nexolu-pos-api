@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * Una venta puede ser directa (mostrador: nace y se cierra en el mismo
@@ -114,5 +115,10 @@ class Sale extends Model
     public function paymentSplits(): HasMany
     {
         return $this->hasMany(SalePaymentSplit::class);
+    }
+
+    public function receivable(): HasOne
+    {
+        return $this->hasOne(Receivable::class);
     }
 }

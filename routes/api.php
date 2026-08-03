@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\ExpenseTypeController;
 use App\Http\Controllers\Api\V1\OpenTabController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
+use App\Http\Controllers\Api\V1\ReceivableController;
 use App\Http\Controllers\Api\V1\SaleController;
 use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\SupplierController;
@@ -68,6 +69,11 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::put('/open-tabs/{sale}/items', [OpenTabController::class, 'syncItems'])->name('open-tabs.items.sync');
             Route::post('/open-tabs/{sale}/partial-payments', [OpenTabController::class, 'recordPartialPayment'])->name('open-tabs.partial-payments.store');
             Route::post('/open-tabs/{sale}/close', [OpenTabController::class, 'close'])->name('open-tabs.close');
+        });
+
+        Route::middleware('feature:receivables')->group(function () {
+            Route::post('/receivables/{receivable}/collect', [ReceivableController::class, 'collect'])->name('receivables.collect');
+            Route::apiResource('receivables', ReceivableController::class)->only(['index', 'show']);
         });
     });
 });
