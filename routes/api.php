@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BusinessController;
+use App\Http\Controllers\Api\V1\ProductCategoryController;
+use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\SettingController;
 use Illuminate\Support\Facades\Route;
 
@@ -17,5 +19,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');
         Route::put('/settings/{setting}', [SettingController::class, 'update'])->name('settings.update');
+
+        Route::apiResource('product-categories', ProductCategoryController::class);
+        Route::apiResource('products', ProductController::class);
     });
 });

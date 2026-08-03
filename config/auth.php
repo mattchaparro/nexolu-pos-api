@@ -16,7 +16,11 @@ return [
     */
 
     'defaults' => [
-        'guard' => env('AUTH_GUARD', 'web'),
+        // This is an API-only application authenticated via Sanctum tokens;
+        // there is no session-based "web" login. Keeping this as the default
+        // guard means the unqualified auth()->user()/auth()->check() helpers
+        // (used e.g. by BelongsToBusiness) resolve correctly for API requests.
+        'guard' => env('AUTH_GUARD', 'sanctum'),
         'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
     ],
 
