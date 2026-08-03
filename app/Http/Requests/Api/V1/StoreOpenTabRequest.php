@@ -3,12 +3,13 @@
 namespace App\Http\Requests\Api\V1;
 
 use App\Http\Requests\Concerns\ValidatesSaleItems;
+use App\Models\Sale;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
-class StoreSaleRequest extends FormRequest
+class StoreOpenTabRequest extends FormRequest
 {
     use ValidatesSaleItems;
 
@@ -28,49 +29,37 @@ class StoreSaleRequest extends FormRequest
     public function rules(): array
     {
         $businessId = $this->user()?->business_id;
-        $business = $this->user()?->business;
 
         return [
             ...$this->saleItemRules(),
-            'payment_method' => ['nullable', 'string', 'max:50', Rule::in($business?->allowedPaymentMethodIds() ?? [])],
+            'table_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                Rule::exists('business_tables', 'id')->where('business_id', $businessId),
+            ],
             'customer_name' => ['sometimes', 'nullable', 'string', 'max:100'],
             'customer_phone' => ['sometimes', 'nullable', 'string', 'max:30'],
             'customer_identification' => ['sometimes', 'nullable', 'string', 'max:50'],
             'is_delivery' => ['sometimes', 'boolean'],
-            'is_non_revenue' => ['sometimes', 'boolean'],
-            'non_revenue_reason' => ['sometimes', 'nullable', 'string', 'max:255'],
             'cart_discount_id' => [
+                'sometimes',
                 'nullable',
                 'integer',
                 Rule::exists('discounts', 'id')->where('business_id', $businessId)->where('scope', 'cart'),
             ],
-            // Los montos de los cargos los calcula el servidor desde la config
-            // del negocio; el cliente solo puede renunciar a un cargo habilitado.
-            'apply_service_charge' => ['sometimes', 'boolean'],
-            'apply_ipoconsumo' => ['sometimes', 'boolean'],
-        ];
-    }
-
-    public function messages(): array
-    {
-        return [
-            'payment_method.in' => 'Metodo de pago no valido.',
-            'items.required' => 'Agrega al menos un producto.',
-            'items.min' => 'Agrega al menos un producto.',
-            'items.*.product_id.exists' => 'Producto no encontrado.',
-            'items.*.quantity.min' => 'La cantidad debe ser al menos 1.',
         ];
     }
 
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
-            $isNonRevenue = $this->boolean('is_non_revenue');
-            if (! $isNonRevenue && ! $this->filled('payment_method')) {
-                $validator->errors()->add('payment_method', 'Selecciona un metodo de pago.');
-            }
-
             $this->validateSaleItemLines($validator);
+
+            $tableId = $this->input('table_id');
+            if ($tableId && Sale::where('table_id', $tableId)->where('status', 'open')->exists()) {
+                $validator->errors()->add('table_id', 'Esta mesa ya tiene una cuenta abierta.');
+            }
         });
     }
 }

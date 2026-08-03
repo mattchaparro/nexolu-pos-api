@@ -18,6 +18,7 @@ class SaleResource extends JsonResource
             'id' => $this->id,
             'business_id' => $this->business_id,
             'user_id' => $this->user_id,
+            'table_id' => $this->table_id,
             'invoice_number' => $this->invoice_number,
             'payment_method' => $this->payment_method,
             'status' => $this->status,
@@ -36,6 +37,16 @@ class SaleResource extends JsonResource
             'customer_identification' => $this->customer_identification,
             'closed_at' => $this->closed_at?->toIso8601String(),
             'items' => SaleItemResource::collection($this->whenLoaded('items')),
+            'payment_splits' => SalePaymentSplitResource::collection($this->whenLoaded('paymentSplits')),
+            'partial_payments' => SalePartialPaymentResource::collection($this->whenLoaded('partialPayments')),
+            'amount_paid' => $this->when(
+                $this->relationLoaded('partialPayments'),
+                fn () => (float) $this->partialPayments->sum('amount')
+            ),
+            'balance_due' => $this->when(
+                $this->relationLoaded('partialPayments'),
+                fn () => round((float) $this->total - (float) $this->partialPayments->sum('amount'), 2)
+            ),
         ];
     }
 }

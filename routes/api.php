@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\DiscountController;
 use App\Http\Controllers\Api\V1\ExpenseController;
 use App\Http\Controllers\Api\V1\ExpenseTypeController;
+use App\Http\Controllers\Api\V1\OpenTabController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\SaleController;
@@ -54,6 +55,19 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::middleware('feature:open_tabs')->group(function () {
             Route::apiResource('tables', BusinessTableController::class);
+
+            // parameters(): fuerza el binding a {sale} en vez del {open_tab}
+            // que generaria el nombre del recurso - el resto de metodos del
+            // controller (addItems, close, etc.) ya reciben Sale $sale, y un
+            // nombre de parametro distinto rompe el binding implicito (el
+            // mismo bug que ya encontramos y arreglamos en BusinessTableController).
+            Route::apiResource('open-tabs', OpenTabController::class)
+                ->only(['index', 'show', 'store', 'destroy'])
+                ->parameters(['open-tabs' => 'sale']);
+            Route::post('/open-tabs/{sale}/items', [OpenTabController::class, 'addItems'])->name('open-tabs.items.add');
+            Route::put('/open-tabs/{sale}/items', [OpenTabController::class, 'syncItems'])->name('open-tabs.items.sync');
+            Route::post('/open-tabs/{sale}/partial-payments', [OpenTabController::class, 'recordPartialPayment'])->name('open-tabs.partial-payments.store');
+            Route::post('/open-tabs/{sale}/close', [OpenTabController::class, 'close'])->name('open-tabs.close');
         });
     });
 });
