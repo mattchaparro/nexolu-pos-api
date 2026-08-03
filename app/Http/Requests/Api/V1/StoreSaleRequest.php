@@ -53,8 +53,10 @@ class StoreSaleRequest extends FormRequest
                 'integer',
                 Rule::exists('discounts', 'id')->where('business_id', $businessId)->where('scope', 'cart'),
             ],
-            'service_charge_amount' => ['sometimes', 'nullable', 'numeric', 'min:0'],
-            'ipoconsumo_amount' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            // Los montos de los cargos los calcula el servidor desde la config
+            // del negocio; el cliente solo puede renunciar a un cargo habilitado.
+            'apply_service_charge' => ['sometimes', 'boolean'],
+            'apply_ipoconsumo' => ['sometimes', 'boolean'],
         ];
     }
 

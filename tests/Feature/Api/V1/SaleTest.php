@@ -7,7 +7,9 @@ use App\Models\Discount;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\User;
+use App\Services\SaleService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class SaleTest extends TestCase
@@ -158,18 +160,68 @@ class SaleTest extends TestCase
 
     public function test_service_charge_and_ipoconsumo_are_added_to_the_total(): void
     {
-        $business = Business::factory()->create();
+        $business = Business::factory()->create([
+            'service_charge_enabled' => true,
+            'service_charge_rate' => 10,
+            'ipoconsumo_enabled' => true,
+            'ipoconsumo_rate' => 8,
+        ]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+
+        // El servidor calcula 10% servicio (1000) + 8% ipoconsumo (800) sobre el
+        // subtotal (10000); ignora cualquier monto que mande el cliente.
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
+            'payment_method' => 'cash',
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            'service_charge_amount' => 999999,
+            'ipoconsumo_amount' => 999999,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('service_charge_amount', '1000.00')
+            ->assertJsonPath('ipoconsumo_amount', '800.00')
+            ->assertJsonPath('total', '11800.00');
+    }
+
+    public function test_charges_are_zero_when_the_business_has_them_disabled(): void
+    {
+        $business = Business::factory()->create([
+            'service_charge_enabled' => false,
+            'ipoconsumo_enabled' => false,
+        ]);
         $user = User::factory()->create(['business_id' => $business->id]);
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
             'payment_method' => 'cash',
             'items' => [['product_id' => $product->id, 'quantity' => 1]],
-            'service_charge_amount' => 1000,
-            'ipoconsumo_amount' => 800,
         ]);
 
-        $response->assertCreated()->assertJsonPath('total', '11800.00');
+        $response->assertCreated()
+            ->assertJsonPath('service_charge_amount', '0.00')
+            ->assertJsonPath('total', '10000.00');
+    }
+
+    public function test_client_can_waive_an_enabled_service_charge(): void
+    {
+        $business = Business::factory()->create([
+            'service_charge_enabled' => true,
+            'service_charge_rate' => 10,
+            'ipoconsumo_enabled' => false,
+        ]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
+            'payment_method' => 'cash',
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            'apply_service_charge' => false,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('service_charge_amount', '0.00')
+            ->assertJsonPath('total', '10000.00');
     }
 
     public function test_non_revenue_sale_does_not_require_a_payment_method(): void
@@ -250,6 +302,25 @@ class SaleTest extends TestCase
 
         $this->assertSame(10, $product->fresh()->stock);
         $this->assertDatabaseMissing('sales', ['id' => $sale['id']]);
+    }
+
+    public function test_sale_service_re_checks_stock_under_lock_independent_of_the_request(): void
+    {
+        // El request valida stock (lectura fuera de transaccion); el service lo
+        // re-verifica bajo lockForUpdate antes de descontar. Este test prueba el
+        // guard del service directamente, sin pasar por el request.
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'track_stock' => true, 'stock' => 1]);
+
+        $this->actingAs($user, 'sanctum');
+
+        $this->expectException(ValidationException::class);
+
+        app(SaleService::class)->createSale($user, [
+            'payment_method' => 'cash',
+            'items' => [['product_id' => $product->id, 'quantity' => 5]],
+        ]);
     }
 
     public function test_sales_list_is_scoped_to_the_business(): void

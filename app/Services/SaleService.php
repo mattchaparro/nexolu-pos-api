@@ -10,6 +10,7 @@ use App\Models\SaleItem;
 use App\Models\User;
 use App\Support\SaleLineUnitPrice;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Solo cubre el flujo de venta directa (mostrador). Cuentas abiertas, pagos
@@ -43,12 +44,28 @@ class SaleService
             $discountsEnabled = $business->hasFeature('discounts');
             $total = 0.0;
 
+            // lockForUpdate: bloquea las filas de producto hasta el commit para
+            // que dos ventas concurrentes de la ultima unidad no la vendan las
+            // dos. El chequeo de stock del request es solo un aviso temprano
+            // (lectura fuera de transaccion); la verdad se re-verifica aqui bajo
+            // el lock antes de descontar.
             $productIds = collect($data['items'])->pluck('product_id')->unique()->values()->all();
-            $products = Product::where('business_id', $business->id)->whereIn('id', $productIds)->get()->keyBy('id');
+            $products = Product::where('business_id', $business->id)
+                ->whereIn('id', $productIds)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
 
             foreach ($data['items'] as $item) {
                 $product = $products->get($item['product_id']);
                 $quantity = (int) $item['quantity'];
+
+                if ($product->track_stock && $quantity > $product->stock) {
+                    throw ValidationException::withMessages([
+                        'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $product->stock.').',
+                    ]);
+                }
+
                 $unitPrice = SaleLineUnitPrice::resolve($product, $item);
                 $lineSubtotal = $unitPrice * $quantity;
 
@@ -88,9 +105,7 @@ class SaleService
                 }
             }
 
-            $chargesEnabled = $business->hasFeature('charges');
-            $serviceChargeAmount = $chargesEnabled ? (float) ($data['service_charge_amount'] ?? 0) : 0.0;
-            $ipoconsumoAmount = $chargesEnabled ? (float) ($data['ipoconsumo_amount'] ?? 0) : 0.0;
+            [$serviceChargeAmount, $ipoconsumoAmount] = $this->resolveCharges($business, $total, $data);
 
             $sale->update([
                 'total' => $total + $flags['delivery_fee'] + $serviceChargeAmount + $ipoconsumoAmount,
@@ -125,6 +140,40 @@ class SaleService
 
             $sale->delete();
         });
+    }
+
+    /**
+     * Cargo por servicio e IPOCONSUMO calculados en el SERVIDOR desde las tasas
+     * configuradas del negocio (tasa % x base), no desde montos que manda el
+     * cliente - el legacy confiaba en lo que llegaba del front. La base es el
+     * subtotal ya con descuentos, antes del domicilio (que es un costo de
+     * traslado, no consumo gravable). El cliente solo puede renunciar a un cargo
+     * habilitado (apply_service_charge / apply_ipoconsumo false), no fijar su
+     * monto.
+     *
+     * @return array{0: float, 1: float}
+     */
+    private function resolveCharges(Business $business, float $base, array $data): array
+    {
+        if (! $business->hasFeature('charges')) {
+            return [0.0, 0.0];
+        }
+
+        $config = $business->chargesConfig();
+        $wantsService = ! array_key_exists('apply_service_charge', $data)
+            || filter_var($data['apply_service_charge'], FILTER_VALIDATE_BOOLEAN);
+        $wantsIpoconsumo = ! array_key_exists('apply_ipoconsumo', $data)
+            || filter_var($data['apply_ipoconsumo'], FILTER_VALIDATE_BOOLEAN);
+
+        $service = ($config['service_charge_enabled'] && $wantsService)
+            ? round($base * $config['service_charge_rate'] / 100, 2)
+            : 0.0;
+
+        $ipoconsumo = ($config['ipoconsumo_enabled'] && $wantsIpoconsumo)
+            ? round($base * $config['ipoconsumo_rate'] / 100, 2)
+            : 0.0;
+
+        return [$service, $ipoconsumo];
     }
 
     /**
