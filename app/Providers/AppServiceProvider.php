@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +20,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // This API returns resources at the response root (no "data" envelope),
+        // matching the {token, user} shape already used by the login endpoint.
+        JsonResource::withoutWrapping();
     }
 }
