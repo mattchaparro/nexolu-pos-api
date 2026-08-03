@@ -80,6 +80,12 @@ class Product extends Model
         $this->save();
     }
 
+    public function increaseStock(int $quantity): void
+    {
+        $this->stock += $quantity;
+        $this->save();
+    }
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(ProductCategory::class, 'category_id');

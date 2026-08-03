@@ -150,6 +150,11 @@ class Business extends Model
         return $this->hasMany(Discount::class);
     }
 
+    public function sales(): HasMany
+    {
+        return $this->hasMany(Sale::class);
+    }
+
     public function paymentMethods(): array
     {
         $methods = $this->payment_methods;
@@ -189,6 +194,91 @@ class Business extends Model
         }
 
         return array_values($normalized);
+    }
+
+    /**
+     * Ids de metodo de pago validos para este negocio (para validacion y para
+     * SaleService). Unico lugar donde se deriva esta lista.
+     *
+     * @return list<string>
+     */
+    public function allowedPaymentMethodIds(): array
+    {
+        return collect($this->paymentMethods())
+            ->pluck('id')
+            ->map(fn ($id) => strtolower((string) $id))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * El id que este negocio usa para el metodo de pago en efectivo. Soporta
+     * tanto 'cash' (default/legacy) como 'efectivo' (configs en espanol).
+     */
+    public function resolveCashPaymentMethodId(): string
+    {
+        foreach ($this->paymentMethods() as $method) {
+            $id = strtolower((string) ($method['id'] ?? ''));
+            $label = strtolower((string) ($method['label'] ?? ''));
+            if (in_array($id, ['cash', 'efectivo'], true) || in_array($label, ['cash', 'efectivo'], true)) {
+                return (string) ($method['id'] ?? 'cash');
+            }
+        }
+
+        return 'cash';
+    }
+
+    /**
+     * Normaliza un payment_method id al id que este negocio tiene configurado.
+     * Resuelve aliases legacy <-> espanol (cash<->efectivo, transfer<->transferencia, credit<->fiado).
+     * Si el id ya esta configurado o no hay alias aplicable, lo retorna tal cual.
+     */
+    public function normalizePaymentMethodId(?string $id): ?string
+    {
+        if ($id === null || $id === '') {
+            return $id;
+        }
+
+        $idLower = strtolower($id);
+        $configured = $this->allowedPaymentMethodIds();
+
+        if (in_array($idLower, $configured, true)) {
+            return $idLower;
+        }
+
+        $aliases = [
+            'cash' => ['efectivo'],
+            'efectivo' => ['cash'],
+            'transfer' => ['transferencia', 'transferencias'],
+            'transferencia' => ['transfer'],
+            'transferencias' => ['transfer'],
+            'credit' => ['fiado', 'credito', 'crédito'],
+            'fiado' => ['credit'],
+            'credito' => ['credit'],
+            'crédito' => ['credit'],
+        ];
+
+        foreach (($aliases[$idLower] ?? []) as $alias) {
+            if (in_array($alias, $configured, true)) {
+                return $alias;
+            }
+        }
+
+        return $idLower;
+    }
+
+    /**
+     * Metodos que representan "el cliente paga despues" (fiado). Ninguno de
+     * estos deberia terminar sumado en una venta cerrada como ingreso directo.
+     */
+    public function isCreditPaymentMethod(?string $method): bool
+    {
+        if ($method === null) {
+            return false;
+        }
+
+        return in_array(strtolower($method), ['credit', 'fiado', 'credito', 'crédito'], true);
     }
 
     public function chargesConfig(): array

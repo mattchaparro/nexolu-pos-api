@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\ExpenseController;
 use App\Http\Controllers\Api\V1\ExpenseTypeController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
+use App\Http\Controllers\Api\V1\SaleController;
 use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use Illuminate\Support\Facades\Route;
@@ -46,5 +47,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::middleware('feature:discounts')->group(function () {
             Route::apiResource('discounts', DiscountController::class);
         });
+
+        Route::post('/sales/{sale}/reverse', [SaleController::class, 'reverse'])->name('sales.reverse');
+        Route::apiResource('sales', SaleController::class)->only(['index', 'show', 'store']);
     });
 });
