@@ -83,4 +83,17 @@ class ProductCategoryTest extends TestCase
 
         $this->assertDatabaseMissing('product_categories', ['id' => $category->id]);
     }
+
+    public function test_created_category_response_reflects_the_database_default_icon(): void
+    {
+        // Bug real: store() no refrescaba de BD, asi que "icon" (DEFAULT
+        // 'inventory_2') llegaba null al cliente si el request no lo mandaba.
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/product-categories', ['name' => 'Sin icono explicito'])
+            ->assertCreated()
+            ->assertJsonPath('icon', 'inventory_2');
+    }
 }

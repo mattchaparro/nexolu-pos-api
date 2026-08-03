@@ -23,7 +23,9 @@ class ProductCategoryController extends Controller
     {
         $category = ProductCategory::create($request->validated());
 
-        return new ProductCategoryResource($category);
+        // refresh(): "icon" tiene DEFAULT 'inventory_2' en BD; si el request no
+        // lo manda, queda null en memoria hasta releer la fila.
+        return new ProductCategoryResource($category->refresh());
     }
 
     public function show(ProductCategory $productCategory): ProductCategoryResource

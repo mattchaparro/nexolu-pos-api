@@ -143,4 +143,28 @@ class ProductTest extends TestCase
 
         $this->assertSoftDeleted('products', ['id' => $product->id]);
     }
+
+    public function test_created_product_response_reflects_database_defaults_not_nulls(): void
+    {
+        // Bug real: store() devolvia el modelo recien creado sin refrescar de
+        // BD, asi que columnas con DEFAULT que el request no manda (is_active,
+        // track_stock, etc.) llegaban null al cliente aunque en la fila real
+        // ya tenian su valor por defecto.
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $category = ProductCategory::factory()->create(['business_id' => $business->id]);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/products', [
+            'name' => 'Producto sin flags explicitos',
+            'price' => 1000,
+            'category_id' => $category->id,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('is_active', true)
+            ->assertJsonPath('track_stock', true)
+            ->assertJsonPath('is_single_sale', false)
+            ->assertJsonPath('is_service', false)
+            ->assertJsonPath('price_varies_at_sale', false);
+    }
 }

@@ -29,7 +29,11 @@ class BusinessTableController extends Controller
             $data['number'] = (int) BusinessTable::max('number') + 1;
         }
 
-        return new BusinessTableResource(BusinessTable::create($data));
+        $table = BusinessTable::create($data);
+
+        // refresh(): "is_active" tiene DEFAULT 1 en BD; si el request no lo
+        // manda, queda null en memoria hasta releer la fila.
+        return new BusinessTableResource($table->refresh());
     }
 
     public function show(BusinessTable $table): BusinessTableResource

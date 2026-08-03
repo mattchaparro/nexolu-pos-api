@@ -93,4 +93,17 @@ class BusinessTableTest extends TestCase
             ->getJson('/api/v1/tables')
             ->assertForbidden();
     }
+
+    public function test_created_table_response_reflects_the_database_default_is_active(): void
+    {
+        // Bug real: store() no refrescaba de BD, asi que "is_active" (DEFAULT 1)
+        // llegaba null al cliente si el request no lo mandaba.
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/tables', ['name' => 'Sin is_active explicito'])
+            ->assertCreated()
+            ->assertJsonPath('is_active', true);
+    }
 }

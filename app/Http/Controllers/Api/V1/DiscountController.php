@@ -32,7 +32,9 @@ class DiscountController extends Controller
     {
         $discount = Discount::create($request->validated());
 
-        return new DiscountResource($discount->load('product'));
+        // refresh(): "is_active" tiene DEFAULT 1 en BD; si el request no lo
+        // manda, queda null en memoria hasta releer la fila.
+        return new DiscountResource($discount->refresh()->load('product'));
     }
 
     public function show(Discount $discount): DiscountResource

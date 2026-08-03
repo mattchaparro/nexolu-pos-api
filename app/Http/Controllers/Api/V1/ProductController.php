@@ -27,7 +27,10 @@ class ProductController extends Controller
             ...$request->validated(),
         ]);
 
-        return new ProductResource($product->load('category'));
+        // refresh(): columnas con DEFAULT a nivel de BD que el request no mando
+        // (is_active, track_stock, is_single_sale, ...) quedan null en la
+        // instancia en memoria hasta releerla - create() no las repuebla solo.
+        return new ProductResource($product->refresh()->load('category'));
     }
 
     public function show(Product $product): ProductResource

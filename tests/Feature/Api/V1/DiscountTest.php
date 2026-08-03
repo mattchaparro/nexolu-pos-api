@@ -123,4 +123,22 @@ class DiscountTest extends TestCase
 
         $this->assertDatabaseMissing('discounts', ['id' => $discount->id]);
     }
+
+    public function test_created_discount_response_reflects_the_database_default_is_active(): void
+    {
+        // Bug real: store() no refrescaba de BD, asi que "is_active" (DEFAULT 1)
+        // llegaba null al cliente si el request no lo mandaba.
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/discounts', [
+                'name' => 'Sin is_active explicito',
+                'type' => 'fixed',
+                'value' => 1000,
+                'scope' => 'cart',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('is_active', true);
+    }
 }
