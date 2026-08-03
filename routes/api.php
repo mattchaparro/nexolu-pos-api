@@ -3,6 +3,8 @@
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BusinessController;
 use App\Http\Controllers\Api\V1\ClientController;
+use App\Http\Controllers\Api\V1\ExpenseController;
+use App\Http\Controllers\Api\V1\ExpenseTypeController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\SettingController;
@@ -32,6 +34,12 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::middleware('can-access-purchases')->group(function () {
             Route::apiResource('suppliers', SupplierController::class);
+        });
+
+        Route::middleware('feature:expenses')->group(function () {
+            Route::get('/expense-types', [ExpenseTypeController::class, 'index'])->name('expense-types.index');
+            Route::post('/expense-types', [ExpenseTypeController::class, 'store'])->name('expense-types.store');
+            Route::apiResource('expenses', ExpenseController::class);
         });
     });
 });
