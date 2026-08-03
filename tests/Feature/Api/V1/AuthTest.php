@@ -81,4 +81,12 @@ class AuthTest extends TestCase
     {
         $this->getJson('/api/v1/me')->assertUnauthorized();
     }
+
+    public function test_guest_without_an_accept_header_still_gets_json_401(): void
+    {
+        // Regression test: a plain client that doesn't send Accept:
+        // application/json (curl, some mobile HTTP clients) must not be
+        // redirected to a non-existent "login" web route.
+        $this->get('/api/v1/me')->assertUnauthorized();
+    }
 }
