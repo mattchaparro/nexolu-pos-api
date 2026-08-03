@@ -41,69 +41,11 @@ class SaleService
                 'is_credit' => $flags['is_credit'],
             ]);
 
-            $discountsEnabled = $business->hasFeature('discounts');
-            $total = 0.0;
+            $total = $this->applyItems($sale, $business, $data['items']);
 
-            // lockForUpdate: bloquea las filas de producto hasta el commit para
-            // que dos ventas concurrentes de la ultima unidad no la vendan las
-            // dos. El chequeo de stock del request es solo un aviso temprano
-            // (lectura fuera de transaccion); la verdad se re-verifica aqui bajo
-            // el lock antes de descontar.
-            $productIds = collect($data['items'])->pluck('product_id')->unique()->values()->all();
-            $products = Product::where('business_id', $business->id)
-                ->whereIn('id', $productIds)
-                ->lockForUpdate()
-                ->get()
-                ->keyBy('id');
-
-            foreach ($data['items'] as $item) {
-                $product = $products->get($item['product_id']);
-                $quantity = (int) $item['quantity'];
-
-                if ($product->track_stock && $quantity > $product->stock) {
-                    throw ValidationException::withMessages([
-                        'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $product->stock.').',
-                    ]);
-                }
-
-                $unitPrice = SaleLineUnitPrice::resolve($product, $item);
-                $lineSubtotal = $unitPrice * $quantity;
-
-                [$discountId, $discountAmount] = $this->resolveItemDiscount(
-                    $business, $discountsEnabled, $item['discount_id'] ?? null, $lineSubtotal
-                );
-
-                SaleItem::create([
-                    'sale_id' => $sale->id,
-                    'product_id' => $product->id,
-                    'quantity' => $quantity,
-                    'unit_price' => $unitPrice,
-                    'unit_cost_at_sale' => (float) $product->cost_price,
-                    'subtotal' => $lineSubtotal,
-                    'discount_id' => $discountId,
-                    'discount_amount' => $discountAmount,
-                ]);
-
-                if ($product->track_stock) {
-                    $product->decreaseStock($quantity);
-                }
-
-                $total += $lineSubtotal - $discountAmount;
-            }
-
-            $cartDiscountId = null;
-            $cartDiscountAmount = 0.0;
-            if ($discountsEnabled && ! empty($data['cart_discount_id'])) {
-                $cartDiscount = Discount::where('business_id', $business->id)
-                    ->where('scope', 'cart')
-                    ->where('is_active', true)
-                    ->find((int) $data['cart_discount_id']);
-                if ($cartDiscount) {
-                    $cartDiscountId = $cartDiscount->id;
-                    $cartDiscountAmount = $cartDiscount->computeAmount($total);
-                    $total -= $cartDiscountAmount;
-                }
-            }
+            [$cartDiscountId, $cartDiscountAmount, $total] = $this->applyCartDiscount(
+                $business, $total, $data['cart_discount_id'] ?? null
+            );
 
             [$serviceChargeAmount, $ipoconsumoAmount] = $this->resolveCharges($business, $total, $data);
 
@@ -153,7 +95,7 @@ class SaleService
      *
      * @return array{0: float, 1: float}
      */
-    private function resolveCharges(Business $business, float $base, array $data): array
+    public function resolveCharges(Business $business, float $base, array $data): array
     {
         if (! $business->hasFeature('charges')) {
             return [0.0, 0.0];
@@ -199,27 +141,82 @@ class SaleService
     }
 
     /**
-     * @return array{0: ?int, 1: float}
+     * Crea los SaleItem de $items sobre $sale y descuenta stock, bajo
+     * lockForUpdate (ver la nota en createSale sobre sobreventa). Publico y
+     * reutilizado por OpenTabService al abrir/agregar items a una cuenta -
+     * unico lugar donde vive esta logica, en vez de que cada flujo la
+     * reimplemente a su manera.
+     *
+     * @param  array<int, array{product_id: int, quantity: int, unit_price?: float|int|string|null, discount_id?: ?int}>  $items
+     * @return float Total de los items (con descuento de item ya restado, sin cargos ni descuento de carrito).
      */
-    private function resolveItemDiscount(Business $business, bool $discountsEnabled, ?int $discountId, float $lineSubtotal): array
+    public function applyItems(Sale $sale, Business $business, array $items): float
     {
-        if (! $discountsEnabled || ! $discountId) {
-            return [null, 0.0];
+        $discountsEnabled = $business->hasFeature('discounts');
+        $total = 0.0;
+
+        $productIds = collect($items)->pluck('product_id')->unique()->values()->all();
+        $products = Product::where('business_id', $business->id)
+            ->whereIn('id', $productIds)
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
+
+        foreach ($items as $item) {
+            $product = $products->get($item['product_id']);
+            $quantity = (int) $item['quantity'];
+
+            if ($product->track_stock && $quantity > $product->stock) {
+                throw ValidationException::withMessages([
+                    'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $product->stock.').',
+                ]);
+            }
+
+            $unitPrice = SaleLineUnitPrice::resolve($product, $item);
+            $lineSubtotal = $unitPrice * $quantity;
+
+            [$discountId, $discountAmount] = $discountsEnabled
+                ? Discount::resolveActive($business->id, 'item', $item['discount_id'] ?? null, $lineSubtotal)
+                : [null, 0.0];
+
+            SaleItem::create([
+                'sale_id' => $sale->id,
+                'product_id' => $product->id,
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'unit_cost_at_sale' => (float) $product->cost_price,
+                'subtotal' => $lineSubtotal,
+                'discount_id' => $discountId,
+                'discount_amount' => $discountAmount,
+                'kitchen_status' => $sale->isOpen() ? 'pending' : null,
+                'kitchen_updated_at' => $sale->isOpen() ? now() : null,
+            ]);
+
+            if ($product->track_stock) {
+                $product->decreaseStock($quantity);
+            }
+
+            $total += $lineSubtotal - $discountAmount;
         }
 
-        $discount = Discount::where('business_id', $business->id)
-            ->where('scope', 'item')
-            ->where('is_active', true)
-            ->find($discountId);
-
-        if (! $discount) {
-            return [null, 0.0];
-        }
-
-        return [$discount->id, $discount->computeAmount($lineSubtotal)];
+        return $total;
     }
 
-    private function ensureInvoiceNumber(Sale $sale): void
+    /**
+     * @return array{0: ?int, 1: float, 2: float} [cart_discount_id, monto, total resultante]
+     */
+    public function applyCartDiscount(Business $business, float $total, ?int $cartDiscountId): array
+    {
+        if (! $business->hasFeature('discounts') || ! $cartDiscountId) {
+            return [null, 0.0, $total];
+        }
+
+        [$resolvedId, $amount] = Discount::resolveActive($business->id, 'cart', $cartDiscountId, $total);
+
+        return [$resolvedId, $amount, $total - $amount];
+    }
+
+    public function ensureInvoiceNumber(Sale $sale): void
     {
         if ($sale->invoice_number) {
             return;
