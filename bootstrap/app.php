@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureBusinessFeatureEnabled;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -17,6 +18,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // redirect guests to, so unauthenticated requests must always fall
         // through to a JSON 401 instead of Laravel's default HTML redirect.
         $middleware->redirectGuestsTo(fn () => null);
+
+        $middleware->alias([
+            'feature' => EnsureBusinessFeatureEnabled::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

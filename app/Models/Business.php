@@ -125,6 +125,11 @@ class Business extends Model
         return $this->hasMany(ProductCategory::class);
     }
 
+    public function clients(): HasMany
+    {
+        return $this->hasMany(Client::class);
+    }
+
     public function paymentMethods(): array
     {
         $methods = $this->payment_methods;

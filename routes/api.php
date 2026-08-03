@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BusinessController;
+use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\SettingController;
@@ -22,5 +23,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::apiResource('product-categories', ProductCategoryController::class);
         Route::apiResource('products', ProductController::class);
+
+        Route::middleware('feature:clients')->group(function () {
+            Route::get('/clients/search', [ClientController::class, 'search'])->name('clients.search');
+            Route::apiResource('clients', ClientController::class);
+        });
     });
 });
