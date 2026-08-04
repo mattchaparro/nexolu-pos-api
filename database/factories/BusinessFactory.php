@@ -19,6 +19,7 @@ class BusinessFactory extends Factory
     {
         return [
             'name' => fake()->company(),
+            'slug' => fake()->unique()->slug(),
             'owner_name' => fake()->name(),
             'phone' => fake()->numerify('3#########'),
             'active' => true,
