@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Layaway;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\StockMovement;
@@ -104,6 +105,54 @@ class StockService
             'stock_movement_reason_id' => StockMovementReason::systemIdForCode(StockMovementReason::CODE_SALE_REVERSAL),
             'quantity' => abs($quantity),
             'reference' => "Ajuste venta #{$sale->id}",
+            'notes' => $notes,
+            'user_id' => $user->id,
+        ]);
+    }
+
+    /**
+     * Reserva stock para un apartado: sale del disponible pero NO es una
+     * venta (no hay Sale de por medio - la deuda vive en LayawayPayment), por
+     * eso es type=exit con motivo propio 'layaway' y no type=sale como hacia
+     * el legacy. El legacy ademas usaba type='layaway' a secas, un valor que
+     * nunca estuvo en el enum de la columna (entry/exit/adjustment/sale) -
+     * confirmado que revienta con "Data truncated for column 'type'" en modo
+     * estricto.
+     */
+    public function reserveForLayaway(User $user, Product $product, int $quantity, Layaway $layaway): ?StockMovement
+    {
+        if (! $product->track_stock) {
+            return null;
+        }
+
+        return StockMovement::create([
+            'product_id' => $product->id,
+            'business_id' => $product->business_id,
+            'type' => StockMovement::TYPE_EXIT,
+            'stock_movement_reason_id' => StockMovementReason::systemIdForCode(StockMovementReason::CODE_LAYAWAY),
+            'quantity' => -abs($quantity),
+            'reference' => "Apartado #{$layaway->id}",
+            'user_id' => $user->id,
+        ]);
+    }
+
+    /**
+     * Libera una reserva de apartado (cancelacion o edicion de items a la
+     * baja). $notes distingue el origen exacto para el historial.
+     */
+    public function releaseLayawayReservation(User $user, Product $product, int $quantity, Layaway $layaway, ?string $notes = null): ?StockMovement
+    {
+        if (! $product->track_stock) {
+            return null;
+        }
+
+        return StockMovement::create([
+            'product_id' => $product->id,
+            'business_id' => $product->business_id,
+            'type' => StockMovement::TYPE_ENTRY,
+            'stock_movement_reason_id' => StockMovementReason::systemIdForCode(StockMovementReason::CODE_LAYAWAY_CANCEL),
+            'quantity' => abs($quantity),
+            'reference' => "Apartado #{$layaway->id}",
             'notes' => $notes,
             'user_id' => $user->id,
         ]);

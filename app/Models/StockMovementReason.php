@@ -34,6 +34,10 @@ class StockMovementReason extends Model
 
     const CODE_DAMAGE = 'damage';
 
+    const CODE_LAYAWAY = 'layaway';
+
+    const CODE_LAYAWAY_CANCEL = 'layaway_cancel';
+
     public function stockMovements(): HasMany
     {
         return $this->hasMany(StockMovement::class, 'stock_movement_reason_id');

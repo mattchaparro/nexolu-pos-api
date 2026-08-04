@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 #[Fillable([
     'name',
@@ -289,6 +290,22 @@ class Business extends Model
         }
 
         return in_array(strtolower($method), ['credit', 'fiado', 'credito', 'crédito'], true);
+    }
+
+    /**
+     * Repetido en cada servicio que cobra un monto puntual (cerrar cuenta
+     * abierta, cobrar fiado, abonar apartado): valida que $method este
+     * configurado para este negocio, y opcionalmente que no sea el metodo de
+     * credito (no tiene sentido "pagar" una deuda con otra deuda).
+     */
+    public function assertValidPaymentMethod(string $method, bool $forbidCredit = false): void
+    {
+        $allowed = $this->allowedPaymentMethodIds();
+        if (! in_array($method, $allowed, true) || ($forbidCredit && $this->isCreditPaymentMethod($method))) {
+            throw ValidationException::withMessages([
+                'payment_method' => 'Metodo de pago no permitido para este negocio.',
+            ]);
+        }
     }
 
     public function chargesConfig(): array

@@ -383,12 +383,7 @@ class OpenTabService
 
     private function assertValidPaymentMethod(Business $business, string $method, bool $forbidCredit = false): void
     {
-        $allowed = $business->allowedPaymentMethodIds();
-        if (! in_array($method, $allowed, true) || ($forbidCredit && $business->isCreditPaymentMethod($method))) {
-            throw ValidationException::withMessages([
-                'payment_method' => 'Metodo de pago no permitido para este negocio.',
-            ]);
-        }
+        $business->assertValidPaymentMethod($method, $forbidCredit);
     }
 
     /**

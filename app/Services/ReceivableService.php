@@ -24,11 +24,7 @@ class ReceivableService
 
         $business = $user->business;
         $method = strtolower(trim($paymentMethod));
-        if (! in_array($method, $business->allowedPaymentMethodIds(), true) || $business->isCreditPaymentMethod($method)) {
-            throw ValidationException::withMessages([
-                'payment_method' => 'Metodo de pago no permitido para este negocio.',
-            ]);
-        }
+        $business->assertValidPaymentMethod($method, forbidCredit: true);
 
         $name = trim((string) ($customerData['customer_name'] ?? ''));
         $phone = trim((string) ($customerData['customer_phone'] ?? ''));

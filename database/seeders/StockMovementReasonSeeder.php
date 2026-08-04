@@ -25,6 +25,8 @@ class StockMovementReasonSeeder extends Seeder
             ['code' => StockMovementReason::CODE_ADJUSTMENT, 'label' => 'Ajuste de inventario'],
             ['code' => StockMovementReason::CODE_SALE, 'label' => 'Venta'],
             ['code' => StockMovementReason::CODE_SALE_REVERSAL, 'label' => 'Reverso de venta'],
+            ['code' => StockMovementReason::CODE_LAYAWAY, 'label' => 'Reserva por apartado'],
+            ['code' => StockMovementReason::CODE_LAYAWAY_CANCEL, 'label' => 'Cancelacion de apartado'],
         ];
 
         foreach ($reasons as $reason) {
