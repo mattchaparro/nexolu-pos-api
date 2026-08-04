@@ -178,6 +178,13 @@ This application is a Laravel application and its main Laravel ecosystems packag
 - This applies both to legacy code being ported and to code already written in this repo: if a later module reveals that an earlier one should be refactored (shared trait, extracted service, deduplicated validation), do that refactor as part of the current work.
 - Keep changes proportional: refactor what the current module's logic actually touches, not a speculative rewrite of unrelated areas. Every behavior change still needs test coverage.
 
+### Database & migrations - never run `php artisan migrate` against this app's databases
+
+- The schema (85 tables) comes entirely from `database/legacy-schema/schema.sql`, loaded once directly via `mysql` into both the dev (`pos_saas`) and `testing` databases. `database/migrations/` must stay empty of anything that touches a table already in that dump - `php artisan migrate` is never part of this app's setup or deploy flow.
+- Running it anyway is actively dangerous: on a DB with schema.sql already loaded, Laravel's default skeleton migrations (`users`, `cache`, `jobs`, etc.) fail with "table already exists"; on a truly empty DB they'd create the wrong structure (e.g. a `users` table missing `business_id` and every other legacy column our code depends on). These skeleton migrations were removed from the repo for exactly this reason - don't reintroduce them via `laravel new`-style scaffolding or `make:migration` for a table that already exists in `schema.sql`. Check `schema.sql` first.
+- `QUEUE_CONNECTION` must stay `redis`, matching the legacy monolith - the shared schema has no `jobs`/`job_batches` tables (legacy never used the database queue driver), so `QUEUE_CONNECTION=database` will crash the moment anything dispatches a job.
+- A migration in this repo is only ever appropriate for a table that is genuinely new (not in `schema.sql`) and that the legacy monolith will never read or write - e.g. pure internal infrastructure. It must never create or alter a table the legacy app already uses; see "Issues that need the monolith retired first" below for why.
+
 ### Issues that need the monolith retired first
 
 - Some inconsistencies (e.g. `payment_method` vocabulary diverging across shared tables, `linkable_type` storing a bare FQCN instead of a morph-map alias) can't be fixed module-by-module: the legacy monolith still reads/writes the same tables, so silently fixing the data here just reintroduces the inconsistency on its next write. Never write a migration in this repo that mutates shared legacy tables to fix these.
