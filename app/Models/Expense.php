@@ -39,6 +39,26 @@ class Expense extends Model
      */
     const PAYMENT_METHODS = ['Efectivo', 'Nequi', 'Daviplata', 'Transferencia', 'Tarjeta'];
 
+    /**
+     * Traduce un id de metodo de pago del vocabulario de `businesses.payment_methods`
+     * (minuscula: cash/efectivo, transfer/transferencia...) al label capitalizado
+     * que esta tabla exige. Necesario cuando un gasto se crea automaticamente a partir
+     * de un pago que ya se registro en el otro vocabulario (ver PurchaseService::pay) -
+     * sin este puente, ese Expense quedaria con un payment_method fuera del enum,
+     * reintroduciendo a mano el mismo problema de CUTOVER_TODO.md #1.
+     */
+    public static function labelForPaymentMethodId(?string $id): string
+    {
+        return match (strtolower((string) $id)) {
+            'cash', 'efectivo' => 'Efectivo',
+            'transfer', 'transferencia' => 'Transferencia',
+            'nequi' => 'Nequi',
+            'daviplata' => 'Daviplata',
+            'card', 'tarjeta', 'datafono', 'bold' => 'Tarjeta',
+            default => self::PAYMENT_METHODS[0],
+        };
+    }
+
     protected function casts(): array
     {
         return [

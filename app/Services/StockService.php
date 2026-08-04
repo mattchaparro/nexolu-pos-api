@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Layaway;
 use App\Models\Product;
+use App\Models\PurchaseLine;
 use App\Models\Sale;
 use App\Models\StockMovement;
 use App\Models\StockMovementReason;
@@ -154,6 +155,27 @@ class StockService
             'quantity' => abs($quantity),
             'reference' => "Apartado #{$layaway->id}",
             'notes' => $notes,
+            'user_id' => $user->id,
+        ]);
+    }
+
+    /**
+     * Entrada de stock por una linea de compra recibida. A diferencia de
+     * entry(), siempre queda enlazada a $line via purchase_line_id (asi el
+     * historial de movimientos de un producto muestra de que compra vino
+     * cada entrada), y el motivo es 'purchase' a proposito - nunca 'manual_in'.
+     */
+    public function registerPurchase(User $user, Product $product, float $quantity, PurchaseLine $line, float $unitCostCop): StockMovement
+    {
+        return StockMovement::create([
+            'product_id' => $product->id,
+            'business_id' => $product->business_id,
+            'type' => StockMovement::TYPE_ENTRY,
+            'stock_movement_reason_id' => StockMovementReason::systemIdForCode(StockMovementReason::CODE_PURCHASE),
+            'purchase_line_id' => $line->id,
+            'quantity' => abs($quantity),
+            'unit_cost_cop' => $unitCostCop,
+            'reference' => "Compra #{$line->purchase_id}",
             'user_id' => $user->id,
         ]);
     }

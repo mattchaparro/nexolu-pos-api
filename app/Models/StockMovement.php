@@ -26,6 +26,7 @@ class StockMovement extends Model
         'business_id',
         'type',
         'stock_movement_reason_id',
+        'purchase_line_id',
         'quantity',
         'unit_cost_cop',
         'reference',
@@ -75,6 +76,11 @@ class StockMovement extends Model
     public function reason(): BelongsTo
     {
         return $this->belongsTo(StockMovementReason::class, 'stock_movement_reason_id');
+    }
+
+    public function purchaseLine(): BelongsTo
+    {
+        return $this->belongsTo(PurchaseLine::class);
     }
 
     public function user(): BelongsTo

@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\LayawayController;
 use App\Http\Controllers\Api\V1\OpenTabController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
+use App\Http\Controllers\Api\V1\PurchaseController;
 use App\Http\Controllers\Api\V1\ReceivableController;
 use App\Http\Controllers\Api\V1\SaleController;
 use App\Http\Controllers\Api\V1\ServiceOrderController;
@@ -44,6 +45,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::middleware('can-access-purchases')->group(function () {
             Route::apiResource('suppliers', SupplierController::class);
             Route::apiResource('stock-movements', StockMovementController::class)->only(['index', 'store']);
+
+            Route::post('/purchases/{purchase}/pay', [PurchaseController::class, 'pay'])->name('purchases.pay');
+            Route::apiResource('purchases', PurchaseController::class)->only(['index', 'show', 'store']);
         });
 
         Route::middleware('feature:expenses')->group(function () {
