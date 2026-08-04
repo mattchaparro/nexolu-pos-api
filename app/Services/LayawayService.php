@@ -8,6 +8,7 @@ use App\Models\LayawayItem;
 use App\Models\LayawayPayment;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\PaymentRefunder;
 use App\Support\SaleLineUnitPrice;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -169,29 +170,19 @@ class LayawayService
 
     /**
      * Registra un reembolso fechado HOY por cada método de pago con el que se
-     * abonó, sin borrar ni tocar los abonos originales - mismo patron que
-     * SaleService/ServiceOrder (ver la nota alli sobre por que).
+     * abonó, sin borrar ni tocar los abonos originales - ver PaymentRefunder
+     * para el porque (mismo patron que ServiceOrder).
      */
     private function refundPayments(User $user, Layaway $layaway, string $reason): void
     {
-        $paymentsByMethod = $layaway->payments()
-            ->selectRaw('payment_method, SUM(amount) as total')
-            ->groupBy('payment_method')
-            ->get();
-
-        foreach ($paymentsByMethod as $row) {
-            $total = (float) $row->total;
-            if ($total > 0.009) {
-                LayawayPayment::create([
-                    'layaway_id' => $layaway->id,
-                    'business_id' => $layaway->business_id,
-                    'amount' => -$total,
-                    'payment_method' => $row->payment_method,
-                    'notes' => $reason,
-                    'recorded_by_user_id' => $user->id,
-                ]);
-            }
-        }
+        PaymentRefunder::refundGroupedByMethod($layaway->payments(), fn (string $method, float $total) => [
+            'layaway_id' => $layaway->id,
+            'business_id' => $layaway->business_id,
+            'amount' => -$total,
+            'payment_method' => $method,
+            'notes' => $reason,
+            'recorded_by_user_id' => $user->id,
+        ]);
     }
 
     public function complete(Layaway $layaway): void

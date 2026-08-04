@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BusinessController;
 use App\Http\Controllers\Api\V1\BusinessTableController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\ReceivableController;
 use App\Http\Controllers\Api\V1\SaleController;
+use App\Http\Controllers\Api\V1\ServiceOrderController;
 use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\SupplierController;
@@ -85,6 +87,22 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::post('/layaways/{layaway}/complete', [LayawayController::class, 'complete'])->name('layaways.complete');
             Route::post('/layaways/{layaway}/cancel', [LayawayController::class, 'cancel'])->name('layaways.cancel');
             Route::apiResource('layaways', LayawayController::class)->only(['index', 'show', 'store']);
+        });
+
+        Route::middleware('feature:services')->group(function () {
+            Route::post('/service-orders/{serviceOrder}/pay', [ServiceOrderController::class, 'pay'])->name('service-orders.pay');
+            Route::post('/service-orders/{serviceOrder}/cancel', [ServiceOrderController::class, 'cancel'])->name('service-orders.cancel');
+            // parameters(): el nombre que apiResource() deriva de 'service-orders'
+            // (service_order) no coincide con el ServiceOrder $serviceOrder de los
+            // metodos del controller - mismo bug ya encontrado en
+            // BusinessTableController/OpenTabController.
+            Route::apiResource('service-orders', ServiceOrderController::class)
+                ->only(['index', 'show', 'store', 'update'])
+                ->parameters(['service-orders' => 'serviceOrder']);
+
+            Route::post('/appointments/{appointment}/reschedule', [AppointmentController::class, 'reschedule'])->name('appointments.reschedule');
+            Route::put('/appointments/{appointment}/status', [AppointmentController::class, 'updateStatus'])->name('appointments.status.update');
+            Route::apiResource('appointments', AppointmentController::class)->only(['index', 'show', 'store', 'update']);
         });
     });
 });
