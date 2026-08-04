@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Collection;
 
 /**
  * Una venta puede ser directa (mostrador: nace y se cierra en el mismo
@@ -120,5 +121,31 @@ class Sale extends Model
     public function receivable(): HasOne
     {
         return $this->hasOne(Receivable::class);
+    }
+
+    /**
+     * Ingreso de esta venta repartido por medio de pago: si hubo pago
+     * dividido, el reparto real (paymentSplits); si no, todo el total al
+     * unico payment_method - salvo fiado, que no es ingreso todavia (se
+     * cuenta cuando el Receivable se cobra, no aqui). Fuente unica para
+     * cualquier calculo de efectivo esperado (cierre de caja, turnos).
+     *
+     * @return Collection<string, float>
+     */
+    public function allocatedRevenueByPaymentMethod(): Collection
+    {
+        $this->loadMissing('paymentSplits');
+
+        if ($this->paymentSplits->isNotEmpty()) {
+            return $this->paymentSplits
+                ->groupBy('payment_method')
+                ->map(fn ($group) => round((float) $group->sum('amount'), 2));
+        }
+
+        if ($this->payment_method && ! $this->is_credit) {
+            return collect([$this->payment_method => round((float) $this->total, 2)]);
+        }
+
+        return collect();
     }
 }

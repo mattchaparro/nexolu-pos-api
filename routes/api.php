@@ -4,6 +4,8 @@ use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BusinessController;
 use App\Http\Controllers\Api\V1\BusinessTableController;
+use App\Http\Controllers\Api\V1\CashClosingController;
+use App\Http\Controllers\Api\V1\CashShiftController;
 use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\DiscountController;
 use App\Http\Controllers\Api\V1\ExpenseController;
@@ -107,6 +109,22 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::post('/appointments/{appointment}/reschedule', [AppointmentController::class, 'reschedule'])->name('appointments.reschedule');
             Route::put('/appointments/{appointment}/status', [AppointmentController::class, 'updateStatus'])->name('appointments.status.update');
             Route::apiResource('appointments', AppointmentController::class)->only(['index', 'show', 'store', 'update']);
+        });
+
+        Route::middleware('feature:cash_closing')->group(function () {
+            Route::get('/cash-shifts/current', [CashShiftController::class, 'current'])->name('cash-shifts.current');
+            Route::post('/cash-shifts/{cashShift}/close', [CashShiftController::class, 'close'])->name('cash-shifts.close');
+            // parameters(): mismo bug de siempre - 'cash-shifts' derivaria el
+            // parametro 'cash_shift', que no coincide con CashShift $cashShift.
+            Route::apiResource('cash-shifts', CashShiftController::class)
+                ->only(['index', 'store', 'update', 'destroy'])
+                ->parameters(['cash-shifts' => 'cashShift']);
+
+            Route::get('/cash-closings/preview', [CashClosingController::class, 'preview'])->name('cash-closings.preview');
+            Route::post('/cash-closings/{cashClosing}/undo', [CashClosingController::class, 'undo'])->name('cash-closings.undo');
+            Route::apiResource('cash-closings', CashClosingController::class)
+                ->only(['index', 'show', 'store', 'update'])
+                ->parameters(['cash-closings' => 'cashClosing']);
         });
     });
 });
