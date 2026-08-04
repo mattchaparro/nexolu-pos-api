@@ -65,6 +65,51 @@ Ese `LOWER()` es una simplificación — usar `Business::normalizePaymentMethodI
 no un `UPDATE` masivo, porque resuelve alias (`efectivo`↔`cash`) correctamente
 por negocio.
 
+**Confirmado contra un dump real de producción (2026-08-04, `pos_saas`):** la
+divergencia no es teórica — miles de filas repartidas entre ambos vocabularios:
+
+| Tabla | `cash`/`efectivo` | `transfer`/`transferencia` | `credit`/`fiado` | otros | NULL |
+|---|---|---|---|---|---|
+| `sales` | 6848 / 6629 | 2091 / 1323 | 72 / 25 | nequi 439, mixed 407, daviplata 94, card 6, bold 18, datafono 1 | 410 |
+| `sale_payment_splits` | 537 / 30 | 337 / 26 | — | nequi 1 | — |
+| `receivables` | 30 / 6 | 6 / — | — / 1 | — | 32 |
+| `service_payments` | — / 98 | — | — | nequi 33, daviplata 3 | 11 |
+| `expenses` | — / Efectivo 116 | — / Transferencia 1 | — | Nequi 8 | 296 |
+
+`expenses.payment_method` en esta API nueva se validó a propósito contra el mismo
+enum capitalizado que ya usa `service_payments` en el legacy — no se inventó un
+formato nuevo, para no sumar un tercer vocabulario a los dos que ya existen.
+Confirmado con el dump: los valores reales de `expenses` en producción SÍ son
+`Efectivo`/`Nequi`/`Transferencia` (capitalizados), igual que asumimos.
+
+**Por qué no se arregla ahora:** normalizar solo los datos de `expenses`/
+`service_payments` no sirve de nada si el monolito sigue escribiendo labels
+capitalizados en `service_payments` la semana siguiente. Hace falta:
+
+- (a) que el monolito deje de escribir en `sales`/`service_payments`/`receivables`
+  (retirado o con ese módulo ya migrado a esta API), **y**
+- (b) una migración de datos que unifique todo a un solo vocabulario.
+
+**Fix cuando sea seguro (elegir un vocabulario único, recomendado: id minúscula,
+ya que es el que usan las 3 tablas de mayor volumen):**
+
+```sql
+-- 1. Backfill: label capitalizado -> id, usando el alias de negocio si existe
+UPDATE service_payments sp
+JOIN businesses b ON b.id = sp.business_id
+SET sp.payment_method = LOWER(sp.payment_method) -- ajustar según normalizePaymentMethodId() de cada negocio
+WHERE sp.payment_method REGEXP '^[A-Z]';
+
+UPDATE expenses e
+SET e.payment_method = LOWER(e.payment_method)
+WHERE e.payment_method REGEXP '^[A-Z]';
+```
+
+Ese `LOWER()` es una simplificación — usar `Business::normalizePaymentMethodId()`
+(ya existe en `app/Models/Business.php`) fila por fila vía un comando Artisan,
+no un `UPDATE` masivo, porque resuelve alias (`efectivo`↔`cash`) correctamente
+por negocio.
+
 - [ ] Pendiente. No tocar hasta confirmar que el monolito ya no escribe estas tablas.
 
 ---
@@ -74,7 +119,8 @@ por negocio.
 **El problema:** `expenses.linkable_type` (y el `linkable` polimórfico del legacy en
 general) guarda literalmente `App\Models\Product` / `App\Models\Ingredient` — el
 nombre completo de la clase PHP — en vez de un alias estable vía
-`Relation::morphMap()`.
+`Relation::morphMap()`. Confirmado contra el dump real de producción: el único
+valor presente hoy es `App\Models\Purchase`.
 
 **Por qué hoy no revienta:** esta API nueva mantuvo el mismo namespace
 `App\Models\*` que el legacy a propósito, así que el string persistido es
@@ -112,3 +158,45 @@ UPDATE expenses SET linkable_type = 'ingredient' WHERE linkable_type = 'App\\Mod
 ```
 
 - [ ] Pendiente. Requiere parchear el legacy en simultáneo o esperar a que se retire.
+
+---
+
+## 3. 26 filas de `stock_movements` en producción con `type = ''` (vacío)
+
+**Origen:** confirmado empíricamente esta sesión, dos veces. Primero se probó que
+un `INSERT ... type='layaway'` revienta con "Data truncated for column 'type'"
+bajo `STRICT_TRANS_TABLES` (el sql_mode de este repo). Después, al cargar el
+dump real de producción (2026-08-04), aparecieron 26 filas con `type = ''`:
+la prueba de que el mismo `INSERT` en producción **no revienta** (el MySQL de
+producción corre sin `STRICT_TRANS_TABLES`, así que un valor de enum inválido se
+trunca en silencio a `''` en vez de lanzar error) — exactamente el bug que tenía
+`LayawayService::create()`/`cancel()`/`updateItems()` usando `type='layaway'` /
+`'layaway_cancel'`, valores que nunca estuvieron en el enum
+(`entry`,`exit`,`adjustment`,`sale`).
+
+**Impacto:** esas 26 filas sí movieron el stock correctamente (el hook del modelo
+solo lee `quantity`, no `type`), pero son invisibles para cualquier reporte o
+filtro que use `WHERE type = 'sale'` (o cualquier otro valor válido) - se pierden
+del historial de auditoría.
+
+**Por qué no se arregla ahora:** son filas ya escritas por el legacy, que sigue
+en producción; no hay urgencia de negocio (el stock ya quedó correcto) y no vale
+la pena tocar la tabla compartida por 26 filas mientras el legacy siga vivo.
+
+**Fix cuando sea seguro:** backfill de esas 26 filas a `type='exit'`/`'entry'`
+según el signo de `quantity`, y `stock_movement_reason_id` a los nuevos códigos
+`layaway`/`layaway_cancel` (ver `StockMovementReasonSeeder`) según el `reference`
+(`"Apartado #..."` vs `"Cancelacion apartado #..."`).
+
+```sql
+UPDATE stock_movements
+SET type = IF(quantity < 0, 'exit', 'entry'),
+    stock_movement_reason_id = (
+        SELECT id FROM stock_movement_reasons
+        WHERE business_id IS NULL
+          AND code = IF(reference LIKE 'Cancelacion apartado%', 'layaway_cancel', 'layaway')
+    )
+WHERE type = '';
+```
+
+- [ ] Pendiente. Bajo riesgo (no bloquea nada), pero no ejecutar sin confirmar cada fila manualmente primero.
