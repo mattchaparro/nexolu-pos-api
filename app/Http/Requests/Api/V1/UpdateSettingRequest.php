@@ -12,7 +12,10 @@ class UpdateSettingRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return (bool) $this->user()?->hasRole(['admin', 'super_admin']);
+        // 'superadmin' (sin guion bajo): asi esta el rol en produccion
+        // (roles.name), no 'super_admin' - con el guion bajo este chequeo
+        // nunca podia ser cierto para ese rol.
+        return (bool) $this->user()?->hasRole(['admin', 'superadmin']);
     }
 
     /**

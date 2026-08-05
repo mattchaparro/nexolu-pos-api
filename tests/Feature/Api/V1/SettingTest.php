@@ -25,7 +25,7 @@ class SettingTest extends TestCase
 
     public function test_admin_can_update_an_editable_setting(): void
     {
-        Role::create(['name' => 'admin', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $setting = Setting::factory()->create(['value' => 'old', 'editable' => true]);
         $admin = User::factory()->create();
         $admin->assignRole('admin');
@@ -50,7 +50,7 @@ class SettingTest extends TestCase
 
     public function test_non_editable_setting_cannot_be_updated(): void
     {
-        Role::create(['name' => 'admin', 'guard_name' => 'web']);
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $setting = Setting::factory()->create(['value' => 'old', 'editable' => false]);
         $admin = User::factory()->create();
         $admin->assignRole('admin');

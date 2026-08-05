@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        $this->call(RoleSeeder::class);
         $this->call(StockMovementReasonSeeder::class);
 
         // User::factory(10)->create();
@@ -27,11 +28,12 @@ class DatabaseSeeder extends Seeder
             'name' => 'Negocio de Prueba',
         ]);
 
-        User::factory()->create([
+        $user = User::factory()->create([
             'name' => 'Test User',
             'email' => 'test@example.com',
             'business_id' => $business->id,
             'is_business_owner' => true,
         ]);
+        $user->assignRole('admin');
     }
 }
