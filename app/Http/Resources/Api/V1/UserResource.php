@@ -27,6 +27,10 @@ class UserResource extends JsonResource
             'business_id' => $this->business_id,
             'roles' => $this->whenLoaded('roles', fn () => $this->roles->pluck('name')),
             'permissions' => $this->whenLoaded('roles', fn () => $this->getPermissionNames()),
+            // N+1 aceptado a proposito: esta pantalla es un panel admin
+            // paginado a 20-30 filas, no una ruta de alto trafico - una
+            // consulta extra por fila no justifica precalcularlo en bloque.
+            'last_active_at' => $this->lastActiveAt()?->toIso8601String(),
         ];
     }
 }

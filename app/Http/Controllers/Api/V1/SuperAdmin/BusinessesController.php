@@ -14,8 +14,10 @@ use App\Http\Requests\Api\V1\SuperAdmin\UpdateBusinessRequest;
 use App\Http\Resources\Api\V1\SuperAdmin\BusinessResource;
 use App\Http\Resources\Api\V1\SuperAdmin\SaasSubscriptionPaymentResource;
 use App\Models\Business;
+use App\Models\LogAction;
 use App\Models\SaasSubscriptionPayment;
 use App\Models\Sale;
+use App\Models\SupportTicket;
 use App\Models\User;
 use App\Services\BusinessRegistrationService;
 use App\Services\SuperAdmin\SuperAdminBusinessService;
@@ -66,6 +68,7 @@ class BusinessesController extends Controller
 
         $businesses = $query->latest()->paginate(20)->withQueryString();
         $this->attachAdminUsers($businesses->getCollection());
+        $this->attachLastActivity($businesses->getCollection());
 
         return BusinessResource::collection($businesses);
     }
@@ -74,6 +77,7 @@ class BusinessesController extends Controller
     {
         $business->loadCount(['users', 'products', 'sales', 'productCategories']);
         $this->attachAdminUsers(collect([$business]));
+        $this->attachLastActivity(collect([$business]));
 
         $salesLast30 = Sale::where('business_id', $business->id)
             ->where('status', 'closed')
@@ -88,9 +92,13 @@ class BusinessesController extends Controller
             'last_sale_at' => Sale::where('business_id', $business->id)->latest('created_at')->value('created_at'),
         ];
 
-        $rolesSummary = User::where('business_id', $business->id)
+        $teamUsers = User::where('business_id', $business->id)
             ->with('roles:id,name')
-            ->get(['id', 'is_active'])
+            ->orderByDesc('is_active')
+            ->orderBy('name')
+            ->get();
+
+        $rolesSummary = $teamUsers
             ->flatMap(function (User $user) {
                 if ($user->roles->isEmpty()) {
                     return [['name' => 'sin_rol', 'is_active' => (bool) $user->is_active]];
@@ -106,6 +114,18 @@ class BusinessesController extends Controller
             ])
             ->values();
 
+        // El equipo completo, no solo el resumen por rol: es lo que permite ver
+        // quien de verdad entra al sistema (last_active_at) y quien nunca lo usa.
+        $team = $teamUsers->map(fn (User $user) => [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'is_active' => (bool) $user->is_active,
+            'is_business_owner' => (bool) $user->is_business_owner,
+            'roles' => $user->roles->pluck('name'),
+            'last_active_at' => $user->lastActiveAt()?->toIso8601String(),
+        ]);
+
         $recentPayments = $business->saasSubscriptionPayments()
             ->with('recordedBy')
             ->latest('paid_at')
@@ -113,9 +133,14 @@ class BusinessesController extends Controller
             ->limit(5)
             ->get();
 
+        $stats['open_support_tickets'] = SupportTicket::where('business_id', $business->id)
+            ->whereIn('status', ['open', 'in_progress'])
+            ->count();
+
         return [
             'business' => new BusinessResource($business),
             'stats' => $stats,
+            'team' => $team,
             'roles_summary' => $rolesSummary,
             'recent_subscription_payments' => SaasSubscriptionPaymentResource::collection($recentPayments),
         ];
@@ -273,6 +298,23 @@ class BusinessesController extends Controller
             $admin = $adminMap->get($business->id)?->first();
             $business->admin_user_id = $admin?->id;
             $business->admin_user_name = $admin?->name;
+        });
+    }
+
+    /**
+     * @param  Collection<int, Business>  $businesses
+     */
+    private function attachLastActivity($businesses): void
+    {
+        $ids = $businesses->pluck('id');
+
+        $lastActivityMap = LogAction::whereIn('business_id', $ids)
+            ->selectRaw('business_id, max(created_at) as last_at')
+            ->groupBy('business_id')
+            ->pluck('last_at', 'business_id');
+
+        $businesses->each(function (Business $business) use ($lastActivityMap) {
+            $business->last_activity_at = $lastActivityMap[$business->id] ?? null;
         });
     }
 }

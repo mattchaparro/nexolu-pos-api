@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -100,5 +101,18 @@ class User extends Authenticatable
     public function business(): BelongsTo
     {
         return $this->belongsTo(Business::class);
+    }
+
+    /**
+     * Ultima vez que el usuario uso un token valido - fuente real de "ultima
+     * conexion", sin agregar una columna nueva: Sanctum ya actualiza
+     * personal_access_tokens.last_used_at en cada request autenticado
+     * (config sanctum.last_used_at, default true).
+     */
+    public function lastActiveAt(): ?Carbon
+    {
+        $lastUsedAt = $this->tokens()->max('last_used_at');
+
+        return $lastUsedAt ? Carbon::parse($lastUsedAt) : null;
     }
 }

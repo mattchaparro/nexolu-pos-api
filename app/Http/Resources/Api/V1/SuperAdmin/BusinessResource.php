@@ -4,6 +4,7 @@ namespace App\Http\Resources\Api\V1\SuperAdmin;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Carbon;
 
 class BusinessResource extends JsonResource
 {
@@ -38,6 +39,7 @@ class BusinessResource extends JsonResource
                 'id' => $this->admin_user_id,
                 'name' => $this->admin_user_name,
             ]),
+            'last_activity_at' => $this->when(isset($this->last_activity_at), fn () => Carbon::parse($this->last_activity_at)->toIso8601String()),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

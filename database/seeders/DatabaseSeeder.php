@@ -35,5 +35,14 @@ class DatabaseSeeder extends Seeder
             'is_business_owner' => true,
         ]);
         $user->assignRole('admin');
+
+        // Sin este usuario, /superadmin/* siempre da 403 en local/Postman: no
+        // hay forma de autenticarse como superadmin sin un tinker manual.
+        $superadmin = User::factory()->create([
+            'name' => 'Super Admin',
+            'email' => 'superadmin@example.com',
+            'business_id' => null,
+        ]);
+        $superadmin->assignRole('superadmin');
     }
 }

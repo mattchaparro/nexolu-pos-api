@@ -5,6 +5,7 @@ namespace Tests\Feature\Api\V1\SuperAdmin;
 use App\Models\Business;
 use App\Models\SaasSubscriptionPayment;
 use App\Models\Sale;
+use App\Models\SupportTicket;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\Support\ActsAsSuperAdmin;
@@ -81,10 +82,56 @@ class BusinessesTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('stats.closed_sales_last_30_days', 1)
-            ->assertJsonPath('stats.revenue_last_30_days', 10000);
+            ->assertJsonPath('stats.revenue_last_30_days', 10000)
+            ->assertJsonPath('stats.open_support_tickets', 0);
 
         $roles = collect($response->json('roles_summary'))->pluck('role')->all();
         $this->assertContains('employee', $roles);
+
+        $team = collect($response->json('team'));
+        $this->assertCount(1, $team);
+        $this->assertSame($seller->id, $team->first()['id']);
+        $this->assertContains('employee', $team->first()['roles']);
+        $this->assertArrayHasKey('last_active_at', $team->first());
+    }
+
+    public function test_index_reports_last_activity_from_audit_log(): void
+    {
+        $admin = $this->superadmin();
+        $business = Business::factory()->create();
+        $this->actingAs($admin, 'sanctum')->patchJson("/api/v1/superadmin/businesses/{$business->id}/toggle")->assertOk();
+
+        $response = $this->actingAs($admin, 'sanctum')->getJson('/api/v1/superadmin/businesses');
+
+        $response->assertOk();
+        $row = collect($response->json('data'))->firstWhere('id', $business->id);
+        $this->assertNotNull($row['last_activity_at']);
+    }
+
+    public function test_show_reports_the_users_last_active_at_from_their_tokens(): void
+    {
+        $admin = $this->superadmin();
+        $business = Business::factory()->create();
+        $seller = User::factory()->create(['business_id' => $business->id]);
+        $token = $seller->createToken('phpunit')->accessToken;
+        $token->forceFill(['last_used_at' => now()->subHour()])->save();
+
+        $response = $this->actingAs($admin, 'sanctum')->getJson("/api/v1/superadmin/businesses/{$business->id}");
+
+        $team = collect($response->json('team'));
+        $this->assertNotNull($team->first()['last_active_at']);
+    }
+
+    public function test_show_counts_open_support_tickets(): void
+    {
+        $admin = $this->superadmin();
+        $business = Business::factory()->create();
+        SupportTicket::factory()->create(['business_id' => $business->id, 'status' => 'open']);
+        SupportTicket::factory()->create(['business_id' => $business->id, 'status' => 'resolved']);
+
+        $response = $this->actingAs($admin, 'sanctum')->getJson("/api/v1/superadmin/businesses/{$business->id}");
+
+        $response->assertOk()->assertJsonPath('stats.open_support_tickets', 1);
     }
 
     public function test_activate_extends_paid_until_changes_plan_and_records_a_payment(): void
