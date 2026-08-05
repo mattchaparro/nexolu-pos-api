@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\V1\ServiceOrderController;
 use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\SupplierController;
+use App\Http\Controllers\Api\V1\SupportTicketController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->name('api.v1.')->group(function () {
@@ -36,6 +37,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');
         Route::put('/settings/{setting}', [SettingController::class, 'update'])->name('settings.update');
+
+        Route::apiResource('support-tickets', SupportTicketController::class)->only(['index', 'store']);
 
         Route::apiResource('product-categories', ProductCategoryController::class);
         Route::apiResource('products', ProductController::class);
@@ -110,6 +113,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::post('/appointments/{appointment}/reschedule', [AppointmentController::class, 'reschedule'])->name('appointments.reschedule');
             Route::put('/appointments/{appointment}/status', [AppointmentController::class, 'updateStatus'])->name('appointments.status.update');
             Route::apiResource('appointments', AppointmentController::class)->only(['index', 'show', 'store', 'update']);
+        });
+
+        Route::prefix('superadmin')->name('superadmin.')->middleware('superadmin')->group(function () {
+            require __DIR__.'/superadmin.php';
         });
 
         Route::middleware('feature:cash_closing')->group(function () {

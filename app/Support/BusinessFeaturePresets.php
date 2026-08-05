@@ -175,4 +175,13 @@ class BusinessFeaturePresets
             default => self::basic(),
         };
     }
+
+    /** Precio mensual del plan en COP. */
+    public static function planPriceCop(string $plan): int
+    {
+        return match ($plan) {
+            'full' => 85000,
+            default => 65000,
+        };
+    }
 }

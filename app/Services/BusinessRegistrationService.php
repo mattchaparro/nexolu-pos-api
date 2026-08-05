@@ -16,13 +16,24 @@ use Illuminate\Support\Facades\DB;
 class BusinessRegistrationService
 {
     /**
-     * @param  array{business_name: string, owner_name: string, email: string, password: string, phone?: ?string, nit?: ?string, address?: ?string, setup_mode?: ?string}  $data
+     * @param  array{business_name: string, owner_name: string, email: string, password: string, phone?: ?string, nit?: ?string, address?: ?string, setup_mode?: ?string, plan?: ?string}  $data
      * @return array{business: Business, user: User}
      */
     public function register(array $data): array
     {
         return DB::transaction(function () use ($data) {
-            $setupMode = $data['setup_mode'] ?? BusinessFeaturePresets::SETUP_RETAIL;
+            // El self-registro (setup_mode) y el alta manual del superadmin
+            // (plan directo) llegan al mismo resultado por dos caminos: uno
+            // parte del tipo de negocio, el otro del plan comercial ya
+            // decidido en una llamada de ventas.
+            if (! empty($data['plan'])) {
+                $plan = $data['plan'];
+                $featureFlags = BusinessFeaturePresets::fromPlan($plan);
+            } else {
+                $setupMode = $data['setup_mode'] ?? BusinessFeaturePresets::SETUP_RETAIL;
+                $plan = BusinessFeaturePresets::planForSetupMode($setupMode);
+                $featureFlags = BusinessFeaturePresets::fromSetupMode($setupMode);
+            }
 
             $business = Business::create([
                 'name' => $data['business_name'],
@@ -31,8 +42,8 @@ class BusinessRegistrationService
                 'nit' => $data['nit'] ?? null,
                 'address' => $data['address'] ?? null,
                 'trial_ends_at' => now()->addDays(Business::TRIAL_DAYS),
-                'subscription_plan' => BusinessFeaturePresets::planForSetupMode($setupMode),
-                'feature_flags' => BusinessFeaturePresets::fromSetupMode($setupMode),
+                'subscription_plan' => $plan,
+                'feature_flags' => $featureFlags,
             ]);
 
             $user = User::create([

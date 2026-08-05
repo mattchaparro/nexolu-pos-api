@@ -161,6 +161,11 @@ class Business extends Model
         return $this->hasMany(Receivable::class);
     }
 
+    public function saasSubscriptionPayments(): HasMany
+    {
+        return $this->hasMany(SaasSubscriptionPayment::class);
+    }
+
     public function tables(): HasMany
     {
         return $this->hasMany(BusinessTable::class);
@@ -380,5 +385,37 @@ class Business extends Model
             $this->onTrial() => 'trial',
             default => 'expired',
         };
+    }
+
+    public function daysRemaining(): int
+    {
+        if ($this->isPaid()) {
+            return (int) now()->diffInDays($this->paid_until, false);
+        }
+
+        if ($this->onTrial()) {
+            return (int) now()->diffInDays($this->trial_ends_at, false);
+        }
+
+        return 0;
+    }
+
+    /** Extiende (o inicia) el periodo pago, encadenado al vencimiento vigente si ya estaba pago. */
+    public function activate(int $days = 30): void
+    {
+        $from = $this->isPaid() ? $this->paid_until : now();
+        $this->update([
+            'paid_until' => $from->copy()->addDays($days),
+            'active' => true,
+        ]);
+    }
+
+    public function extendTrial(int $days): void
+    {
+        $from = $this->onTrial() ? $this->trial_ends_at : now();
+        $this->update([
+            'trial_ends_at' => $from->copy()->addDays($days),
+            'active' => true,
+        ]);
     }
 }

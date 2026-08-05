@@ -128,7 +128,10 @@ class CashShiftAndClosingTest extends TestCase
             ->postJson("/api/v1/cash-shifts/{$shift['id']}/close", ['counted_cash' => 999999]);
 
         $response->assertOk();
-        $expected = 10000 + 20000 + 5000 + 3000 + (float) $receivable->amount;
+        // round(): mismo tratamiento que CashClosingService::buildPaymentBreakdown -
+        // sin esto, el float crudo de Receivable::factory() (randomFloat) puede
+        // diferir en el ultimo decimal por precision binaria, no por un error real.
+        $expected = round(10000 + 20000 + 5000 + 3000 + (float) $receivable->amount, 2);
         $this->assertEquals($expected, (float) $response->json('expected_cash'));
     }
 
