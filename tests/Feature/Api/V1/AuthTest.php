@@ -4,6 +4,7 @@ namespace Tests\Feature\Api\V1;
 
 use App\Models\Business;
 use App\Models\User;
+use App\Support\PermissionCatalog;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -88,5 +89,42 @@ class AuthTest extends TestCase
         // application/json (curl, some mobile HTTP clients) must not be
         // redirected to a non-existent "login" web route.
         $this->get('/api/v1/me')->assertUnauthorized();
+    }
+
+    /**
+     * Los permisos que ve el frontend en /me son los EFECTIVOS: heredados por
+     * rol para un admin, directos para un empleado. La UI necesita esa lista
+     * unificada para decidir que ocultar - no es aceptable que un admin
+     * aparezca sin permisos por accidente.
+     */
+    public function test_me_returns_effective_permissions_admin_inherits_from_role(): void
+    {
+        PermissionCatalog::sync();
+        $business = Business::factory()->create();
+        $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
+
+        $response = $this->actingAs($admin, 'sanctum')->getJson('/api/v1/me');
+
+        $response->assertOk();
+        $permissions = $response->json('permissions');
+        $this->assertContains('cash_shift.manage', $permissions);
+        $this->assertContains('permissions.manage', $permissions);
+    }
+
+    public function test_me_returns_only_direct_permissions_for_an_employee(): void
+    {
+        PermissionCatalog::sync();
+        $business = Business::factory()->create();
+        $employee = User::factory()->create(['business_id' => $business->id]);
+        $employee->assignRole('employee');
+        $employee->syncPermissions(['cash_shift.manage']);
+
+        $response = $this->actingAs($employee, 'sanctum')->getJson('/api/v1/me');
+
+        $response->assertOk();
+        $permissions = $response->json('permissions');
+        $this->assertContains('cash_shift.manage', $permissions);
+        $this->assertNotContains('permissions.manage', $permissions);
     }
 }

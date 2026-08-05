@@ -38,6 +38,24 @@ class RegisterTest extends TestCase
         $this->assertNotNull($business->trial_ends_at);
     }
 
+    public function test_registration_can_capture_the_business_whatsapp_number(): void
+    {
+        $this->postJson('/api/v1/register', [
+            'business_name' => 'Tienda WA',
+            'owner_name' => 'Duenno',
+            'email' => 'wa@example.com',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+            'whatsapp_number' => '+573001234567',
+            'device_name' => 'phpunit',
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('businesses', [
+            'name' => 'Tienda WA',
+            'whatsapp_number' => '+573001234567',
+        ]);
+    }
+
     public function test_default_setup_mode_is_retail_with_the_basic_plan(): void
     {
         $this->postJson('/api/v1/register', [

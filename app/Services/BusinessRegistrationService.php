@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\DB;
 class BusinessRegistrationService
 {
     /**
-     * @param  array{business_name: string, owner_name: string, email: string, password: string, phone?: ?string, nit?: ?string, address?: ?string, setup_mode?: ?string, plan?: ?string}  $data
+     * @param  array{business_name: string, owner_name: string, email: string, password: string, phone?: ?string, whatsapp_number?: ?string, nit?: ?string, address?: ?string, setup_mode?: ?string, plan?: ?string}  $data
      * @return array{business: Business, user: User}
      */
     public function register(array $data): array
@@ -39,6 +39,7 @@ class BusinessRegistrationService
                 'name' => $data['business_name'],
                 'owner_name' => $data['owner_name'],
                 'phone' => $data['phone'] ?? null,
+                'whatsapp_number' => $data['whatsapp_number'] ?? null,
                 'nit' => $data['nit'] ?? null,
                 'address' => $data['address'] ?? null,
                 'trial_ends_at' => now()->addDays(Business::TRIAL_DAYS),

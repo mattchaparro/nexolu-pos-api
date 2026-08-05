@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Support\PermissionCatalog;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Role;
 
@@ -17,5 +18,8 @@ class RoleSeeder extends Seeder
         foreach (['superadmin', 'admin', 'employee', 'client'] as $name) {
             Role::firstOrCreate(['name' => $name, 'guard_name' => 'web']);
         }
+
+        // Permisos y rol admin al catalogo (idempotente, ver PermissionCatalog::sync).
+        PermissionCatalog::sync();
     }
 }

@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\CashClosingController;
 use App\Http\Controllers\Api\V1\CashShiftController;
 use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\DiscountController;
+use App\Http\Controllers\Api\V1\EmployeeController;
 use App\Http\Controllers\Api\V1\ExpenseController;
 use App\Http\Controllers\Api\V1\ExpenseTypeController;
 use App\Http\Controllers\Api\V1\LayawayController;
@@ -39,6 +40,15 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::put('/settings/{setting}', [SettingController::class, 'update'])->name('settings.update');
 
         Route::apiResource('support-tickets', SupportTicketController::class)->only(['index', 'store']);
+
+        // Empleados y admins del propio negocio - la autorizacion (rol admin
+        // + business_id) vive en cada Request para que 'index' liste pero no
+        // exponga acciones a un employee, en vez de bloquearlo todo con
+        // middleware.
+        Route::get('/employees/permission-catalog', [EmployeeController::class, 'catalog'])->name('employees.catalog');
+        Route::put('/employees/{employee}/permissions', [EmployeeController::class, 'updatePermissions'])->name('employees.permissions.update');
+        Route::patch('/employees/{employee}/toggle', [EmployeeController::class, 'toggle'])->name('employees.toggle');
+        Route::apiResource('employees', EmployeeController::class)->only(['index', 'store', 'update', 'destroy']);
 
         Route::apiResource('product-categories', ProductCategoryController::class);
         Route::apiResource('products', ProductController::class);

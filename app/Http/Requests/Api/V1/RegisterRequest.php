@@ -25,6 +25,11 @@ class RegisterRequest extends FormRequest
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:15'],
+            // WhatsApp es el canal principal de notificaciones (recordatorios,
+            // resumen diario, IA cuando llegue) - pedirlo al registrarse
+            // deja al negocio "notificable" desde el minuto cero, sin depender
+            // de que despues entre a Ajustes.
+            'whatsapp_number' => ['sometimes', 'nullable', 'string', 'max:20'],
             'nit' => ['sometimes', 'nullable', 'string', 'max:30'],
             'address' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'setup_mode' => ['sometimes', 'nullable', 'string', Rule::in(BusinessFeaturePresets::setupModes())],
