@@ -7,6 +7,7 @@ use App\Http\Requests\Api\V1\StoreExpenseRequest;
 use App\Http\Requests\Api\V1\UpdateExpenseRequest;
 use App\Http\Resources\Api\V1\ExpenseResource;
 use App\Models\Expense;
+use App\Services\ExpenseService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -14,6 +15,8 @@ use Illuminate\Http\Response;
 
 class ExpenseController extends Controller
 {
+    public function __construct(private ExpenseService $expenseService) {}
+
     public function index(Request $request): AnonymousResourceCollection
     {
         $query = Expense::with('type')->orderByDesc('date')->orderByDesc('id');
@@ -47,7 +50,7 @@ class ExpenseController extends Controller
 
     public function store(StoreExpenseRequest $request): ExpenseResource
     {
-        $expense = Expense::create([
+        $expense = $this->expenseService->create([
             ...$request->defaults(),
             ...$request->validated(),
         ]);
@@ -62,9 +65,9 @@ class ExpenseController extends Controller
 
     public function update(UpdateExpenseRequest $request, Expense $expense): ExpenseResource
     {
-        $expense->update($request->validated());
+        $expense = $this->expenseService->update($expense, $request->validated());
 
-        return new ExpenseResource($expense->fresh()->load('type'));
+        return new ExpenseResource($expense);
     }
 
     public function destroy(Expense $expense): Response

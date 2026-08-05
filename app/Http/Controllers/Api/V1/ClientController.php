@@ -7,14 +7,16 @@ use App\Http\Requests\Api\V1\StoreClientRequest;
 use App\Http\Requests\Api\V1\UpdateClientRequest;
 use App\Http\Resources\Api\V1\ClientResource;
 use App\Models\Client;
+use App\Services\ClientService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
-use Illuminate\Validation\ValidationException;
 
 class ClientController extends Controller
 {
+    public function __construct(private ClientService $clientService) {}
+
     public function index(Request $request): AnonymousResourceCollection
     {
         $query = Client::query()->orderBy('name');
@@ -33,13 +35,7 @@ class ClientController extends Controller
 
     public function store(StoreClientRequest $request): ClientResource
     {
-        if (Client::count() >= Client::LIMIT_PER_BUSINESS) {
-            throw ValidationException::withMessages([
-                'name' => 'Limite de '.Client::LIMIT_PER_BUSINESS.' clientes alcanzado en el plan actual.',
-            ]);
-        }
-
-        $client = Client::create($request->validated());
+        $client = $this->clientService->create($request->validated());
 
         return new ClientResource($client);
     }
@@ -51,9 +47,9 @@ class ClientController extends Controller
 
     public function update(UpdateClientRequest $request, Client $client): ClientResource
     {
-        $client->update($request->validated());
+        $client = $this->clientService->update($client, $request->validated());
 
-        return new ClientResource($client->fresh());
+        return new ClientResource($client);
     }
 
     public function destroy(Client $client): Response

@@ -7,11 +7,14 @@ use App\Http\Requests\Api\V1\StoreProductRequest;
 use App\Http\Requests\Api\V1\UpdateProductRequest;
 use App\Http\Resources\Api\V1\ProductResource;
 use App\Models\Product;
+use App\Services\ProductService;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 
 class ProductController extends Controller
 {
+    public function __construct(private ProductService $productService) {}
+
     public function index(): AnonymousResourceCollection
     {
         return ProductResource::collection(
@@ -21,16 +24,9 @@ class ProductController extends Controller
 
     public function store(StoreProductRequest $request): ProductResource
     {
-        $product = Product::create([
-            'stock' => 0,
-            'cost_price' => 0,
-            ...$request->validated(),
-        ]);
+        $product = $this->productService->create($request->validated());
 
-        // refresh(): columnas con DEFAULT a nivel de BD que el request no mando
-        // (is_active, track_stock, is_single_sale, ...) quedan null en la
-        // instancia en memoria hasta releerla - create() no las repuebla solo.
-        return new ProductResource($product->refresh()->load('category'));
+        return new ProductResource($product);
     }
 
     public function show(Product $product): ProductResource
@@ -40,9 +36,9 @@ class ProductController extends Controller
 
     public function update(UpdateProductRequest $request, Product $product): ProductResource
     {
-        $product->update($request->validated());
+        $product = $this->productService->update($product, $request->validated());
 
-        return new ProductResource($product->fresh()->load('category'));
+        return new ProductResource($product);
     }
 
     public function destroy(Product $product): Response

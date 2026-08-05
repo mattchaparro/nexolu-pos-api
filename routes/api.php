@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AiToolInvokeController;
 use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BusinessController;
@@ -24,6 +25,14 @@ use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\SupportTicketController;
 use Illuminate\Support\Facades\Route;
+
+// Fuera del prefijo v1 a proposito: el contrato con Nexolu IA Core (repo
+// Python aparte) fija esta ruta exacta - ver core/tools/dispatch_client.py
+// del lado del IA Core. No se agregan rutas nuevas por herramienta: todas
+// pasan por este unico despachador (ver App\Capabilities\Registry).
+Route::post('/ai/tools/invoke', [AiToolInvokeController::class, 'invoke'])
+    ->middleware('ia-core.key')
+    ->name('ai.tools.invoke');
 
 Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::post('/register', [AuthController::class, 'register'])->name('register');

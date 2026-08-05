@@ -3,6 +3,7 @@
 use App\Http\Middleware\EnsureBusinessCanAccessPurchases;
 use App\Http\Middleware\EnsureBusinessFeatureEnabled;
 use App\Http\Middleware\EnsureSuperAdmin;
+use App\Http\Middleware\EnsureValidIaCoreKey;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -25,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'feature' => EnsureBusinessFeatureEnabled::class,
             'can-access-purchases' => EnsureBusinessCanAccessPurchases::class,
             'superadmin' => EnsureSuperAdmin::class,
+            'ia-core.key' => EnsureValidIaCoreKey::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
