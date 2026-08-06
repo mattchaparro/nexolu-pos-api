@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\PurchaseController;
 use App\Http\Controllers\Api\V1\ReceivableController;
+use App\Http\Controllers\Api\V1\ReminderController;
 use App\Http\Controllers\Api\V1\SaleController;
 use App\Http\Controllers\Api\V1\ServiceOrderController;
 use App\Http\Controllers\Api\V1\SettingController;
@@ -155,6 +156,12 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::middleware(['feature:receivables', 'permission:receivables.manage'])->group(function () {
             Route::post('/receivables/{receivable}/collect', [ReceivableController::class, 'collect'])->name('receivables.collect');
             Route::apiResource('receivables', ReceivableController::class)->only(['index', 'show']);
+        });
+
+        Route::middleware(['feature:reminders', 'permission:reminders.manage'])->group(function () {
+            Route::post('/reminders/{reminder}/complete', [ReminderController::class, 'complete'])->name('reminders.complete');
+            Route::post('/reminders/{reminder}/postpone', [ReminderController::class, 'postpone'])->name('reminders.postpone');
+            Route::apiResource('reminders', ReminderController::class)->only(['index', 'store', 'destroy']);
         });
 
         Route::middleware(['feature:layaway', 'permission:layaways.manage'])->group(function () {

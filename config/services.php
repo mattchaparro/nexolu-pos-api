@@ -66,6 +66,10 @@ return [
                 'var' => null,
                 'var_max' => 60,
             ],
+            'recordatorio' => [
+                'name' => 'general_reminder',
+                'lang' => 'es_CO',
+            ],
         ],
     ],
 

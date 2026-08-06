@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'type_id',
     'linkable_type',
     'linkable_id',
+    'fixed_expense_template_id',
 ])]
 class Expense extends Model
 {
@@ -70,6 +71,11 @@ class Expense extends Model
     public function type(): BelongsTo
     {
         return $this->belongsTo(ExpenseType::class, 'type_id');
+    }
+
+    public function fixedExpenseTemplate(): BelongsTo
+    {
+        return $this->belongsTo(FixedExpenseTemplate::class);
     }
 
     /**

@@ -17,3 +17,5 @@ Schedule::command('trials:notify-expiring')->dailyAt('09:00');
 Schedule::command('audit:prune')->dailyAt('03:15');
 Schedule::command('appointments:send-reminders')->dailyAt('09:00');
 Schedule::command('inventory:send-low-stock-alerts')->dailyAt('08:00');
+Schedule::command('reminders:send-whatsapp-notifications')->everyFiveMinutes();
+Schedule::command('expenses:register-scheduled')->dailyAt('00:05');
