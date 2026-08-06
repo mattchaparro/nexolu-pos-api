@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 /**
  * Plantilla de un gasto fijo recurrente (arriendo, nomina, etc.). El comando
@@ -36,5 +37,19 @@ class FixedExpenseTemplate extends Model
     public function expenses(): HasMany
     {
         return $this->hasMany(Expense::class);
+    }
+
+    public function reminders(): MorphMany
+    {
+        return $this->morphMany(Reminder::class, 'remindable');
+    }
+
+    /** Para mostrar en el listado si ya se registro el gasto de este mes (o falta esperarlo/dispararlo a mano). */
+    public function registeredThisMonth(): bool
+    {
+        return $this->expenses()
+            ->whereYear('date', now()->year)
+            ->whereMonth('date', now()->month)
+            ->exists();
     }
 }

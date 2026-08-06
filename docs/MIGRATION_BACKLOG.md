@@ -98,9 +98,23 @@ se tacha en cuanto se construye, sin precondición de cutover.
   `/v1/reminders`). El `remindable` polimórfico existe en el modelo pero
   todavía no lo alimenta nada (los hooks desde Purchase/Supplier/
   FixedExpenseTemplate/Expense de legacy no se portaron - ver nota abajo).
-- ~~**FixedExpenseTemplate**~~ ✅ Migrado (modelo + `expenses:register-scheduled`).
-  Sin API propia todavía (CRUD de plantillas) - solo el job de creación
-  automática de gastos.
+- ~~**FixedExpenseTemplate**~~ ✅ Migrado por completo: CRUD en
+  `/v1/fixed-expense-templates` (gate `expenses.manage`, igual que el
+  legacy que lo trata como configuración administrativa, no algo que un
+  empleado con solo `expenses.create` deba tocar) + dos acciones extra del
+  controller de legacy que también se portaron:
+  - `POST .../register-now`: disparo manual del gasto de un mes puntual
+    (`FixedExpenseTemplateService::registerNow()`), rechaza si ese mes ya
+    tiene su gasto o si no hay un monto resuelto (override o el de la
+    plantilla).
+  - `POST .../toggle-reminder`: primer hook real de `remindable`
+    polimórfico de `Reminder` (ver nota de deuda abajo, ahora parcialmente
+    pagada) - crea/quita un recordatorio mensual sobre el `day_of_month`
+    de la plantilla.
+  De paso, `expenses:register-scheduled` se refactorizó para reusar
+  `FixedExpenseTemplateService::registerForMonth()` (la misma
+  comprobación de idempotencia por mes que ahora usa también el disparo
+  manual, en vez de tenerla duplicada en el comando).
 - ~~**Checkout de suscripción vía Nexolu Payments Core**~~ ✅ Migrado: este
   POS ya no habla con Wompi directo. `SubscriptionService::initiateCheckout()`
   crea una `SubscriptionCheckoutOrder` pendiente y llama
@@ -171,10 +185,8 @@ se tacha en cuanto se construye, sin precondición de cutover.
   (`Purchase`), un proveedor (`Supplier`), una plantilla de gasto fijo
   (`FixedExpenseTemplate`, patrón toggle on/off) y un gasto (`Expense`)
   pueden crear un `Reminder` ligado via `remindable_type`/`remindable_id`.
-  Ninguno de esos hooks se portó todavía - el campo `remindable` existe en
-  el modelo pero nada lo alimenta. Portar cuando se retome cada uno de esos
-  módulos (Purchase y Expense ya existen aquí, así que son los primeros
-  candidatos).
-- **CRUD de `FixedExpenseTemplate`**: solo se portó el modelo y el job de
-  creación automática. Falta la API para que un negocio cree/edite/desactive
-  sus propias plantillas de gasto fijo (en legacy, `Admin/FixedExpenseTemplatesController`).
+  ~~Ninguno de esos hooks se portó todavía~~ **Parcial**: el de
+  `FixedExpenseTemplate` (`toggleReminder()`, ver arriba) ya está portado -
+  quedan Purchase, Supplier y Expense. Portar cuando se retome cada uno de
+  esos módulos (Purchase y Expense ya existen aquí, así que son los
+  primeros candidatos).

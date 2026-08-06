@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\V1\DiscountController;
 use App\Http\Controllers\Api\V1\EmployeeController;
 use App\Http\Controllers\Api\V1\ExpenseController;
 use App\Http\Controllers\Api\V1\ExpenseTypeController;
+use App\Http\Controllers\Api\V1\FixedExpenseTemplateController;
 use App\Http\Controllers\Api\V1\IngredientController;
 use App\Http\Controllers\Api\V1\IngredientStockMovementController;
 use App\Http\Controllers\Api\V1\LayawayController;
@@ -152,6 +153,20 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::middleware('permission:expenses.manage')->group(function () {
                 Route::post('/expense-types', [ExpenseTypeController::class, 'store'])->name('expense-types.store');
                 Route::apiResource('expenses', ExpenseController::class)->only(['update', 'destroy']);
+
+                // Configuracion de gastos recurrentes (arriendo, nomina...) -
+                // administrativo, no algo que un empleado con solo
+                // expenses.create deba tocar.
+                Route::post('/fixed-expense-templates/{fixedExpenseTemplate}/register-now', [FixedExpenseTemplateController::class, 'registerNow'])->name('fixed-expense-templates.register-now');
+                Route::post('/fixed-expense-templates/{fixedExpenseTemplate}/toggle-reminder', [FixedExpenseTemplateController::class, 'toggleReminder'])->name('fixed-expense-templates.toggle-reminder');
+                // parameters(): el nombre que apiResource() deriva de
+                // 'fixed-expense-templates' no coincide con el
+                // FixedExpenseTemplate $fixedExpenseTemplate de los metodos
+                // del controller - mismo bug ya encontrado en
+                // BusinessTableController/OpenTabController/CashShiftController.
+                Route::apiResource('fixed-expense-templates', FixedExpenseTemplateController::class)
+                    ->only(['index', 'store', 'show', 'update', 'destroy'])
+                    ->parameters(['fixed-expense-templates' => 'fixedExpenseTemplate']);
             });
         });
 
