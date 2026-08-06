@@ -443,11 +443,43 @@ falta migración, solo el código.
   actual solo trae el total de la app `pos` completa. Es un cambio de
   alcance mayor (repo aparte) que queda pendiente de decidir si vale la
   pena, ahora que el costeo real vive en el Core.
-- **Log de corridas de jobs programados (`CronJobLog`)**: legacy registra
-  cada corrida de sus comandos programados (éxito/fallo/salida) en una tabla
-  propia con un viewer en `SuperAdmin/CronJobsController`. Acá no hay
-  equivalente - los jobs migrados no dejan rastro de si corrieron o fallaron
-  más allá de los logs de Laravel.
+- ~~**Log de corridas de jobs programados (`CronJobLog`)**~~ ✅ Migrado, con
+  una mejora arquitectónica sobre legacy: en vez de llamar
+  `CronJobLog::record()` a mano dentro de cada uno de los 11 comandos (como
+  hace legacy, con un try/catch y un mensaje armado a la medida repetidos en
+  cada archivo), acá se centraliza por completo en `routes/console.php` via
+  `App\Support\CronJobLogger::attachTo()`: engancha el logging a los hooks
+  del scheduler de Laravel (`sendOutputTo` + `after`), captura la salida de
+  consola real del comando (lo que ya imprime con `$this->info()`/`error()`)
+  y registra éxito/error según el exit code - **cero cambios** en los 11
+  comandos ya migrados.
+  `App\Support\CronJobCatalog` es la fuente única de verdad de la lista de
+  jobs (nombre, descripción, horario, comando), igual patrón que
+  `PermissionCatalog`; también resuelve el enable/disable por job
+  (`SystemConfigStore`, misma clave `cron.{key}.enabled` que legacy) que se
+  aplica con `->when()` en el scheduler.
+  API: `GET /v1/superadmin/cron-jobs` (cada job con su última corrida e
+  historial de las últimas 10), `PATCH .../{key}/toggle`,
+  `POST .../{key}/run-now` (dispara el comando fuera de su horario,
+  logueado como `triggered_by=manual` - `Artisan::call()` no pasa por los
+  hooks del scheduler, así que este camino llama `CronJobLogger::record()`
+  directo). Sin permiso adicional: ya vive bajo `/superadmin`, gateado por
+  el middleware `superadmin` completo.
+  **Bug real de legacy corregido al portar, no solo trasladado**: la poda a
+  las últimas 50 filas por job usaba `->skip(50)` sin `->limit()` - MySQL
+  exige `LIMIT` junto con `OFFSET`, así que esa consulta era un error de
+  sintaxis silencioso (atrapado por el mismo try/catch que protege el
+  logging) que **nunca borraba nada** en legacy tampoco. Acá se resolvió
+  con `Collection::slice()` en vez de `skip()`/`offset()` en la query.
+  Tampoco se repitió el uso de `'warning'` como status: la columna
+  `status` es un enum de solo `success`/`error` en el schema compartido,
+  y `FetchExchangeRate.php` de legacy le manda `'warning'` - un valor de
+  enum inválido que en producción (sin `STRICT_TRANS_TABLES`) se trunca en
+  silencio a `''`, la misma familia de bug que las 26 filas de
+  `stock_movements` con `type=''` documentadas en `CUTOVER_TODO.md`.
+  `queue:work`/`database:backup` de legacy no tienen entrada en el catálogo
+  (infraestructura de su hosting propio, ya excluida más arriba en este
+  documento).
 - **Preguntas sin responder del chat de IA (`AiUnansweredQuestion`)**: en
   legacy, `AiChatService` registra las preguntas que el modelo no pudo
   responder. Con el chat viviendo en `nexolu-ia-core`, esto probablemente

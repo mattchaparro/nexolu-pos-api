@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\SuperAdmin\AnnouncementController;
 use App\Http\Controllers\Api\V1\SuperAdmin\AuditLogController;
 use App\Http\Controllers\Api\V1\SuperAdmin\BusinessDataController;
 use App\Http\Controllers\Api\V1\SuperAdmin\BusinessesController;
+use App\Http\Controllers\Api\V1\SuperAdmin\CronJobController;
 use App\Http\Controllers\Api\V1\SuperAdmin\DashboardController;
 use App\Http\Controllers\Api\V1\SuperAdmin\EmailController;
 use App\Http\Controllers\Api\V1\SuperAdmin\FinanceController;
@@ -83,6 +84,10 @@ Route::get('/audit-logs', [AuditLogController::class, 'index'])->name('audit-log
 Route::get('/support-tickets', [SupportTicketController::class, 'index'])->name('support-tickets.index');
 Route::get('/support-tickets/{ticket}', [SupportTicketController::class, 'show'])->name('support-tickets.show');
 Route::patch('/support-tickets/{ticket}/status', [SupportTicketController::class, 'updateStatus'])->name('support-tickets.status.update');
+
+Route::get('/cron-jobs', [CronJobController::class, 'index'])->name('cron-jobs.index');
+Route::patch('/cron-jobs/{key}/toggle', [CronJobController::class, 'toggle'])->name('cron-jobs.toggle');
+Route::post('/cron-jobs/{key}/run-now', [CronJobController::class, 'runNow'])->name('cron-jobs.run-now');
 
 Route::get('/support-guides', [SupportGuideController::class, 'index'])->name('support-guides.index');
 Route::post('/support-guides/categories', [SupportGuideController::class, 'storeCategory'])->name('support-guides.categories.store');
