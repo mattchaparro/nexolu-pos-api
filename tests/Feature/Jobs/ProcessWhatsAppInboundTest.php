@@ -135,6 +135,49 @@ class ProcessWhatsAppInboundTest extends TestCase
         Http::assertSent(fn ($request) => str_contains($request['text']['body'] ?? '', 'borrador pendiente'));
     }
 
+    public function test_sends_a_whatsapp_flow_for_a_pending_expense_draft_when_configured(): void
+    {
+        $user = $this->linkedUser();
+        config(['services.whatsapp.flows.gasto' => ['id' => 'flow-123', 'screen' => 'GASTO']]);
+
+        Http::fake([
+            'ia-core.test/*' => Http::response([
+                'conversation_id' => 'conv-1',
+                'text' => 'Voy a registrar el gasto.',
+                'drafts' => [[
+                    'id' => 'draft-1', 'tool_type' => 'crear_gasto', 'status' => 'pending',
+                    'summary' => 'Gasto de $50.000',
+                    'fields' => [],
+                    'values' => ['concepto' => 'Papeleria', 'monto' => 50000, 'fecha' => '2026-08-06'],
+                ]],
+            ], 200),
+            'graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.4']]], 200),
+        ]);
+
+        (new ProcessWhatsAppInbound('573001234567', 'Registra un gasto de 50 mil'))->handle(
+            app(IdentityResolver::class),
+            app(AiChatService::class),
+            app(WhatsAppCloudClient::class),
+        );
+
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), 'graph.facebook.com')) {
+                return false;
+            }
+            $params = $request['interactive']['action']['parameters'] ?? null;
+
+            return $params !== null
+                && $params['flow_id'] === 'flow-123'
+                && $params['flow_token'] === 'draft-1'
+                && $params['flow_action_payload']['data']['concepto'] === 'Papeleria'
+                && (float) $params['flow_action_payload']['data']['monto'] === 50000.0;
+        });
+
+        // El texto del modelo no se manda por separado: el Flow ya es la respuesta.
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'graph.facebook.com')
+            && ($request['type'] ?? null) === 'text');
+    }
+
     public function test_replies_with_the_error_message_when_the_ia_core_is_unreachable(): void
     {
         $this->linkedUser();

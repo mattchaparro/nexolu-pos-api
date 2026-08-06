@@ -101,6 +101,22 @@ return [
                 'lang' => 'es_CO',
             ],
         ],
+
+        // WhatsApp Flows publicados en Meta, para confirmar borradores de
+        // escritura del chat de IA sin salir de WhatsApp (Fase 2). Sin 'id'
+        // configurado, ProcessWhatsAppInbound cae de vuelta al aviso de
+        // texto ("confirmalo desde el POS") - mismo patron tolerante que las
+        // plantillas. 'screen'/'body'/'cta' son el mejor esfuerzo contra los
+        // argumentos reales de CreateExpenseCapability; falta verificarlos
+        // contra el Flow JSON real una vez WHATSAPP_FLOW_GASTO_ID exista.
+        'flows' => [
+            'gasto' => [
+                'id' => env('WHATSAPP_FLOW_GASTO_ID'),
+                'screen' => 'GASTO',
+                'body' => 'Confirma los datos del gasto:',
+                'cta' => 'Confirmar',
+            ],
+        ],
     ],
 
 ];

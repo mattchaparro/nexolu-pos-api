@@ -37,16 +37,48 @@ con el modelo `Business`.
 
 ## WhatsApp Cloud API - fases pendientes (ver commit de Fase 1)
 
-- **Fase 2 - WhatsApp Flows** (confirmación nativa de borradores `gasto`,
-  `entrada_inventario`, `entrada_ingrediente`): requiere primero un proxy en
-  esta API hacia `POST /v1/drafts/{id}/confirm` del IA Core (no existe
-  todavía - hoy solo existe el proxy de `/v1/chat`). El módulo Ingredientes
-  que bloqueaba `entrada_ingrediente` ya está migrado.
+- ~~**Fase 2 - WhatsApp Flows**~~ ✅ Migrada la mecánica genérica; **el mapeo
+  de campos del Flow de gasto es un mejor-esfuerzo sin verificar**, ver
+  detalle abajo.
+  - `App\Services\AiDraftService` + `POST/DELETE /v1/ai/drafts/{id}/confirm`
+    y `.../discard`: proxy hacia el IA Core (antes solo existía el de
+    `/v1/chat`). Reenvía el código de estado del Core tal cual (200/404/409),
+    para que tanto un futuro frontend como el job de WhatsApp lo interpreten
+    sin adivinar. Mismo gate `ai_chat.use` que el chat.
+  - `WhatsAppCloudClient::sendFlow()` portado (genérico, sin nada
+    específico de un tipo de borrador).
+  - `ProcessWhatsAppFlowReply`: procesa la respuesta del Flow (`nfm_reply`
+    en el webhook, ya ruteado en `WhatsappWebhookController`). A diferencia
+    de legacy, el `flow_token` es directamente el id del borrador en el IA
+    Core (ese servicio ya sabe a qué herramienta/negocio pertenece - no hace
+    falta codificar el tipo en el token). Genérico: no sabe qué campos trae
+    cada Flow, todo lo que llega (menos `flow_token`) se manda como override
+    de valores al confirmar.
+  - `ProcessWhatsAppInbound::sendExpenseFlow()`: cuando el chat de WhatsApp
+    devuelve un borrador `crear_gasto` pendiente, manda el Flow en vez de
+    solo avisar "confirmalo desde el POS" - **si** `services.whatsapp.flows.gasto.id`
+    está configurado (por ahora vacío, mismo patrón tolerante que las
+    plantillas: sin `id`, cae al aviso de texto de siempre).
+  - **Deuda dejada a propósito, no verificable sin el Flow real de Meta**:
+    el nombre de pantalla (`screen: 'GASTO'`) y los campos que se le mandan
+    al Flow (`concepto`/`monto`/`fecha`/`tipo_gasto`/`tipos`) son mi mejor
+    esfuerzo contra los argumentos reales de `CreateExpenseCapability`, NO
+    una copia verificada del Flow JSON publicado en Meta (a diferencia de
+    legacy, que sí usaba su propio Flow con esos campos exactos - pero con
+    `type_id` numérico en vez del `tipo_gasto` de nombre libre que espera
+    esta API). Hay que confirmar/ajustar el mapeo una vez exista
+    `WHATSAPP_FLOW_GASTO_ID` real y se pueda probar contra Meta de verdad.
+  - **Bloqueados por falta de write capability, no por WhatsApp**: los Flows
+    de `entrada_inventario`/`entrada_ingrediente` de legacy no se portaron
+    porque **no existe todavía** una tool/capability de "registrar entrada de
+    stock/ingrediente" en el catálogo de IA de esta API (`app/Capabilities`
+    solo tiene `crear_gasto`, `crear_producto`, `crear_cliente` como
+    escrituras) - sin esa capability no hay borrador de ese tipo que un Flow
+    pudiera confirmar. Es un ítem de "AI Capabilities", no de "WhatsApp".
 - **Fase 3 - Notificaciones proactivas por WhatsApp**:
   - ~~Resumen diario (`resumen_diario`)~~ ✅ Migrado (`notifications:send-daily-whatsapp-summary`
-    + `DailyBusinessSummaryService`). El comando no envía nada todavía porque
-    `services.whatsapp.templates.resumen_diario.name` está en `null` - falta
-    aprobar la plantilla en Meta y poner el nombre real ahí.
+    + `SmartSummaryInsight`), con el nombre real de la plantilla
+    (`daily_business_summary`) ya puesto en `config/services.php`.
   - ~~Recordatorios (`recordatorio`)~~ ✅ Migrado (`reminders:send-whatsapp-notifications`).
   - ~~Inventario bajo (`inventario_bajo`)~~ ✅ Migrado:
     `InventorySendLowStockAlerts` ahora manda por correo Y/O WhatsApp, los

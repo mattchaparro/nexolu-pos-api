@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessWhatsAppFlowReply;
 use App\Jobs\ProcessWhatsAppInbound;
 use App\Jobs\ProcessWhatsAppUnsupportedMessage;
 use App\Support\ChannelPhone;
@@ -84,6 +85,19 @@ class WhatsappWebhookController extends Controller
             $text = $message['text']['body'] ?? null;
             if ($text !== null) {
                 ProcessWhatsAppInbound::dispatch($from, $text, $wamid);
+            }
+
+            return;
+        }
+
+        // Respuesta de un WhatsApp Flow (formulario nativo de confirmacion de
+        // un borrador). response_json llega como STRING JSON, no como objeto.
+        if ($type === 'interactive' && ($message['interactive']['type'] ?? null) === 'nfm_reply') {
+            $raw = $message['interactive']['nfm_reply']['response_json'] ?? null;
+            $data = is_string($raw) ? json_decode($raw, true) : null;
+
+            if (is_array($data)) {
+                ProcessWhatsAppFlowReply::dispatch($from, $data);
             }
 
             return;

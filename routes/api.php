@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AiToolInvokeController;
 use App\Http\Controllers\Api\PaymentsCoreWebhookController;
 use App\Http\Controllers\Api\V1\AiChannelLinkController;
 use App\Http\Controllers\Api\V1\AiChatController;
+use App\Http\Controllers\Api\V1\AiDraftController;
 use App\Http\Controllers\Api\V1\AiInsightController;
 use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
@@ -68,6 +69,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('/me', [AuthController::class, 'me'])->name('me');
 
         Route::post('/ai/chat', [AiChatController::class, 'send'])->name('ai.chat');
+        Route::post('/ai/drafts/{draftId}/confirm', [AiDraftController::class, 'confirm'])->name('ai.drafts.confirm');
+        Route::post('/ai/drafts/{draftId}/discard', [AiDraftController::class, 'discard'])->name('ai.drafts.discard');
         Route::get('/insights', [AiInsightController::class, 'index'])->name('insights.index');
         Route::post('/insights/{type}/refresh', [AiInsightController::class, 'refresh'])->name('insights.refresh');
 

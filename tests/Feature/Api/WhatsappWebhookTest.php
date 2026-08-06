@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Jobs\ProcessWhatsAppFlowReply;
 use App\Jobs\ProcessWhatsAppInbound;
 use App\Jobs\ProcessWhatsAppUnsupportedMessage;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -102,6 +103,66 @@ class WhatsappWebhookTest extends TestCase
         $this->postJson('/api/webhooks/whatsapp', $payload)->assertOk();
 
         Queue::assertPushed(ProcessWhatsAppInbound::class, fn ($job) => $job->text === 'Opcion elegida');
+    }
+
+    public function test_handle_dispatches_the_flow_reply_job_for_an_nfm_reply(): void
+    {
+        Queue::fake();
+
+        $payload = [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'id' => 'wamid.flow',
+                            'from' => '573001234567',
+                            'type' => 'interactive',
+                            'interactive' => [
+                                'type' => 'nfm_reply',
+                                'nfm_reply' => [
+                                    'response_json' => json_encode(['flow_token' => 'draft-123', 'monto' => 25000]),
+                                ],
+                            ],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ];
+
+        $this->postJson('/api/webhooks/whatsapp', $payload)->assertOk();
+
+        Queue::assertPushed(ProcessWhatsAppFlowReply::class, function ($job) {
+            $response = (new \ReflectionProperty($job, 'response'))->getValue($job);
+
+            return $response['flow_token'] === 'draft-123' && $response['monto'] === 25000;
+        });
+    }
+
+    public function test_handle_ignores_an_nfm_reply_with_invalid_json(): void
+    {
+        Queue::fake();
+
+        $payload = [
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'messages' => [[
+                            'id' => 'wamid.flow-bad',
+                            'from' => '573001234567',
+                            'type' => 'interactive',
+                            'interactive' => [
+                                'type' => 'nfm_reply',
+                                'nfm_reply' => ['response_json' => 'no es json'],
+                            ],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ];
+
+        $this->postJson('/api/webhooks/whatsapp', $payload)->assertOk();
+
+        Queue::assertNotPushed(ProcessWhatsAppFlowReply::class);
     }
 
     public function test_handle_always_returns_200_even_with_an_empty_payload(): void

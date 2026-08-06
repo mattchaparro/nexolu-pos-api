@@ -84,6 +84,34 @@ class WhatsAppCloudClientTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_send_flow_posts_the_interactive_flow_payload(): void
+    {
+        Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.999']]], 200)]);
+
+        $sent = app(WhatsAppCloudClient::class)->sendFlow(
+            '573001234567',
+            'flow-id-123',
+            'SCREEN_ONE',
+            'Confirma el gasto',
+            'Confirmar',
+            ['description' => 'Papeleria', 'value' => 25000],
+            'draft-abc',
+        );
+
+        $this->assertTrue($sent);
+
+        Http::assertSent(function ($request) {
+            $params = $request['interactive']['action']['parameters'];
+
+            return $request['type'] === 'interactive'
+                && $request['interactive']['type'] === 'flow'
+                && $params['flow_id'] === 'flow-id-123'
+                && $params['flow_token'] === 'draft-abc'
+                && $params['flow_action_payload']['screen'] === 'SCREEN_ONE'
+                && $params['flow_action_payload']['data']['description'] === 'Papeleria';
+        });
+    }
+
     public function test_mark_as_read_with_typing_does_not_record_usage(): void
     {
         Http::fake(['graph.facebook.com/*' => Http::response([], 200)]);

@@ -13,7 +13,7 @@ use App\Models\User;
 class AiTenantContext
 {
     /** @return array<string, mixed> */
-    public static function forUser(User $user): array
+    public static function forUser(User $user, string $channel = 'web'): array
     {
         return [
             'business_id' => (string) $user->business_id,
@@ -21,7 +21,7 @@ class AiTenantContext
             'is_admin' => $user->hasRole('admin'),
             'permissions' => $user->getAllPermissions()->pluck('name')->values()->all(),
             'features' => $user->business->enabledFeatureNames(),
-            'channel' => 'web',
+            'channel' => $channel,
             'timezone' => 'America/Bogota',
             'locale' => 'es',
         ];

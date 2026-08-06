@@ -69,6 +69,48 @@ class WhatsAppCloudClient
     }
 
     /**
+     * Envia un WhatsApp Flow (formulario nativo) con datos prellenados. Se
+     * usa para confirmar borradores editables del chat de IA: en vez de
+     * dejar al usuario sin forma de tocar la confirmacion desde WhatsApp, se
+     * le manda el Flow con los mismos datos ya cargados.
+     *
+     * @param  array<string, mixed>  $data  datos que precargan los campos del Flow
+     */
+    public function sendFlow(
+        string $to,
+        string $flowId,
+        string $screen,
+        string $bodyText,
+        string $cta,
+        array $data,
+        string $flowToken,
+    ): bool {
+        return $this->post($to, [
+            'messaging_product' => 'whatsapp',
+            'to' => $to,
+            'type' => 'interactive',
+            'interactive' => [
+                'type' => 'flow',
+                'body' => ['text' => $bodyText],
+                'action' => [
+                    'name' => 'flow',
+                    'parameters' => [
+                        'flow_message_version' => '3',
+                        'flow_token' => $flowToken,
+                        'flow_id' => $flowId,
+                        'flow_cta' => $cta,
+                        'flow_action' => 'navigate',
+                        'flow_action_payload' => [
+                            'screen' => $screen,
+                            'data' => $data,
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+    }
+
+    /**
      * Marca leido + activa el indicador de "escribiendo...". Mismo endpoint
      * de mensajes, con status:read + typing_indicator - no un endpoint aparte.
      */
