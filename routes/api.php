@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AiToolInvokeController;
 use App\Http\Controllers\Api\PaymentsCoreWebhookController;
 use App\Http\Controllers\Api\V1\AiChannelLinkController;
 use App\Http\Controllers\Api\V1\AiChatController;
+use App\Http\Controllers\Api\V1\AiInsightController;
 use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BusinessController;
@@ -67,6 +68,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('/me', [AuthController::class, 'me'])->name('me');
 
         Route::post('/ai/chat', [AiChatController::class, 'send'])->name('ai.chat');
+        Route::get('/insights', [AiInsightController::class, 'index'])->name('insights.index');
+        Route::post('/insights/{type}/refresh', [AiInsightController::class, 'refresh'])->name('insights.refresh');
 
         Route::middleware('permission:ai_chat.use')->prefix('ai/channels/whatsapp')->name('ai.channels.whatsapp.')->group(function () {
             Route::post('/start', [AiChannelLinkController::class, 'start'])->middleware('throttle:5,1')->name('start');

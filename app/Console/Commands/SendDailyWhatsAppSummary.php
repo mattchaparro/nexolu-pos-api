@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Business;
-use App\Services\DailyBusinessSummaryService;
+use App\Services\Ai\Insights\SmartSummaryInsight;
 use App\Services\WhatsApp\WhatsAppCloudClient;
 use App\Support\WhatsAppRecipients;
 use Illuminate\Console\Attributes\Description;
@@ -15,11 +15,12 @@ use Illuminate\Console\Command;
  * (no una respuesta dentro del chat) que el negocio recibe sin pedirla en el
  * momento.
  *
- * Reutiliza el mismo calculo deterministico que alimentaria una tarjeta de
- * dashboard (DailyBusinessSummaryService::gatherData): no hay un segundo
- * lugar que decida "como le fue al negocio hoy", y esta notificacion no le
- * cuesta tokens de IA -- son numeros ya calculados en PHP, solo van por
- * WhatsApp en vez de mostrarse en pantalla.
+ * Reutiliza el mismo calculo deterministico que alimenta la tarjeta "Resumen
+ * inteligente" del dashboard (SmartSummaryInsight::gatherData): no hay un
+ * segundo lugar que decida "como le fue al negocio hoy", y esta notificacion
+ * NO le cuesta tokens de IA -- son los mismos numeros ya calculados en PHP,
+ * solo van por otro canal en vez de redactarse con el modelo (a diferencia
+ * del dashboard, que si pasa por AiInsightService para la version en prosa).
  *
  * Va por PLANTILLA: es un mensaje que el negocio inicia, no una respuesta
  * dentro de la ventana de 24h. Sin la plantilla aprobada en Meta, el comando
@@ -29,7 +30,7 @@ use Illuminate\Console\Command;
 #[Description('Envia el resumen diario del negocio por WhatsApp a los admins que lo activaron')]
 class SendDailyWhatsAppSummary extends Command
 {
-    public function handle(DailyBusinessSummaryService $summaryService, WhatsAppCloudClient $client): int
+    public function handle(SmartSummaryInsight $insight, WhatsAppCloudClient $client): int
     {
         $template = config('services.whatsapp.templates.resumen_diario');
 
@@ -59,9 +60,12 @@ class SendDailyWhatsAppSummary extends Command
                 continue;
             }
 
-            $data = $summaryService->gatherData($business);
+            $data = $insight->gatherData($business->id);
 
-            if (! $summaryService->isWorthSending($data)) {
+            // Mismo criterio que la tarjeta del dashboard: si no hay ni
+            // ventas de referencia ni nada prioritario, no hay lectura util
+            // que dar.
+            if (! $insight->isWorthShowing($data)) {
                 continue;
             }
 
@@ -83,7 +87,7 @@ class SendDailyWhatsAppSummary extends Command
      * Arma los 4 parametros del body de la plantilla, en el mismo orden que
      * espera la plantilla aprobada: salud, ventas, gastos, prioridad.
      *
-     * @param  array<string, mixed>  $data  lo que devuelve DailyBusinessSummaryService::gatherData()
+     * @param  array<string, mixed>  $data  lo que devuelve SmartSummaryInsight::gatherData()
      * @return list<array<string, mixed>>
      */
     private function components(array $data): array
@@ -105,7 +109,7 @@ class SendDailyWhatsAppSummary extends Command
 
         $values = [
             $emoji.' '.ucfirst((string) $data['health_factor']),
-            'Ventas: $'.number_format($data['sales_today'], 0, ',', '.').' ('.$vsYesterday.')',
+            'Ventas: $'.number_format($data['sales_today_total'], 0, ',', '.').' ('.$vsYesterday.')',
             $expenses,
             ucfirst($priority),
         ];

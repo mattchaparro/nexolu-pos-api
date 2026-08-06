@@ -83,11 +83,13 @@ return [
                 'lang' => 'es_CO',
             ],
             // Resumen diario del negocio (notifications:send-daily-whatsapp-summary).
-            // Nombre pendiente de aprobar en Meta - el comando no envia nada
-            // mientras 'name' este vacio (mismo patron tolerante que las demas
-            // plantillas). Ver docs/CUTOVER_TODO.md.
+            // Mismo nombre real que ya usa legacy en el mismo WABA: creada en
+            // Meta como 'daily_business_summary', EN REVISION al 2026-07-23.
+            // Si Meta la rechaza aun, el envio falla silenciosamente (log, sin
+            // tumbar el comando - WhatsAppCloudClient::post no lanza), igual
+            // que en legacy.
             'resumen_diario' => [
-                'name' => null,
+                'name' => 'daily_business_summary',
                 'lang' => 'es_CO',
             ],
         ],

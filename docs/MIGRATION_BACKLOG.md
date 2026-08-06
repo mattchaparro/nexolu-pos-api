@@ -177,27 +177,60 @@ se tacha en cuanto se construye, sin precondición de cutover.
     interno (`PlatformFinanceService` legacy). No se necesita replicar acá -
     si se quiere mostrar comisión neta, pedírsela al Core en vez de
     recalcularla con una fórmula propia.
-- ~~**Motor de insights**~~ ✅ Migrado, con alcance reducido a propósito: en
-  legacy vive repartido en `ResumenInteligenteInsight` + 6 sub-insights, cada
-  uno con su propia interfaz (`AiInsightDefinition`) porque alimentan
-  tarjetas de dashboard con prosa generada por IA y cacheada
-  (`AiInsightService`). Esta API no tiene dashboard, así que se portó solo el
-  cálculo determinístico (`gatherData()`) que el resumen diario de WhatsApp
-  necesita, consolidado en `App\Services\DailyBusinessSummaryService` - sin
-  las clases por insight, sin prompts de sistema/usuario, sin caché ni
-  `teaser()`/`preguntaSugerida()`/`accionSugerida()` (nada de eso tiene un
-  consumidor en esta API todavía). Si en el futuro el chat de IA necesita
-  estos mismos números como una Capability más, se expone el servicio ya
-  existente en vez de recalcular.
+- ~~**Motor de insights**~~ ✅ Migrado por completo, dashboard-ready (se
+  revirtió la decisión de alcance reducido de una pasada anterior: el
+  producto sí va a tener dashboard, así que valía la pena portar la
+  arquitectura completa, no solo lo que necesitaba WhatsApp). Estructura
+  igual que legacy: `App\Services\Ai\Contracts\{AiInsightDefinition,
+  HasSuggestedAction, ValidatesGeneratedText}` (renombrados a inglés, ver
+  regla de idioma) + 7 clases en `App\Services\Ai\Insights` (`SmartSummaryInsight`
+  = orquestador `resumen_inteligente`, `DailyOverviewInsight` = `panorama_diario`,
+  `ExpensesSummaryInsight` = `gastos_resumen`, `IngredientsSummaryInsight` =
+  `ingredientes_resumen`, `CashClosingHistoryInsight` = `cierres_historico`,
+  `ReceivablesSummaryInsight` = `fiados_resumen`, `PayablesSummaryInsight` =
+  `cuentas_por_pagar`), registradas en `InsightCatalog`.
+  `App\Services\AiInsightService` es el cache-aside sobre la tabla compartida
+  `ai_insights` (ya existía en `schema.sql`, sin usar hasta ahora) - a
+  diferencia de legacy, no valida cupo de mensajes ni add-on (`AiAccessService`
+  no se portó, ver nota de "fuera de alcance" de suscripciones más abajo): el
+  acceso a IA en esta API ya se resuelve una sola vez, al permiso
+  `ai_chat.use` (mismo gate que `POST /v1/ai/chat`), no por insight.
+  API nueva: `GET /v1/insights` (lista todo lo que vale la pena mostrar) y
+  `POST /v1/insights/{tipo}/refresh` (recarga forzada de un tipo puntual).
+  **Requirió tocar `nexolu-ia-core`** (repo aparte): `/v1/chat` está armado
+  para conversación + loop de herramientas, no encaja con "redactar 1-2
+  frases de un system+user prompt propio, sin historial". Se agregó
+  `POST /v1/completions` ahí (rama `claude/insight-completions-endpoint`,
+  pusheada, sin PR todavía) - mismo `ModelRouter`/`ProviderRegistry` y mismo
+  registro de uso/costo por negocio que el chat, sin persistir conversación.
+  `App\Services\AiCompletionService` en el POS es el cliente hacia ese
+  endpoint nuevo.
   Bug real de legacy corregido al portar (no solo trasladado): `calcularSalud()`
   contaba "productos por agotarse" a partir de la lista de nombres ya topada
-  a 3 para mostrar en el dashboard (`productos_por_agotarse`), así que un
-  negocio con 20 productos cerca de agotarse computaba la misma salud que uno
-  con 3. `DailyBusinessSummaryService` cuenta el total real bajo umbral.
+  a 3 para mostrar en el dashboard (`productos_por_agotarse` de
+  `DailyOverviewInsight`), así que un negocio con 20 productos cerca de
+  agotarse computaba la misma salud que uno con 3. `SmartSummaryInsight`
+  cuenta el total real bajo umbral vía `LowStockAlertReport`.
   De paso, `LowStockAlertReport` (que antes ordenaba solo por stock crudo) se
   alineó con el `StockUrgency` completo de legacy (velocidad real de venta/consumo,
   no cercanía al umbral) - esto ya estaba señalado como TODO en su propio
   docblock desde que se construyó, en el módulo de Inventario.
+  `notifications:send-daily-whatsapp-summary` ahora consume
+  `SmartSummaryInsight::gatherData()` directamente (sin pasar por
+  `AiInsightService` ni el modelo, igual que legacy: esa notificación no
+  cuesta tokens de IA a propósito) - se retiró `DailyBusinessSummaryService`,
+  que quedó completamente redundante con `SmartSummaryInsight`.
+  También se aprovechó para poner el nombre real de la plantilla
+  `resumen_diario` en `config/services.php` (`daily_business_summary`,
+  `es_CO` - el mismo WABA que legacy, EN REVISION al 2026-07-23 según su
+  propio comentario), reemplazando el placeholder `null` de la pasada
+  anterior.
+  **Todavía sin portar del legacy**: los `teaser()`/`accionSugerida()` no se
+  probaron contra un frontend real (no existe todavía); y la invalidación por
+  evento (`AiInsightService::invalidate()` existe, pero nada la llama aún -
+  legacy la dispara al registrar un gasto, un abono, etc.) queda para cuando
+  el dashboard consuma esto de verdad y se sienta el "insight cacheado
+  contradice el dato fresco".
 
 ## Deuda dejada a propósito en el módulo Reminders
 

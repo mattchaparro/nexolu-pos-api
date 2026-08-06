@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Services\AiChatService;
+use App\Support\AiTenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -35,16 +36,7 @@ class AiChatController extends Controller
             'conversation_id' => ['sometimes', 'nullable', 'string'],
         ]);
 
-        $context = [
-            'business_id' => (string) $user->business_id,
-            'user_id' => (string) $user->id,
-            'is_admin' => $user->hasRole('admin'),
-            'permissions' => $user->getAllPermissions()->pluck('name')->values()->all(),
-            'features' => $user->business->enabledFeatureNames(),
-            'channel' => 'web',
-            'timezone' => 'America/Bogota',
-            'locale' => 'es',
-        ];
+        $context = AiTenantContext::forUser($user);
 
         try {
             $result = $this->aiChatService->send(
