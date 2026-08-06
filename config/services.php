@@ -36,7 +36,11 @@ return [
     ],
 
     'ia_core' => [
+        // Misma credencial simetrica en los dos sentidos: el IA Core la usa
+        // para llamar POST /api/ai/tools/invoke, y este POS la usa aca para
+        // llamar POST {base_url}/v1/chat - ver AiChatService.
         'api_key' => env('IA_CORE_API_KEY'),
+        'base_url' => env('IA_CORE_BASE_URL', 'http://localhost:8000'),
     ],
 
 ];

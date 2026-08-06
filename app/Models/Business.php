@@ -349,6 +349,22 @@ class Business extends Model
     }
 
     /**
+     * Nombres de todos los feature flags habilitados para este negocio, en
+     * el vocabulario canonico de BusinessFeaturePresets. Usado para armar el
+     * TenantContext que se le manda al Nexolu IA Core (ver AiChatController):
+     * el Core filtra que herramientas ofrecerle al modelo segun esta lista.
+     *
+     * @return list<string>
+     */
+    public function enabledFeatureNames(): array
+    {
+        return array_values(array_filter(
+            array_keys(BusinessFeaturePresets::basic()),
+            fn (string $feature) => $this->hasFeature($feature)
+        ));
+    }
+
+    /**
      * Compras y proveedores: alineado con el hub de catalogo (inventario basico, avanzado o recetas).
      */
     public function canAccessPurchases(): bool
