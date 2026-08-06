@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Http\Controllers\Api\NotificationSnoozeController;
 use App\Models\Business;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
@@ -10,6 +11,7 @@ use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Mail\Mailables\Headers;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\URL;
 
 /**
  * Alerta de que uno o mas productos o ingredientes del negocio estan por
@@ -45,8 +47,28 @@ class LowStockAlertMail extends Mailable
                 'business_name' => $this->business->name,
                 'items' => $this->items,
                 'app_url' => config('app.url'),
+                'snooze_links' => $this->snoozeLinks(),
             ],
         );
+    }
+
+    /**
+     * Un enlace firmado por opcion de dias - un clic silencia, sin
+     * formulario intermedio (un cliente de correo no puede disparar un POST
+     * de todos modos).
+     *
+     * @return array<int, string>
+     */
+    private function snoozeLinks(): array
+    {
+        return collect(NotificationSnoozeController::DAY_OPTIONS)
+            ->mapWithKeys(fn (int $days) => [
+                $days => URL::signedRoute('notifications.low-stock.snooze', [
+                    'business' => $this->business->id,
+                    'days' => $days,
+                ]),
+            ])
+            ->all();
     }
 
     public function headers(): Headers

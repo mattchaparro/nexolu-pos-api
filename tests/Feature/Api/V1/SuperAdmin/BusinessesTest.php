@@ -215,6 +215,22 @@ class BusinessesTest extends TestCase
             ->assertJsonPath('active', false);
     }
 
+    public function test_toggle_ai_chat_block_flips_the_flag(): void
+    {
+        $admin = $this->superadmin();
+        $business = Business::factory()->create(['ai_chat_blocked' => false]);
+
+        $this->actingAs($admin, 'sanctum')
+            ->patchJson("/api/v1/superadmin/businesses/{$business->id}/ai-chat-block")
+            ->assertOk()
+            ->assertJsonPath('ai_chat_blocked', true);
+
+        $this->actingAs($admin, 'sanctum')
+            ->patchJson("/api/v1/superadmin/businesses/{$business->id}/ai-chat-block")
+            ->assertOk()
+            ->assertJsonPath('ai_chat_blocked', false);
+    }
+
     public function test_destroy_deactivates_all_users_and_soft_deletes_the_business(): void
     {
         $admin = $this->superadmin();

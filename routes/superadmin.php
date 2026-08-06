@@ -31,6 +31,7 @@ Route::patch('/businesses/{business}/custom-price', [BusinessesController::class
 Route::patch('/businesses/{business}/plan', [BusinessesController::class, 'changePlan'])->name('businesses.plan');
 Route::patch('/businesses/{business}/config', [BusinessesController::class, 'updateConfig'])->name('businesses.config.update');
 Route::patch('/businesses/{business}/toggle', [BusinessesController::class, 'toggle'])->name('businesses.toggle');
+Route::patch('/businesses/{business}/ai-chat-block', [BusinessesController::class, 'toggleAiChatBlock'])->name('businesses.ai-chat-block.toggle');
 Route::get('/businesses/{business}/subscription-payments', [BusinessesController::class, 'subscriptionPayments'])->name('businesses.subscription-payments.index');
 Route::post('/businesses/{business}/subscription-payments', [BusinessesController::class, 'storeSubscriptionPayment'])->name('businesses.subscription-payments.store');
 Route::delete('/businesses/{business}/subscription-payments/{payment}', [BusinessesController::class, 'destroySubscriptionPayment'])->name('businesses.subscription-payments.destroy');

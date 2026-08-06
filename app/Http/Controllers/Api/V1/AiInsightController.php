@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Exceptions\AiChatBlockedException;
 use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Services\Ai\Contracts\AiInsightDefinition;
@@ -26,7 +27,12 @@ class AiInsightController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $this->authorizedUser($request);
-        $context = AiTenantContext::forUser($user);
+
+        try {
+            $context = AiTenantContext::forUser($user);
+        } catch (AiChatBlockedException $e) {
+            return response()->json(['error' => $e->getMessage()], 403);
+        }
 
         $data = collect(InsightCatalog::all())
             ->map(fn (AiInsightDefinition $definition) => $this->buildEntry($user->business, $definition, $context))
@@ -45,7 +51,11 @@ class AiInsightController extends Controller
             abort(404, 'Tipo de insight desconocido.');
         }
 
-        $entry = $this->buildEntry($user->business, $definition, AiTenantContext::forUser($user), forceRefresh: true);
+        try {
+            $entry = $this->buildEntry($user->business, $definition, AiTenantContext::forUser($user), forceRefresh: true);
+        } catch (AiChatBlockedException $e) {
+            return response()->json(['error' => $e->getMessage()], 403);
+        }
 
         return response()->json(['data' => $entry]);
     }

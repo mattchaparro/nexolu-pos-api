@@ -54,6 +54,7 @@ use Illuminate\Validation\ValidationException;
     'onboarding_profile',
     'crm_notes',
     'crm_next_follow_up_at',
+    'ai_chat_blocked',
 ])]
 class Business extends Model
 {
@@ -76,6 +77,7 @@ class Business extends Model
     {
         return [
             'active' => 'boolean',
+            'ai_chat_blocked' => 'boolean',
             'trial_ends_at' => 'datetime',
             'paid_until' => 'datetime',
             'crm_next_follow_up_at' => 'datetime',

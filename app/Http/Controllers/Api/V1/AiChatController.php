@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Exceptions\AiChatBlockedException;
 use App\Http\Controllers\Controller;
 use App\Services\AiChatService;
 use App\Support\AiTenantContext;
@@ -36,15 +37,17 @@ class AiChatController extends Controller
             'conversation_id' => ['sometimes', 'nullable', 'string'],
         ]);
 
-        $context = AiTenantContext::forUser($user);
-
         try {
+            $context = AiTenantContext::forUser($user);
+
             $result = $this->aiChatService->send(
                 $validated['agent'],
                 $validated['message'],
                 $context,
                 $validated['conversation_id'] ?? null
             );
+        } catch (AiChatBlockedException $e) {
+            return response()->json(['error' => $e->getMessage()], 403);
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 502);
         }

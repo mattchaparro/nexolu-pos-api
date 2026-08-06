@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Exceptions\AiChatBlockedException;
 use App\Http\Controllers\Controller;
 use App\Services\AiDraftService;
 use App\Support\AiTenantContext;
@@ -27,6 +28,8 @@ class AiDraftController extends Controller
 
         try {
             $response = $this->drafts->confirm($draftId, AiTenantContext::forUser($user), $values);
+        } catch (AiChatBlockedException $e) {
+            return response()->json(['error' => $e->getMessage()], 403);
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 502);
         }
@@ -40,6 +43,8 @@ class AiDraftController extends Controller
 
         try {
             $response = $this->drafts->discard($draftId, AiTenantContext::forUser($user));
+        } catch (AiChatBlockedException $e) {
+            return response()->json(['error' => $e->getMessage()], 403);
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 502);
         }

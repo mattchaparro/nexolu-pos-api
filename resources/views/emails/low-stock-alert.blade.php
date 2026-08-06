@@ -44,11 +44,21 @@
 
                 {{-- CTA --}}
                 <tr>
-                    <td style="padding:20px 28px 24px;text-align:center;">
+                    <td style="padding:20px 28px 8px;text-align:center;">
                         <a href="{{ $app_url }}"
                            style="display:inline-block;background:#dc2626;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;padding:12px 28px;border-radius:8px;">
                             Ir a mi POS
                         </a>
+                    </td>
+                </tr>
+
+                {{-- Silenciar --}}
+                <tr>
+                    <td style="padding:16px 28px 24px;text-align:center;">
+                        <p style="margin:0 0 8px;font-size:12px;color:#94a3b8;">¿Ya lo tienes controlado? Silenciar estas alertas:</p>
+                        @foreach($snooze_links as $days => $url)
+                        <a href="{{ $url }}" style="display:inline-block;margin:0 4px;color:#64748b;text-decoration:underline;font-size:12px;">{{ $days }} {{ $days === 1 ? 'dia' : 'dias' }}</a>@if(!$loop->last)&middot;@endif
+                        @endforeach
                     </td>
                 </tr>
 

@@ -75,6 +75,21 @@ class AiChatTest extends TestCase
         });
     }
 
+    public function test_rejects_a_message_when_the_superadmin_blocked_ai_chat_for_the_business(): void
+    {
+        Http::fake(['ia-core.test/*' => Http::response(['text' => 'no deberia llegar aca'], 200)]);
+
+        $business = Business::factory()->create(['ai_chat_blocked' => true]);
+        $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/v1/ai/chat', ['agent' => 'cajero', 'message' => 'Hola'])
+            ->assertStatus(403);
+
+        Http::assertNothingSent();
+    }
+
     public function test_an_employee_with_the_direct_permission_can_send_a_message(): void
     {
         Http::fake(['ia-core.test/*' => Http::response(['conversation_id' => 'c1', 'text' => 'ok'], 200)]);

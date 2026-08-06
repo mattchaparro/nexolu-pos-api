@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AiToolCatalogController;
 use App\Http\Controllers\Api\AiToolInvokeController;
+use App\Http\Controllers\Api\NotificationSnoozeController;
 use App\Http\Controllers\Api\PaymentsCoreWebhookController;
 use App\Http\Controllers\Api\V1\AccountingController;
 use App\Http\Controllers\Api\V1\AiChannelLinkController;
@@ -61,6 +62,13 @@ Route::post('/webhooks/whatsapp', [WhatsappWebhookController::class, 'handle'])-
 // un usuario. Se autentica con la firma HMAC de X-Nexolu-Signature, no con
 // Sanctum - ver PaymentsCoreWebhookController.
 Route::post('/webhooks/payments-core', [PaymentsCoreWebhookController::class, 'handle'])->name('webhooks.payments-core.handle');
+
+// Publico, sin auth: se abre directo desde el enlace del correo de alerta de
+// inventario bajo. La firma de la URL (middleware `signed`) es la unica
+// autenticacion - ver App\Http\Controllers\Api\NotificationSnoozeController.
+Route::get('/notifications/low-stock/{business}/snooze', [NotificationSnoozeController::class, 'snooze'])
+    ->middleware('signed')
+    ->name('notifications.low-stock.snooze');
 
 Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::post('/register', [AuthController::class, 'register'])->name('register');

@@ -205,6 +205,23 @@ class BusinessesController extends Controller
         return new BusinessResource($business);
     }
 
+    /**
+     * Interruptor de emergencia: desactiva el Asistente de IA para un negocio
+     * puntual (abuso, soporte, etc.), sin tocar su suscripcion ni el resto de
+     * sus features. Se revisa en App\Support\AiTenantContext::forUser(), el
+     * unico choke point de los 5 puntos de entrada al Asistente.
+     */
+    public function toggleAiChatBlock(Business $business): BusinessResource
+    {
+        $business->update(['ai_chat_blocked' => ! $business->ai_chat_blocked]);
+
+        AuditLogger::log('superadmin.business.ai_chat_block_toggled', [
+            'business_id' => $business->id, 'ai_chat_blocked' => $business->ai_chat_blocked,
+        ]);
+
+        return new BusinessResource($business);
+    }
+
     public function activate(ActivateBusinessRequest $request, Business $business): SaasSubscriptionPaymentResource
     {
         $payment = $this->businessService->activate($business, $request->user(), $request->validated());

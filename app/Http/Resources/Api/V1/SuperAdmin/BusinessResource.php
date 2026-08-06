@@ -22,6 +22,7 @@ class BusinessResource extends JsonResource
             'nit' => $this->nit,
             'address' => $this->address,
             'active' => $this->active,
+            'ai_chat_blocked' => $this->ai_chat_blocked,
             'trial_ends_at' => $this->trial_ends_at?->toIso8601String(),
             'paid_until' => $this->paid_until?->toIso8601String(),
             'subscription_plan' => $this->subscription_plan,

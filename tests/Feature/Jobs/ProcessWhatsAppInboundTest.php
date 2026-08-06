@@ -30,9 +30,9 @@ class ProcessWhatsAppInboundTest extends TestCase
         ]);
     }
 
-    private function linkedUser(): User
+    private function linkedUser(bool $aiChatBlocked = false): User
     {
-        $business = Business::factory()->create(['feature_flags' => null]);
+        $business = Business::factory()->create(['feature_flags' => null, 'ai_chat_blocked' => $aiChatBlocked]);
         $user = User::factory()->create(['business_id' => $business->id]);
         $user->assignRole('admin');
 
@@ -194,5 +194,21 @@ class ProcessWhatsAppInboundTest extends TestCase
         );
 
         Http::assertSent(fn ($request) => str_contains($request['text']['body'] ?? '', 'proveedor no disponible'));
+    }
+
+    public function test_replies_without_contacting_ia_core_when_the_business_is_blocked(): void
+    {
+        $this->linkedUser(aiChatBlocked: true);
+
+        Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.6']]], 200)]);
+
+        (new ProcessWhatsAppInbound('573001234567', 'Hola'))->handle(
+            app(IdentityResolver::class),
+            app(AiChatService::class),
+            app(WhatsAppCloudClient::class),
+        );
+
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'ia-core'));
+        Http::assertSent(fn ($request) => str_contains($request['text']['body'] ?? '', 'desactivado para tu negocio'));
     }
 }

@@ -39,6 +39,20 @@ class AiDraftTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_rejects_a_confirmation_when_the_superadmin_blocked_ai_chat_for_the_business(): void
+    {
+        Http::fake(['ia-core.test/*' => Http::response(['status' => 'confirmed'], 200)]);
+        $business = Business::factory()->create(['ai_chat_blocked' => true]);
+        $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/v1/ai/drafts/draft-1/confirm')
+            ->assertStatus(403);
+
+        Http::assertNothingSent();
+    }
+
     public function test_admin_confirms_a_draft_and_the_context_is_built_correctly(): void
     {
         Http::fake(['ia-core.test/*' => Http::response(['status' => 'confirmed', 'data' => ['id' => 42]], 200)]);

@@ -35,6 +35,17 @@ class AiInsightTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_rejects_the_list_when_the_superadmin_blocked_ai_chat_for_the_business(): void
+    {
+        $business = Business::factory()->create(['ai_chat_blocked' => true]);
+        $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
+
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/insights')
+            ->assertStatus(403);
+    }
+
     public function test_admin_lists_only_insights_worth_showing(): void
     {
         Http::fake(['ia-core.test/*' => Http::response(['text' => 'Hoy vas muy bien.'], 200)]);

@@ -401,21 +401,48 @@ falta migración, solo el código.
   - `Admin/SupplierReportsController`: historial de compras filtrable por
     proveedor/producto con totales - los datos crudos ya están en
     `GET /v1/purchases`, pero no el endpoint de reporte agregado.
-- **Silenciar alertas de inventario bajo (`NotificationSnoozeController`)**:
-  el campo `low_stock_snoozed_until` en `Business` ya se **lee** (lo respeta
-  `InventorySendLowStockAlerts`), pero no hay ningún endpoint en esta API que
-  lo **escriba** - hoy no existe forma de activar el silencio desde acá. En
-  legacy es un link firmado que va directo en el correo de alerta, sin login.
+- ~~**Silenciar alertas de inventario bajo (`NotificationSnoozeController`)**~~
+  ✅ Migrado. `GET /notifications/low-stock/{business}/snooze?days=N` (fuera
+  del prefijo `/v1`, público, sin login - la firma de la URL, middleware
+  `signed`, es la única autenticación, igual que legacy). **Simplificación
+  sobre legacy**: legacy mostraba un formulario (`GET`, elegir días) y
+  aplicaba el cambio en un segundo paso (`POST`); acá el correo ya trae un
+  link firmado por cada opción de días (3/7/15/30) - un solo clic, sin
+  formulario intermedio (un cliente de correo no puede disparar un `POST`
+  desde un link de todos modos, así que el paso intermedio no aportaba
+  nada). `LowStockAlertMail` arma los 4 links con `URL::signedRoute()`;
+  `InventorySendLowStockAlerts`/`LowStockAlertReport` no cambiaron.
 - **Login social (Google OAuth)**: `SocialController` (`auth/google`,
   `auth/google/callback`) no tiene equivalente - hoy `POST /v1/login` es
   únicamente usuario/contraseña vía Sanctum.
-- **Ajustes de IA a nivel superadmin**: `SuperAdmin/AiSettingsController`
-  (cupo mensual incluido, tamaño/precio del paquete adicional, lista de
-  negocios con `ai_chat_blocked`) y `SuperAdmin/AiUsageController` (uso de IA
-  detallado por negocio) no se portaron. Parcialmente cubierto por
-  `AiPlatformUsageService` (solo total de plataforma, no por negocio) - hay
-  que decidir si esto sigue viviendo acá o si migra a ajustes propios del IA
-  Core, ya que ese servicio ahora es quien de verdad cobra/limita.
+- ~~**Ajustes de IA a nivel superadmin**~~ ✅ Parcialmente migrado - alcance
+  redefinido tras revisar legacy de cerca. `SuperAdmin/AiSettingsController`
+  de legacy (cupo mensual incluido, tamaño/precio del paquete adicional) es
+  config del sistema de addon-por-suscripción, que ya está fuera de alcance
+  de esta migración (ver "Addon de IA vía suscripción" más abajo - el propio
+  legacy nunca cobra por ahí, `ai_addon_included` siempre es `false`) - no
+  se portó, sería configurar un cobro que no existe.
+  Lo que sí se portó, y es genuinamente útil independiente del addon:
+  **`ai_chat_blocked`** como interruptor de emergencia por negocio (abuso,
+  soporte, etc.). En legacy este campo existe pero **nunca tenía un botón
+  real para activarlo** - solo era un efecto secundario de
+  `AiAccessService` (sistema de addon, dead code) al abrir una prueba
+  gratis; ni el Asistente de esta API lo revisaba en ningún punto de
+  entrada. Ahora sí es una acción deliberada: `PATCH
+  /v1/superadmin/businesses/{business}/ai-chat-block` (mismo patrón que
+  `toggle` de `active`) + enforcement centralizado en
+  `App\Support\AiTenantContext::forUser()` (el único choke point de los 5
+  puntos de entrada al Asistente: chat web, insights, drafts, y los 2 jobs
+  de WhatsApp) via `App\Exceptions\AiChatBlockedException` - los 3
+  controllers HTTP la atrapan y devuelven 403; los jobs de WhatsApp ya
+  atrapaban `RuntimeException` genérico y responden el mensaje por el mismo
+  canal sin necesitar cambios.
+  **Sigue sin portar** (`SuperAdmin/AiUsageController`, uso de IA detallado
+  por negocio): requeriría que `nexolu-ia-core` exponga un desglose por
+  negocio en su API de uso, no solo por app - `AiPlatformUsageService`
+  actual solo trae el total de la app `pos` completa. Es un cambio de
+  alcance mayor (repo aparte) que queda pendiente de decidir si vale la
+  pena, ahora que el costeo real vive en el Core.
 - **Log de corridas de jobs programados (`CronJobLog`)**: legacy registra
   cada corrida de sus comandos programados (éxito/fallo/salida) en una tabla
   propia con un viewer en `SuperAdmin/CronJobsController`. Acá no hay
