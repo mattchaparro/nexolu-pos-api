@@ -16,14 +16,24 @@ se tacha en cuanto se construye, sin precondición de cutover.
 | `trials:notify-expiring` | ✅ Migrado | — |
 | `audit:prune` | ✅ Migrado | — |
 | `appointments:send-reminders` | ✅ Migrado (solo correo) | — |
-| `inventory:send-low-stock-alerts` | ✅ Migrado (correo, productos + ingredientes) | Canal WhatsApp: ver abajo. |
+| `inventory:send-low-stock-alerts` | ✅ Migrado (correo + WhatsApp, productos + ingredientes) | — |
 | `reminders:send-whatsapp-notifications` | ✅ Migrado | — |
 | `expenses:register-scheduled` | ✅ Migrado | — |
-| `notifications:send-daily-whatsapp-summary` | ✅ Migrado | Falta solo el nombre real de la plantilla aprobada en Meta - ver abajo. |
-| `businesses:send-trial-winback` | ❌ Pendiente | Decisión de mailer/Brevo pendiente (no evaluado a fondo todavía) |
-| `businesses:warn-inactive-trial` | ❌ Pendiente | Nada - es portable ya, paralelo al filtro de negocios inactivos de SuperAdmin ya construido |
+| `notifications:send-daily-whatsapp-summary` | ✅ Migrado | — |
+| `businesses:send-trial-winback` | ✅ Migrado | — |
+| `businesses:warn-inactive-trial` | ✅ Migrado | — |
 | `queue:work` / `database:backup` | N/A | Infra de hosting legacy, no aplica a esta API (Cloud/Sail maneja colas y backups distinto) |
 | `exchange-rate:fetch` | ❌ Sin decidir | Encaje arquitectónico poco claro - los costos de IA ya se rastrean en USD en el IA Core, no en COP aquí |
+
+Los dos jobs de correo de reactivación (`send-trial-winback`,
+`warn-inactive-trial`) se portaron usando el mismo patrón ya establecido en
+esta API (`Mailable` + `Mail::to()->send()`, logueado automático a
+`email_logs` vía `LogSentEmail`), **no** el `MailService` propio de legacy
+que llama la API HTTP de Brevo directo (`BREVO_API_KEY`) - esta API ya envía
+todo por SMTP a través del relay de Brevo (`MAIL_MAILER=smtp`,
+`smtp-relay.brevo.com`), así que no hacía falta un segundo camino de envío.
+`Business::extendTrial()` (usado por el winback) ya existía, portado junto
+con el modelo `Business`.
 
 ## WhatsApp Cloud API - fases pendientes (ver commit de Fase 1)
 
@@ -38,10 +48,14 @@ se tacha en cuanto se construye, sin precondición de cutover.
     `services.whatsapp.templates.resumen_diario.name` está en `null` - falta
     aprobar la plantilla en Meta y poner el nombre real ahí.
   - ~~Recordatorios (`recordatorio`)~~ ✅ Migrado (`reminders:send-whatsapp-notifications`).
-  - Inventario bajo (`inventario_bajo`): depende de `AiChannelIdentity`
-    (ya existe, Fase 1) + `WhatsAppRecipients` (✅ ya portado en
-    `app/Support/WhatsAppRecipients.php`, se reusa en el resumen diario) +
-    extender `InventorySendLowStockAlerts` con el canal WhatsApp (pendiente).
+  - ~~Inventario bajo (`inventario_bajo`)~~ ✅ Migrado:
+    `InventorySendLowStockAlerts` ahora manda por correo Y/O WhatsApp, los
+    dos canales independientes (un negocio puede tener uno prendido y el
+    otro apagado). Plantilla real `low_stock_alert` (APPROVED en el mismo
+    WABA de legacy) en `config/services.php`. Mismo formato de 3 parametros
+    que legacy: negocio, cantidad total, bloque de hasta 5 items mas
+    urgentes separados por `\x0B` (Meta rechaza `\n` en parametros de
+    plantilla).
 
 ## Módulos completos que faltan (no son solo un job)
 

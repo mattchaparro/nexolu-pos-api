@@ -92,6 +92,14 @@ return [
                 'name' => 'daily_business_summary',
                 'lang' => 'es_CO',
             ],
+            // Alerta de inventario bajo (inventory:send-low-stock-alerts).
+            // Creada en Meta como 'low_stock_alert', es_CO, APPROVED. 3
+            // variables en el body: negocio, cantidad total, bloque de items
+            // urgentes - ver InventorySendLowStockAlerts::whatsappComponents().
+            'inventario_bajo' => [
+                'name' => 'low_stock_alert',
+                'lang' => 'es_CO',
+            ],
         ],
     ],
 

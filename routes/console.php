@@ -20,3 +20,5 @@ Schedule::command('inventory:send-low-stock-alerts')->dailyAt('08:00');
 Schedule::command('reminders:send-whatsapp-notifications')->everyFiveMinutes();
 Schedule::command('expenses:register-scheduled')->dailyAt('00:05');
 Schedule::command('notifications:send-daily-whatsapp-summary')->dailyAt('20:00');
+Schedule::command('businesses:send-trial-winback')->weeklyOn(1, '10:00');
+Schedule::command('businesses:warn-inactive-trial')->dailyAt('10:00');
