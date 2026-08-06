@@ -9,6 +9,7 @@ use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\User;
+use App\Support\ProductAvailability;
 use App\Support\SaleLineUnitPrice;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -78,7 +79,8 @@ class SaleService
     public function reverseSale(User $user, Sale $sale): void
     {
         DB::transaction(function () use ($user, $sale) {
-            $sale->loadMissing('items.product');
+            $ingredientsEnabled = $sale->business->hasFeature('ingredients');
+            $sale->loadMissing($ingredientsEnabled ? 'items.product.ingredients' : 'items.product');
 
             $receivable = Receivable::where('business_id', $sale->business_id)
                 ->where('sale_id', $sale->id)
@@ -94,6 +96,9 @@ class SaleService
                 $product = $item->product;
                 if ($product && $item->quantity > 0) {
                     $this->stockService->registerSaleReversal(
+                        $user, $product, (int) $item->quantity, $sale, 'Reverso de venta'
+                    );
+                    $this->stockService->restoreIngredientsConsumption(
                         $user, $product, (int) $item->quantity, $sale, 'Reverso de venta'
                     );
                 }
@@ -246,11 +251,13 @@ class SaleService
     public function applyItems(User $user, Sale $sale, Business $business, array $items): float
     {
         $discountsEnabled = $business->hasFeature('discounts');
+        $ingredientsEnabled = $business->hasFeature('ingredients');
         $total = 0.0;
 
         $productIds = collect($items)->pluck('product_id')->unique()->values()->all();
         $products = Product::where('business_id', $business->id)
             ->whereIn('id', $productIds)
+            ->when($ingredientsEnabled, fn ($query) => $query->with('ingredients'))
             ->lockForUpdate()
             ->get()
             ->keyBy('id');
@@ -258,10 +265,11 @@ class SaleService
         foreach ($items as $item) {
             $product = $products->get($item['product_id']);
             $quantity = (int) $item['quantity'];
+            $availableStock = ProductAvailability::effectiveStock($product, $ingredientsEnabled);
 
-            if ($product->track_stock && $quantity > $product->stock) {
+            if ($product->track_stock && $quantity > $availableStock) {
                 throw ValidationException::withMessages([
-                    'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $product->stock.').',
+                    'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $availableStock.').',
                 ]);
             }
 
@@ -287,11 +295,20 @@ class SaleService
 
             if ($product->track_stock) {
                 $this->stockService->registerSale($user, $product, $quantity, $sale);
+                $this->stockService->registerIngredientsConsumption($user, $product, $quantity, $sale);
+
                 // Ajuste en memoria (el movimiento ya persistio el cambio real en
                 // BD): si $items trae dos lineas del mismo producto, la siguiente
                 // vuelta del loop debe ver el stock ya descontado, no el que tenia
-                // $product al cargarlo bajo lockForUpdate().
-                $product->stock -= $quantity;
+                // $product al cargarlo bajo lockForUpdate(). Para un producto con
+                // receta se descuenta cada ingrediente en vez de products.stock.
+                if ($product->isStockManagedByIngredientsRecipe()) {
+                    foreach ($product->ingredients as $ingredient) {
+                        $ingredient->stock -= (float) $ingredient->pivot->quantity * $quantity;
+                    }
+                } else {
+                    $product->stock -= $quantity;
+                }
             }
 
             $total += $lineSubtotal - $discountAmount;

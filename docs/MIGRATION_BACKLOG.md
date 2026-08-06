@@ -44,18 +44,22 @@ se tacha en cuanto se construye, sin precondición de cutover.
 - ~~**Ingredientes/recetas**~~ ✅ Migrado (`Ingredient`, `Product::ingredients()`,
   `ProductAvailability::effectiveStock()`, `StockService::ingredientEntry/Exit/Adjust`,
   API en `/v1/ingredients` + `/v1/ingredient-stock-movements`).
-  `LowStockAlertReport` ya combina productos + ingredientes. **Sin portar
-  todavía**: el descuento de stock de ingredientes al VENDER un producto con
-  receta - `StockService::registerIngredientsConsumption/restoreIngredientsConsumption`
-  ya existen y quedan listos, pero `SaleService`/`OpenTabService` no los
-  llaman aún, y la validación de stock en `SaleService::applyItems()` sigue
-  mirando `product->stock` en vez de `ProductAvailability::effectiveStock()`
-  para productos con receta. Es un retrofit del flujo de ventas central -
-  amerita su propia sesión enfocada con pruebas dedicadas, no un añadido de
-  último momento. Tampoco se portó el CRUD de la receta en sí
-  (`ingredient_product` attach/sync) ni `PurchaseService` admitiendo líneas
-  de compra de ingrediente (`purchase_lines.ingredient_id` existe en el
-  schema compartido, sin usar).
+  `LowStockAlertReport` ya combina productos + ingredientes.
+- ~~**Retrofit del flujo de ventas para productos con receta**~~ ✅ Migrado:
+  `SaleService::applyItems/reverseSale` y `OpenTabService::syncItems/cancelOpenTab`
+  ahora llaman `registerIngredientsConsumption`/`restoreIngredientsConsumption`,
+  y la validación de stock disponible usa `ProductAvailability::effectiveStock()`
+  en vez de `product->stock` crudo para productos con receta.
+  `StockService::registerSale/registerSaleReversal` no mueven `products.stock`
+  cuando el producto es gestionado por receta (`isStockManagedByIngredientsRecipe()`).
+  **Sin portar todavía**: el mismo retrofit en `LayawayService` (apartados
+  reservan/liberan stock via `reserveForLayaway`/`releaseLayawayReservation`,
+  que siguen sin considerar recetas - un apartado de un producto con receta
+  hoy mueve `products.stock`, que es la columna "fantasma"). Tampoco se portó
+  el CRUD de la receta en sí (`ingredient_product` attach/sync desde el
+  endpoint de productos) ni `PurchaseService` admitiendo líneas de compra de
+  ingrediente (`purchase_lines.ingredient_id` existe en el schema compartido,
+  sin usar).
 - ~~**Reminders**~~ ✅ Migrado (`Reminder` + `ReminderService`, API en
   `/v1/reminders`). El `remindable` polimórfico existe en el modelo pero
   todavía no lo alimenta nada (los hooks desde Purchase/Supplier/

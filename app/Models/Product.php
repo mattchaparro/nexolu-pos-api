@@ -110,7 +110,11 @@ class Product extends Model
 
         $business = $this->relationLoaded('business') ? $this->business : Business::find($this->business_id);
 
-        return (bool) $business?->hasFeature('ingredients') && $this->ingredients()->exists();
+        if (! $business?->hasFeature('ingredients')) {
+            return false;
+        }
+
+        return $this->relationLoaded('ingredients') ? $this->ingredients->isNotEmpty() : $this->ingredients()->exists();
     }
 
     /**

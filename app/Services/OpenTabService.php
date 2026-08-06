@@ -10,6 +10,7 @@ use App\Models\SaleItem;
 use App\Models\SalePartialPayment;
 use App\Models\SalePaymentSplit;
 use App\Models\User;
+use App\Support\ProductAvailability;
 use App\Support\SaleLineUnitPrice;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -97,6 +98,7 @@ class OpenTabService
 
         return DB::transaction(function () use ($user, $sale, $items) {
             $business = $sale->business;
+            $ingredientsEnabled = $business->hasFeature('ingredients');
             $sale->loadMissing('items');
 
             $currentQtyByProduct = $sale->items
@@ -118,6 +120,7 @@ class OpenTabService
             $productIds = $currentQtyByProduct->keys()->merge($desiredQtyByProduct->keys())->unique()->values();
             $products = Product::where('business_id', $business->id)
                 ->whereIn('id', $productIds)
+                ->when($ingredientsEnabled, fn ($query) => $query->with('ingredients'))
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
@@ -134,14 +137,19 @@ class OpenTabService
                 }
 
                 if ($delta > 0) {
-                    if ($delta > $product->stock) {
+                    $availableStock = ProductAvailability::effectiveStock($product, $ingredientsEnabled);
+                    if ($delta > $availableStock) {
                         throw ValidationException::withMessages([
-                            'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $product->stock.').',
+                            'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $availableStock.').',
                         ]);
                     }
                     $this->stockService->registerSale($user, $product, $delta, $sale);
+                    $this->stockService->registerIngredientsConsumption($user, $product, $delta, $sale);
                 } else {
                     $this->stockService->registerSaleReversal(
+                        $user, $product, abs($delta), $sale, 'Reduccion de cantidad al sincronizar cuenta abierta'
+                    );
+                    $this->stockService->restoreIngredientsConsumption(
                         $user, $product, abs($delta), $sale, 'Reduccion de cantidad al sincronizar cuenta abierta'
                     );
                 }
@@ -358,11 +366,15 @@ class OpenTabService
                 ]);
             }
 
-            $sale->loadMissing('items.product');
+            $ingredientsEnabled = $sale->business->hasFeature('ingredients');
+            $sale->loadMissing($ingredientsEnabled ? 'items.product.ingredients' : 'items.product');
             foreach ($sale->items as $item) {
                 $product = $item->product;
                 if ($product && $item->quantity > 0) {
                     $this->stockService->registerSaleReversal(
+                        $user, $product, (int) $item->quantity, $sale, 'Cancelacion de cuenta abierta'
+                    );
+                    $this->stockService->restoreIngredientsConsumption(
                         $user, $product, (int) $item->quantity, $sale, 'Cancelacion de cuenta abierta'
                     );
                 }

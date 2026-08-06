@@ -71,11 +71,15 @@ class StockService
     /**
      * Descuenta stock por la venta de un item (venta directa o cuenta
      * abierta - ambas son Sale). No hace nada si el producto no rastrea
-     * stock, igual que el legacy.
+     * stock, igual que el legacy. Tampoco mueve products.stock si el
+     * producto gestiona su disponibilidad por receta (ver
+     * Product::isStockManagedByIngredientsRecipe()) - en ese caso quien
+     * llama debe usar registerIngredientsConsumption() en su lugar, esa
+     * columna es "fantasma" para un producto con receta.
      */
     public function registerSale(User $user, Product $product, int $quantity, Sale $sale): ?StockMovement
     {
-        if (! $product->track_stock) {
+        if (! $product->track_stock || $product->isStockManagedByIngredientsRecipe()) {
             return null;
         }
 
@@ -97,7 +101,7 @@ class StockService
      */
     public function registerSaleReversal(User $user, Product $product, int $quantity, Sale $sale, ?string $notes = null): ?StockMovement
     {
-        if (! $product->track_stock) {
+        if (! $product->track_stock || $product->isStockManagedByIngredientsRecipe()) {
             return null;
         }
 
