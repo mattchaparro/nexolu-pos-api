@@ -356,12 +356,32 @@ falta migración, solo el código.
   `Admin/KitchenBoardController` + `Employee/KitchenBoardController` listan
   tickets abiertos con sus items y permiten cambiar `pending/preparing/ready`
   por item o por venta completa. Nada de esto tiene endpoint acá todavía.
-- **Contabilidad gerencial (cierre de mes)**: módulo completo sin empezar.
-  `AccountingPeriodClosing` (tabla ya en el schema) + `ManagerialAccountingService::getMonthlyReport()`
-  arman un P&L mensual (ingresos vs gastos, resultado neto) por negocio con
-  un botón de "cerrar mes" que bloquea el período. No confundir con
-  `PlatformFinanceService` (ese es la plata de la plataforma SaaS, este es
-  la contabilidad del negocio cliente).
+- ~~**Contabilidad gerencial (cierre de mes)**~~ ✅ Migrado. `AccountingPeriodClosing`
+  (tabla ya existía en el schema, sin usar) + `App\Services\ManagerialAccountingService`
+  (`monthlyReport()`/`monthlyLines()`/`annualReport()`/`closeMonth()`, mismo
+  cálculo que legacy: ingresos = ventas directas cerradas no-credito
+  no-non-revenue + fiados cobrados + pagos de servicios; gastos = suma de
+  `expenses.value`; utilidad por producto usa `unit_cost_at_sale` congelado
+  al vender, no el costo actual, para que un mes ya cerrado no cambie solo
+  cuando entra una compra nueva - productos con costo $0 en el periodo van
+  aparte en `uncosted` en vez de mostrar un margen falso del 100%). No
+  confundir con `PlatformFinanceService` (esa es la plata de Nexolú como
+  plataforma SaaS; esta es la contabilidad del negocio cliente).
+  API: `GET /v1/accounting/monthly`, `GET /v1/accounting/annual`,
+  `GET /v1/accounting/closings`, `POST /v1/accounting/close-month`,
+  `GET /v1/accounting/monthly/export` (CSV, mismo patron de
+  `response()->streamDownload()` que `AuditLogController::export()` - sin
+  PDF: legacy lo generaba con una libreria propia que este repo no tiene
+  como dependencia, y agregar una nueva dependencia necesita aprobación).
+  Gateada por `feature:managerial_accounting` (la clave ya existía en
+  `BusinessFeaturePresets`, sin usar hasta ahora) + el permiso nuevo
+  `accounting.manage` (categoria "finanzas", `warning: true`): a diferencia
+  de legacy, que lo restringía a `role:admin` sin excepción, acá el admin
+  puede delegarlo a un empleado de confianza si quiere - el admin sigue
+  pasando siempre por rol.
+  **Pendiente para cuando se mejoren los reportes en general** (a proposito
+  fuera de esta pasada, ver items de abajo): esta pasada no toca
+  `Admin/ReportsController`/`InventoryReportsController`/`SupplierReportsController`.
 - **Reportes de ventas/inventario/proveedores**: 3 controladores grandes de
   legacy sin equivalente:
   - `Admin/ReportsController` (516 líneas): resumen diario, historial de

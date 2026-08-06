@@ -125,6 +125,13 @@ class PermissionCatalog
             'description' => 'Permite editar y eliminar cualquier gasto, no solo los propios.',
         ],
         [
+            'name' => 'accounting.manage',
+            'category' => 'finanzas',
+            'label' => 'Contabilidad gerencial',
+            'description' => 'Permite ver el P&L mensual/anual del negocio (ingresos, gastos, utilidad) y cerrar el mes contable. Otorgar con cuidado: expone la rentabilidad completa del negocio.',
+            'warning' => true,
+        ],
+        [
             'name' => 'reports.sales',
             'category' => 'reportes',
             'label' => 'Reportes de ventas',

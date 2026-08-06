@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AiToolCatalogController;
 use App\Http\Controllers\Api\AiToolInvokeController;
 use App\Http\Controllers\Api\PaymentsCoreWebhookController;
+use App\Http\Controllers\Api\V1\AccountingController;
 use App\Http\Controllers\Api\V1\AiChannelLinkController;
 use App\Http\Controllers\Api\V1\AiChatController;
 use App\Http\Controllers\Api\V1\AiDraftController;
@@ -238,6 +239,14 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::prefix('superadmin')->name('superadmin.')->middleware('superadmin')->group(function () {
             require __DIR__.'/superadmin.php';
+        });
+
+        Route::middleware(['feature:managerial_accounting', 'permission:accounting.manage'])->prefix('accounting')->name('accounting.')->group(function () {
+            Route::get('/monthly', [AccountingController::class, 'monthly'])->name('monthly');
+            Route::get('/monthly/export', [AccountingController::class, 'exportMonthly'])->name('monthly.export');
+            Route::get('/annual', [AccountingController::class, 'annual'])->name('annual');
+            Route::get('/closings', [AccountingController::class, 'closings'])->name('closings');
+            Route::post('/close-month', [AccountingController::class, 'closeMonth'])->name('close-month');
         });
 
         Route::middleware('feature:cash_closing')->group(function () {
