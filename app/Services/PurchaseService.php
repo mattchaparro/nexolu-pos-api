@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Expense;
 use App\Models\ExpenseType;
+use App\Models\Ingredient;
 use App\Models\Product;
 use App\Models\ProductCostHistory;
 use App\Models\Purchase;
@@ -11,24 +12,24 @@ use App\Models\PurchaseLine;
 use App\Models\PurchasePayment;
 use App\Models\User;
 use App\Support\WeightedAverageCost;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
  * Registro de compras a proveedores: cada linea entra al inventario (via
- * StockService::registerPurchase, con purchase_line_id para trazabilidad) y
- * actualiza el costo promedio ponderado del producto. Solo lineas de
- * producto por ahora - purchase_lines.ingredient_id existe en el schema
- * compartido (igual que en legacy) pero esta clase todavia no lo admite;
- * mientras tanto, una entrada de stock de ingrediente se registra por
- * separado via StockService::ingredientEntry() (ver IngredientStockMovementController).
+ * StockService::registerPurchase/registerIngredientPurchase, con
+ * purchase_line_id para trazabilidad) y actualiza el costo promedio
+ * ponderado del producto o ingrediente. Cada linea es de producto O de
+ * ingrediente, nunca ambos - mismas columnas mutuamente excluyentes que
+ * StockMovement (ver StorePurchaseRequest para la validacion de esa regla).
  */
 class PurchaseService
 {
     public function __construct(private StockService $stockService) {}
 
     /**
-     * @param  array{supplier_id?: ?int, purchased_at: string, invoice_number?: ?string, notes?: ?string, is_credit?: bool, create_expense?: bool, expense_payment_method?: ?string, lines: array<int, array{product_id: int, quantity: int, line_total_cop: float|int, notes?: ?string}>}  $data
+     * @param  array{supplier_id?: ?int, purchased_at: string, invoice_number?: ?string, notes?: ?string, is_credit?: bool, create_expense?: bool, expense_payment_method?: ?string, lines: array<int, array{product_id?: ?int, ingredient_id?: ?int, quantity: float|int, line_total_cop: float|int, notes?: ?string}>}  $data
      */
     public function registerPurchase(User $user, array $data): Purchase
     {
@@ -57,62 +58,52 @@ class PurchaseService
                 'paid_at' => $isPaidUpfront ? $data['purchased_at'] : null,
             ]);
 
-            $productIds = collect($lines)->pluck('product_id')->unique()->values()->all();
+            $productIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->all();
             $products = Product::where('business_id', $business->id)
                 ->whereIn('id', $productIds)
+                ->with('ingredients:id')
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
 
-            // Stock acumulado DENTRO de esta compra, por producto - aparte del
-            // atributo Eloquent para que una segunda linea del mismo producto
-            // vea el stock ya sumado por la primera al calcular el costo
-            // promedio, sin arriesgarse a que ese valor viaje "de colado" en
-            // un update() posterior y pise el incremento real que el
-            // StockMovement ya aplico en la BD por SQL directo.
-            $stockTracker = [];
+            $ingredientIds = collect($lines)->pluck('ingredient_id')->filter()->unique()->values()->all();
+            $ingredients = Ingredient::where('business_id', $business->id)
+                ->whereIn('id', $ingredientIds)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            // Stock acumulado DENTRO de esta compra, por producto/ingrediente -
+            // aparte del atributo Eloquent para que una segunda linea del
+            // mismo item vea el stock ya sumado por la primera al calcular el
+            // costo promedio, sin arriesgarse a que ese valor viaje "de
+            // colado" en un update() posterior y pise el incremento real que
+            // el StockMovement ya aplico en la BD por SQL directo.
+            $productStockTracker = [];
+            $ingredientStockTracker = [];
+            /** @var Collection<int, Ingredient> $ingredientsToSync */
+            $ingredientsToSync = collect();
 
             foreach ($lines as $i => $row) {
-                $product = $products->get($row['product_id']);
-                if (! $product) {
-                    throw ValidationException::withMessages(["lines.{$i}.product_id" => 'Producto no encontrado.']);
-                }
-                if ($product->is_single_sale) {
-                    throw ValidationException::withMessages(["lines.{$i}.product_id" => 'No se compra stock de artículos de venta única: «'.$product->name.'».']);
-                }
-
-                $quantity = (int) $row['quantity'];
                 $lineTotal = round((float) $row['line_total_cop'], 2);
-                $unitCost = round($lineTotal / $quantity, 4);
 
-                $line = PurchaseLine::create([
-                    'purchase_id' => $purchase->id,
-                    'product_id' => $product->id,
-                    'quantity' => $quantity,
-                    'line_total_cop' => $lineTotal,
-                    'unit_cost_cop' => $unitCost,
-                    'notes' => $row['notes'] ?? null,
-                ]);
-
-                $this->stockService->registerPurchase($user, $product, $quantity, $line, $unitCost);
-
-                $prevStock = $stockTracker[$product->id] ?? (float) $product->stock;
-                $prevCost = (float) $product->cost_price;
-                $newCost = WeightedAverageCost::calculate($prevStock, $prevCost, $quantity, $unitCost);
-
-                $product->update(['cost_price' => $newCost]);
-                $stockTracker[$product->id] = $prevStock + $quantity;
-
-                ProductCostHistory::create([
-                    'business_id' => $business->id,
-                    'product_id' => $product->id,
-                    'cost_before' => $prevCost,
-                    'cost_after' => $newCost,
-                    'source' => ProductCostHistory::SOURCE_PURCHASE,
-                    'purchase_id' => $purchase->id,
-                    'user_id' => $user->id,
-                ]);
+                if (! empty($row['product_id'])) {
+                    $productStockTracker = $this->applyProductLine(
+                        $user, $purchase, $products, (int) $row['product_id'], $row, $lineTotal, $i, $productStockTracker
+                    );
+                } else {
+                    [$ingredientStockTracker, $ingredient] = $this->applyIngredientLine(
+                        $user, $purchase, $ingredients, (int) ($row['ingredient_id'] ?? 0), $row, $lineTotal, $i, $ingredientStockTracker
+                    );
+                    $ingredientsToSync->put($ingredient->id, $ingredient);
+                }
             }
+
+            // Propagar el costo a los productos con receta DESPUES del loop,
+            // una vez por ingrediente tocado - no por cada linea (evita
+            // resincronizar el mismo producto N veces si la compra trae
+            // varias lineas del mismo insumo).
+            $ingredientsToSync->each(fn (Ingredient $ingredient) => $ingredient->syncLinkedProductCosts());
 
             if (! empty($data['create_expense'])) {
                 $total = round(collect($lines)->sum(fn ($l) => (float) $l['line_total_cop']), 2);
@@ -123,8 +114,96 @@ class PurchaseService
                 );
             }
 
-            return $purchase->load('lines.product', 'supplier');
+            return $purchase->load('lines.product', 'lines.ingredient', 'supplier');
         });
+    }
+
+    /**
+     * @param  Collection<int, Product>  $products
+     * @param  array{quantity: float|int, notes?: ?string}  $row
+     * @return array<int, float>
+     */
+    private function applyProductLine(User $user, Purchase $purchase, Collection $products, int $productId, array $row, float $lineTotal, int $i, array $stockTracker): array
+    {
+        $product = $products->get($productId);
+        if (! $product) {
+            throw ValidationException::withMessages(["lines.{$i}.product_id" => 'Producto no encontrado.']);
+        }
+        if ($product->is_single_sale) {
+            throw ValidationException::withMessages(["lines.{$i}.product_id" => 'No se compra stock de artículos de venta única: «'.$product->name.'».']);
+        }
+        if ($product->track_stock && ! $product->is_service && $product->ingredients->isNotEmpty()) {
+            throw ValidationException::withMessages(["lines.{$i}.product_id" => 'Este producto usa inventario por receta (insumos): compra los ingredientes, no «'.$product->name.'».']);
+        }
+
+        $quantity = (int) round((float) $row['quantity']);
+        $unitCost = round($lineTotal / $quantity, 4);
+
+        $line = PurchaseLine::create([
+            'purchase_id' => $purchase->id,
+            'product_id' => $product->id,
+            'quantity' => $quantity,
+            'line_total_cop' => $lineTotal,
+            'unit_cost_cop' => $unitCost,
+            'notes' => $row['notes'] ?? null,
+        ]);
+
+        $this->stockService->registerPurchase($user, $product, $quantity, $line, $unitCost);
+
+        $prevStock = $stockTracker[$product->id] ?? (float) $product->stock;
+        $prevCost = (float) $product->cost_price;
+        $newCost = WeightedAverageCost::calculate($prevStock, $prevCost, $quantity, $unitCost);
+
+        $product->update(['cost_price' => $newCost]);
+        $stockTracker[$product->id] = $prevStock + $quantity;
+
+        ProductCostHistory::create([
+            'business_id' => $product->business_id,
+            'product_id' => $product->id,
+            'cost_before' => $prevCost,
+            'cost_after' => $newCost,
+            'source' => ProductCostHistory::SOURCE_PURCHASE,
+            'purchase_id' => $purchase->id,
+            'user_id' => $user->id,
+        ]);
+
+        return $stockTracker;
+    }
+
+    /**
+     * @param  Collection<int, Ingredient>  $ingredients
+     * @param  array{quantity: float|int, notes?: ?string}  $row
+     * @return array{0: array<int, float>, 1: Ingredient}
+     */
+    private function applyIngredientLine(User $user, Purchase $purchase, Collection $ingredients, int $ingredientId, array $row, float $lineTotal, int $i, array $stockTracker): array
+    {
+        $ingredient = $ingredients->get($ingredientId);
+        if (! $ingredient) {
+            throw ValidationException::withMessages(["lines.{$i}.ingredient_id" => 'Ingrediente no encontrado.']);
+        }
+
+        $quantity = round((float) $row['quantity'], 4);
+        $unitCost = round($lineTotal / $quantity, 4);
+
+        $line = PurchaseLine::create([
+            'purchase_id' => $purchase->id,
+            'ingredient_id' => $ingredient->id,
+            'quantity' => $quantity,
+            'line_total_cop' => $lineTotal,
+            'unit_cost_cop' => $unitCost,
+            'notes' => $row['notes'] ?? null,
+        ]);
+
+        $this->stockService->registerIngredientPurchase($user, $ingredient, $quantity, $line, $unitCost);
+
+        $prevStock = $stockTracker[$ingredient->id] ?? (float) $ingredient->stock;
+        $prevCost = (float) $ingredient->cost_price;
+        $newCost = WeightedAverageCost::calculate($prevStock, $prevCost, $quantity, $unitCost);
+
+        $ingredient->update(['cost_price' => $newCost]);
+        $stockTracker[$ingredient->id] = $prevStock + $quantity;
+
+        return [$stockTracker, $ingredient];
     }
 
     /**

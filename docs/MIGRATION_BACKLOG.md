@@ -64,9 +64,20 @@ se tacha en cuanto se construye, sin precondición de cutover.
   como núcleo compartido de las 4 variantes de movimiento de ingredientes
   (venta/reverso/reserva de apartado/liberación de apartado - antes las dos
   de venta duplicaban el mismo bucle "un `StockMovement` por ingrediente").
-  Sigue pendiente: `PurchaseService` admitiendo líneas de compra de
-  ingrediente (`purchase_lines.ingredient_id` existe en el schema
-  compartido, sin usar).
+  ~~Sigue pendiente: `PurchaseService` admitiendo líneas de compra de
+  ingrediente~~ ✅ Migrado: una línea de `POST /v1/purchases` ahora es de
+  producto O de ingrediente (nunca ambos ni ninguno - validado en
+  `StorePurchaseRequest::validateLineItemRules()`, mismas columnas
+  mutuamente excluyentes que `stock_movements`). Nueva
+  `StockService::registerIngredientPurchase()` (análoga a `registerPurchase()`
+  de producto, con `purchase_line_id` para trazabilidad);
+  `PurchaseService` recalcula el costo promedio ponderado del ingrediente
+  y propaga el nuevo costo a los productos con receta que lo usan
+  (`Ingredient::syncLinkedProductCosts()`, una vez por ingrediente tocado
+  tras el loop, no por línea). Rechaza comprar un producto que ya gestiona
+  su stock por receta ("compra los ingredientes, no el producto terminado"),
+  igual que el legacy. Con esto queda cerrado por completo el retrofit de
+  Ingredientes/recetas iniciado en este backlog.
 - ~~**CRUD de la receta desde el endpoint de productos**~~ ✅ Migrado: igual
   que el legacy, `ingredients` (`[{ingredient_id, quantity}]`) viaja como
   parte del payload de `POST`/`PUT /v1/products`, no por un endpoint aparte -

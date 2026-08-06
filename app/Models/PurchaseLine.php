@@ -8,11 +8,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * Solo lineas de producto por ahora - el legacy tambien admite ingredient_id
- * (inventario por receta), pero ese modulo (Ingredient, ingredient_product,
- * Product::ingredients()) todavia no existe en esta API. La columna
- * ingredient_id sigue existiendo en la tabla compartida pero esta API nunca
- * la usa.
+ * Una linea de compra es de producto O de ingrediente, nunca ambos (mismas
+ * columnas mutuamente excluyentes que StockMovement) - ver
+ * PurchaseService::registerPurchase().
  */
 class PurchaseLine extends Model
 {
@@ -21,6 +19,7 @@ class PurchaseLine extends Model
     protected $fillable = [
         'purchase_id',
         'product_id',
+        'ingredient_id',
         'quantity',
         'line_total_cop',
         'unit_cost_cop',
@@ -44,6 +43,11 @@ class PurchaseLine extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function ingredient(): BelongsTo
+    {
+        return $this->belongsTo(Ingredient::class);
     }
 
     public function stockMovements(): HasMany

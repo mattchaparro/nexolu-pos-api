@@ -190,6 +190,27 @@ class StockService
     }
 
     /**
+     * Igual que registerPurchase(), para una linea de compra de ingrediente
+     * (insumo). Los ajustes de costo promedio ponderado + propagacion a
+     * productos con receta los hace PurchaseService, no este metodo - el
+     * mismo reparto de responsabilidades que ya tiene el lado de producto.
+     */
+    public function registerIngredientPurchase(User $user, Ingredient $ingredient, float $quantity, PurchaseLine $line, float $unitCostCop): StockMovement
+    {
+        return StockMovement::create([
+            'ingredient_id' => $ingredient->id,
+            'business_id' => $ingredient->business_id,
+            'type' => StockMovement::TYPE_ENTRY,
+            'stock_movement_reason_id' => StockMovementReason::systemIdForCode(StockMovementReason::CODE_PURCHASE),
+            'purchase_line_id' => $line->id,
+            'quantity' => abs($quantity),
+            'unit_cost_cop' => $unitCostCop,
+            'reference' => "Compra #{$line->purchase_id}",
+            'user_id' => $user->id,
+        ]);
+    }
+
+    /**
      * Entrada manual de stock de un ingrediente (reposicion, compra suelta).
      * Si viene $unitCostCop, recalcula el costo promedio ponderado del
      * ingrediente y lo propaga a las recetas que lo usan.
