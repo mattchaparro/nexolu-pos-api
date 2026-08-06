@@ -335,6 +335,85 @@ con el modelo `Business`.
     esa comisión no es un gasto que esta plataforma pague - decisión ya
     tomada antes, no una omisión nueva.
 
+## Módulos de legacy que todavía NO se han empezado a migrar
+
+Encontrados el 2026-08-06 al comparar modelos/controladores de `pos-saas-legacy`
+contra este repo (no habían salido antes porque hasta ahora se venía trabajando
+módulo por módulo desde los jobs programados, no desde un inventario completo).
+Todos tienen datos ya presentes en `schema.sql` (compartido), así que no hace
+falta migración, solo el código.
+
+- **Clientes frecuentes (`customers`)**: tabla `customers` (`visits_count`,
+  `total_spent`, `last_sale_at`) ya existe en el schema, distinta de `clients`
+  (el directorio CRM que sí se migró). En legacy, `SaleService::syncCustomerProfile()`
+  la alimenta automáticamente desde `sale.customer_name/phone/identification`
+  cada vez que una venta cierra - acá esos 3 campos ya se guardan en `sales`
+  (`app/Models/Sale.php`), pero nunca se agregan a un perfil de cliente
+  recurrente. No hay modelo `Customer`, ni hook en `SaleService`, ni endpoint.
+- **Kitchen Board (comandas de cocina)**: `sale_items.kitchen_status`/
+  `kitchen_updated_at` (y las mismas 2 columnas en `sales`) existen en el
+  schema pero el `SaleItem`/`Sale` de este repo no las tocan. En legacy,
+  `Admin/KitchenBoardController` + `Employee/KitchenBoardController` listan
+  tickets abiertos con sus items y permiten cambiar `pending/preparing/ready`
+  por item o por venta completa. Nada de esto tiene endpoint acá todavía.
+- **Contabilidad gerencial (cierre de mes)**: módulo completo sin empezar.
+  `AccountingPeriodClosing` (tabla ya en el schema) + `ManagerialAccountingService::getMonthlyReport()`
+  arman un P&L mensual (ingresos vs gastos, resultado neto) por negocio con
+  un botón de "cerrar mes" que bloquea el período. No confundir con
+  `PlatformFinanceService` (ese es la plata de la plataforma SaaS, este es
+  la contabilidad del negocio cliente).
+- **Reportes de ventas/inventario/proveedores**: 3 controladores grandes de
+  legacy sin equivalente:
+  - `Admin/ReportsController` (516 líneas): resumen diario, historial de
+    ventas, ventas por vendedor + exports CSV/PDF. Las capabilities de IA ya
+    cubren un subconjunto (`sales summary/by-day`), pero no hay endpoint de
+    reporte dedicado ni exports.
+  - `Admin/InventoryReportsController` (486 líneas): márgenes por producto,
+    valorización de inventario + exports.
+  - `Admin/SupplierReportsController`: historial de compras filtrable por
+    proveedor/producto con totales - los datos crudos ya están en
+    `GET /v1/purchases`, pero no el endpoint de reporte agregado.
+- **Silenciar alertas de inventario bajo (`NotificationSnoozeController`)**:
+  el campo `low_stock_snoozed_until` en `Business` ya se **lee** (lo respeta
+  `InventorySendLowStockAlerts`), pero no hay ningún endpoint en esta API que
+  lo **escriba** - hoy no existe forma de activar el silencio desde acá. En
+  legacy es un link firmado que va directo en el correo de alerta, sin login.
+- **Login social (Google OAuth)**: `SocialController` (`auth/google`,
+  `auth/google/callback`) no tiene equivalente - hoy `POST /v1/login` es
+  únicamente usuario/contraseña vía Sanctum.
+- **Ajustes de IA a nivel superadmin**: `SuperAdmin/AiSettingsController`
+  (cupo mensual incluido, tamaño/precio del paquete adicional, lista de
+  negocios con `ai_chat_blocked`) y `SuperAdmin/AiUsageController` (uso de IA
+  detallado por negocio) no se portaron. Parcialmente cubierto por
+  `AiPlatformUsageService` (solo total de plataforma, no por negocio) - hay
+  que decidir si esto sigue viviendo acá o si migra a ajustes propios del IA
+  Core, ya que ese servicio ahora es quien de verdad cobra/limita.
+- **Log de corridas de jobs programados (`CronJobLog`)**: legacy registra
+  cada corrida de sus comandos programados (éxito/fallo/salida) en una tabla
+  propia con un viewer en `SuperAdmin/CronJobsController`. Acá no hay
+  equivalente - los jobs migrados no dejan rastro de si corrieron o fallaron
+  más allá de los logs de Laravel.
+- **Preguntas sin responder del chat de IA (`AiUnansweredQuestion`)**: en
+  legacy, `AiChatService` registra las preguntas que el modelo no pudo
+  responder. Con el chat viviendo en `nexolu-ia-core`, esto probablemente
+  debería migrar allá en vez de acá - falta confirmar si el IA Core ya tiene
+  algo parecido antes de decidir.
+
+**Revisado y confirmado que NO son gaps** (ya cubiertos por otro lado o
+código muerto):
+
+- `Admin/InvoiceController`/`LayawayInvoiceController`/`ServiceOrderInvoiceController`:
+  solo renderizan una vista imprimible sobre datos que ya existen - trabajo
+  del futuro frontend, no de la API.
+- `Payment`/`PaymentLink`/`PaymentMethod`/`PaymentProvider`/`WompiWebhookController`:
+  reemplazados por Nexolu Payments Core (ya migrado).
+- `AiConversation`/`AiDraft`/`AiMessage`/`AiUsageDaily`: viven en Nexolu IA
+  Core, no en el POS.
+- `Role` (modelo propio con pivot `role_user`): reemplazado por Spatie
+  Permission (ya instalado desde el inicio de esta migración).
+- `SaasLead`: sin ningún uso en controllers/services del propio legacy -
+  código muerto ahí también, no vale la pena portarlo.
+
 ## Deuda dejada a propósito en el módulo Reminders
 
 - ~~**Hooks polimórficos de otros módulos**~~ ✅ Migrado por completo: en
