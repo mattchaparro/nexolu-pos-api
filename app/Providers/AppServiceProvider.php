@@ -3,6 +3,10 @@
 namespace App\Providers;
 
 use App\Listeners\LogSentEmail;
+use App\Services\WhatsApp\Contracts\ChannelOtpSender;
+use App\Services\WhatsApp\LogChannelOtpSender;
+use App\Services\WhatsApp\WhatsAppCloudClient;
+use App\Services\WhatsApp\WhatsAppOtpSender;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Support\Carbon;
@@ -16,7 +20,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Sin credenciales de WhatsApp (local/testing), el OTP de vinculacion
+        // cae a un emisor que solo loguea - nunca a un intento de envio real
+        // que va a fallar igual.
+        $this->app->bind(ChannelOtpSender::class, function ($app) {
+            return $app->make(WhatsAppCloudClient::class)->isConfigured()
+                ? $app->make(WhatsAppOtpSender::class)
+                : $app->make(LogChannelOtpSender::class);
+        });
     }
 
     /**

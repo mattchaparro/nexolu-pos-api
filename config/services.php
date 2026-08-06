@@ -43,4 +43,30 @@ return [
         'base_url' => env('IA_CORE_BASE_URL', 'http://localhost:8000'),
     ],
 
+    // WhatsApp Cloud API (asistente IA omnichannel). verify_token valida el
+    // webhook (GET), access_token/phone_number_id son para ENVIAR (Graph
+    // API) - credenciales distintas, no se derivan una de la otra.
+    'whatsapp' => [
+        'verify_token' => env('WHATSAPP_VERIFY_TOKEN'),
+        'access_token' => env('WHATSAPP_ACCESS_TOKEN'),
+        'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
+        'graph_version' => env('WHATSAPP_GRAPH_VERSION', 'v25.0'),
+
+        // Plantillas aprobadas en Meta: no son secretos, cambian poco y son
+        // las mismas en todo ambiente, por eso van hardcodeadas y no en env.
+        'templates' => [
+            'otp' => [
+                'name' => 'verify_whatsapp_in_business',
+                'lang' => 'es',
+                'has_button' => true,
+            ],
+            'welcome' => [
+                'name' => 'welcome_whatsapp_linked',
+                'lang' => 'es_CO',
+                'var' => null,
+                'var_max' => 60,
+            ],
+        ],
+    ],
+
 ];

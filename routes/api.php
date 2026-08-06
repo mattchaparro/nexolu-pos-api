@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AiToolCatalogController;
 use App\Http\Controllers\Api\AiToolInvokeController;
+use App\Http\Controllers\Api\V1\AiChannelLinkController;
 use App\Http\Controllers\Api\V1\AiChatController;
 use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\SupportTicketController;
+use App\Http\Controllers\Api\WhatsappWebhookController;
 use Illuminate\Support\Facades\Route;
 
 // Fuera del prefijo v1 a proposito: el contrato con Nexolu IA Core (repo
@@ -40,6 +42,11 @@ Route::get('/ai/tools/catalog', [AiToolCatalogController::class, 'index'])
     ->middleware('ia-core.key')
     ->name('ai.tools.catalog');
 
+// Publico, sin auth: Meta llama a este endpoint directamente (GET para
+// verificar el webhook al configurarlo, POST para entregar mensajes/eventos).
+Route::get('/webhooks/whatsapp', [WhatsappWebhookController::class, 'verify'])->name('webhooks.whatsapp.verify');
+Route::post('/webhooks/whatsapp', [WhatsappWebhookController::class, 'handle'])->name('webhooks.whatsapp.handle');
+
 Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::post('/register', [AuthController::class, 'register'])->name('register');
     Route::post('/login', [AuthController::class, 'login'])->name('login');
@@ -49,6 +56,12 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('/me', [AuthController::class, 'me'])->name('me');
 
         Route::post('/ai/chat', [AiChatController::class, 'send'])->name('ai.chat');
+
+        Route::middleware('permission:ai_chat.use')->prefix('ai/channels/whatsapp')->name('ai.channels.whatsapp.')->group(function () {
+            Route::post('/start', [AiChannelLinkController::class, 'start'])->middleware('throttle:5,1')->name('start');
+            Route::post('/confirm', [AiChannelLinkController::class, 'confirm'])->middleware('throttle:10,1')->name('confirm');
+            Route::delete('/', [AiChannelLinkController::class, 'unlink'])->name('unlink');
+        });
 
         Route::get('/business', [BusinessController::class, 'show'])->name('business.show');
         Route::put('/business', [BusinessController::class, 'update'])->name('business.update');
