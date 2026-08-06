@@ -66,6 +66,20 @@ class BusinessesController extends Controller
             };
         }
 
+        // Sin actividad hace X dias: ningun LogAction del negocio despues del
+        // umbral (o ninguno jamas - un negocio que nunca genero actividad es
+        // el caso mas inactivo de todos, no debe quedar afuera del filtro).
+        if ($request->filled('inactive_days')) {
+            $threshold = now()->subDays($request->integer('inactive_days'));
+
+            $query->whereNotExists(function ($q) use ($threshold) {
+                $q->selectRaw('1')
+                    ->from('log_actions')
+                    ->whereColumn('log_actions.business_id', 'businesses.id')
+                    ->where('log_actions.created_at', '>=', $threshold);
+            });
+        }
+
         $businesses = $query->latest()->paginate(20)->withQueryString();
         $this->attachAdminUsers($businesses->getCollection());
         $this->attachLastActivity($businesses->getCollection());

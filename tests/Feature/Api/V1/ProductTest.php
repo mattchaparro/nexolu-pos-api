@@ -18,6 +18,7 @@ class ProductTest extends TestCase
         $business = Business::factory()->create();
         $otherBusiness = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         Product::factory()->count(2)->create(['business_id' => $business->id]);
         Product::factory()->create(['business_id' => $otherBusiness->id]);
@@ -32,6 +33,7 @@ class ProductTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $category = ProductCategory::factory()->create(['business_id' => $business->id]);
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/products', [
@@ -55,6 +57,7 @@ class ProductTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $category = ProductCategory::factory()->create(['business_id' => $business->id]);
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/products', [
@@ -77,6 +80,7 @@ class ProductTest extends TestCase
 
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->postJson('/api/v1/products', [
@@ -94,6 +98,7 @@ class ProductTest extends TestCase
 
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->getJson("/api/v1/products/{$product->id}")
@@ -104,6 +109,7 @@ class ProductTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         Product::factory()->create(['business_id' => $business->id, 'sku' => 'PROD-999']);
         $category = ProductCategory::factory()->create(['business_id' => $business->id]);
 
@@ -121,6 +127,7 @@ class ProductTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 1000]);
 
         $this->actingAs($user, 'sanctum')
@@ -135,6 +142,7 @@ class ProductTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id]);
 
         $this->actingAs($user, 'sanctum')
@@ -152,6 +160,7 @@ class ProductTest extends TestCase
         // ya tenian su valor por defecto.
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $category = ProductCategory::factory()->create(['business_id' => $business->id]);
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/products', [

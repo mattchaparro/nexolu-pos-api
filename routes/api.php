@@ -67,29 +67,55 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::patch('/employees/{employee}/toggle', [EmployeeController::class, 'toggle'])->name('employees.toggle');
         Route::apiResource('employees', EmployeeController::class)->only(['index', 'store', 'update', 'destroy']);
 
-        Route::apiResource('product-categories', ProductCategoryController::class);
-        Route::apiResource('products', ProductController::class);
+        // inventory.view para leer el catalogo, inventory.add para tocarlo -
+        // ver PermissionCatalog. apiResource se parte en dos registros con
+        // ->only() distinto en vez de uno solo, para poder colgar cada mitad
+        // de un middleware de permiso diferente.
+        Route::middleware('permission:inventory.view')->group(function () {
+            Route::apiResource('product-categories', ProductCategoryController::class)->only(['index', 'show']);
+            Route::apiResource('products', ProductController::class)->only(['index', 'show']);
+        });
+        Route::middleware('permission:inventory.add')->group(function () {
+            Route::apiResource('product-categories', ProductCategoryController::class)->only(['store', 'update', 'destroy']);
+            Route::apiResource('products', ProductController::class)->only(['store', 'update', 'destroy']);
+        });
 
-        Route::middleware('feature:clients')->group(function () {
+        Route::middleware(['feature:clients', 'permission:clients.manage'])->group(function () {
             Route::get('/clients/search', [ClientController::class, 'search'])->name('clients.search');
             Route::apiResource('clients', ClientController::class);
         });
 
         Route::middleware('can-access-purchases')->group(function () {
-            Route::apiResource('suppliers', SupplierController::class);
-            Route::apiResource('stock-movements', StockMovementController::class)->only(['index', 'store']);
+            Route::middleware('permission:purchases.manage')->group(function () {
+                Route::apiResource('suppliers', SupplierController::class);
 
-            Route::post('/purchases/{purchase}/pay', [PurchaseController::class, 'pay'])->name('purchases.pay');
-            Route::apiResource('purchases', PurchaseController::class)->only(['index', 'show', 'store']);
+                Route::post('/purchases/{purchase}/pay', [PurchaseController::class, 'pay'])->name('purchases.pay');
+                Route::apiResource('purchases', PurchaseController::class)->only(['index', 'show', 'store']);
+            });
+
+            Route::middleware('permission:inventory.adjust')->group(function () {
+                Route::apiResource('stock-movements', StockMovementController::class)->only(['index', 'store']);
+            });
         });
 
         Route::middleware('feature:expenses')->group(function () {
-            Route::get('/expense-types', [ExpenseTypeController::class, 'index'])->name('expense-types.index');
-            Route::post('/expense-types', [ExpenseTypeController::class, 'store'])->name('expense-types.store');
-            Route::apiResource('expenses', ExpenseController::class);
+            // expenses.create alcanza para crear y para ver (necesita ver el
+            // listado para no duplicar un gasto); expenses.manage es lo unico
+            // que habilita editar/eliminar cualquiera, no solo el propio.
+            Route::middleware('permission:expenses.create,expenses.manage')->group(function () {
+                Route::get('/expense-types', [ExpenseTypeController::class, 'index'])->name('expense-types.index');
+                Route::apiResource('expenses', ExpenseController::class)->only(['index', 'show']);
+            });
+            Route::middleware('permission:expenses.create')->group(function () {
+                Route::apiResource('expenses', ExpenseController::class)->only(['store']);
+            });
+            Route::middleware('permission:expenses.manage')->group(function () {
+                Route::post('/expense-types', [ExpenseTypeController::class, 'store'])->name('expense-types.store');
+                Route::apiResource('expenses', ExpenseController::class)->only(['update', 'destroy']);
+            });
         });
 
-        Route::middleware('feature:discounts')->group(function () {
+        Route::middleware(['feature:discounts', 'permission:discounts.manage'])->group(function () {
             Route::apiResource('discounts', DiscountController::class);
         });
 
@@ -113,12 +139,12 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::post('/open-tabs/{sale}/close', [OpenTabController::class, 'close'])->name('open-tabs.close');
         });
 
-        Route::middleware('feature:receivables')->group(function () {
+        Route::middleware(['feature:receivables', 'permission:receivables.manage'])->group(function () {
             Route::post('/receivables/{receivable}/collect', [ReceivableController::class, 'collect'])->name('receivables.collect');
             Route::apiResource('receivables', ReceivableController::class)->only(['index', 'show']);
         });
 
-        Route::middleware('feature:layaway')->group(function () {
+        Route::middleware(['feature:layaway', 'permission:layaways.manage'])->group(function () {
             Route::post('/layaways/{layaway}/payments', [LayawayController::class, 'storePayment'])->name('layaways.payments.store');
             Route::put('/layaways/{layaway}/items', [LayawayController::class, 'updateItems'])->name('layaways.items.update');
             Route::post('/layaways/{layaway}/complete', [LayawayController::class, 'complete'])->name('layaways.complete');
@@ -126,7 +152,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::apiResource('layaways', LayawayController::class)->only(['index', 'show', 'store']);
         });
 
-        Route::middleware('feature:services')->group(function () {
+        Route::middleware(['feature:services', 'permission:appointments.manage'])->group(function () {
             Route::post('/service-orders/{serviceOrder}/pay', [ServiceOrderController::class, 'pay'])->name('service-orders.pay');
             Route::post('/service-orders/{serviceOrder}/cancel', [ServiceOrderController::class, 'cancel'])->name('service-orders.cancel');
             // parameters(): el nombre que apiResource() deriva de 'service-orders'
@@ -147,19 +173,26 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         });
 
         Route::middleware('feature:cash_closing')->group(function () {
-            Route::get('/cash-shifts/current', [CashShiftController::class, 'current'])->name('cash-shifts.current');
-            Route::post('/cash-shifts/{cashShift}/close', [CashShiftController::class, 'close'])->name('cash-shifts.close');
-            // parameters(): mismo bug de siempre - 'cash-shifts' derivaria el
-            // parametro 'cash_shift', que no coincide con CashShift $cashShift.
-            Route::apiResource('cash-shifts', CashShiftController::class)
-                ->only(['index', 'store', 'update', 'destroy'])
-                ->parameters(['cash-shifts' => 'cashShift']);
+            Route::middleware('permission:cash_shift.manage')->group(function () {
+                Route::get('/cash-shifts/current', [CashShiftController::class, 'current'])->name('cash-shifts.current');
+                Route::post('/cash-shifts/{cashShift}/close', [CashShiftController::class, 'close'])->name('cash-shifts.close');
+                // parameters(): mismo bug de siempre - 'cash-shifts' derivaria el
+                // parametro 'cash_shift', que no coincide con CashShift $cashShift.
+                Route::apiResource('cash-shifts', CashShiftController::class)
+                    ->only(['index', 'store', 'update', 'destroy'])
+                    ->parameters(['cash-shifts' => 'cashShift']);
+            });
 
-            Route::get('/cash-closings/preview', [CashClosingController::class, 'preview'])->name('cash-closings.preview');
-            Route::post('/cash-closings/{cashClosing}/undo', [CashClosingController::class, 'undo'])->name('cash-closings.undo');
-            Route::apiResource('cash-closings', CashClosingController::class)
-                ->only(['index', 'show', 'store', 'update'])
-                ->parameters(['cash-closings' => 'cashClosing']);
+            Route::middleware('permission:cash_closing.manage')->group(function () {
+                Route::get('/cash-closings/preview', [CashClosingController::class, 'preview'])->name('cash-closings.preview');
+                Route::apiResource('cash-closings', CashClosingController::class)
+                    ->only(['index', 'show', 'store', 'update'])
+                    ->parameters(['cash-closings' => 'cashClosing']);
+            });
+
+            Route::middleware('permission:cash_closing.undo')->group(function () {
+                Route::post('/cash-closings/{cashClosing}/undo', [CashClosingController::class, 'undo'])->name('cash-closings.undo');
+            });
         });
     });
 });

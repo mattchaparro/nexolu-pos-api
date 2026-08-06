@@ -19,6 +19,7 @@ class StockMovementTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 10]);
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/stock-movements', [
@@ -40,6 +41,7 @@ class StockMovementTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 10]);
 
         $this->actingAs($user, 'sanctum')->postJson('/api/v1/stock-movements', [
@@ -56,6 +58,7 @@ class StockMovementTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 10]);
 
         $this->actingAs($user, 'sanctum')->postJson('/api/v1/stock-movements', [
@@ -72,6 +75,7 @@ class StockMovementTest extends TestCase
         $business = Business::factory()->create();
         $otherBusiness = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $otherBusiness->id]);
 
         $this->actingAs($user, 'sanctum')->postJson('/api/v1/stock-movements', [
@@ -86,6 +90,7 @@ class StockMovementTest extends TestCase
         $business = Business::factory()->create();
         $otherBusiness = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $productA = Product::factory()->create(['business_id' => $business->id]);
         $productB = Product::factory()->create(['business_id' => $business->id]);
 
@@ -108,6 +113,7 @@ class StockMovementTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create([
             'business_id' => $business->id,
             'stock' => 1,
@@ -139,6 +145,7 @@ class StockMovementTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 10]);
 
         $movement = app(StockService::class)->entry($user, $product, 1);

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api\V1\SuperAdmin;
 
 use App\Models\Business;
+use App\Models\LogAction;
 use App\Models\SaasSubscriptionPayment;
 use App\Models\Sale;
 use App\Models\SupportTicket;
@@ -106,6 +107,30 @@ class BusinessesTest extends TestCase
         $response->assertOk();
         $row = collect($response->json('data'))->firstWhere('id', $business->id);
         $this->assertNotNull($row['last_activity_at']);
+    }
+
+    public function test_can_filter_by_days_without_activity(): void
+    {
+        $admin = $this->superadmin();
+
+        $recent = Business::factory()->create(['name' => 'Negocio Activo']);
+        LogAction::create(['action' => 'x', 'business_id' => $recent->id])
+            ->forceFill(['created_at' => now()->subDays(2)])->save();
+
+        $stale = Business::factory()->create(['name' => 'Negocio Dormido']);
+        LogAction::create(['action' => 'x', 'business_id' => $stale->id])
+            ->forceFill(['created_at' => now()->subDays(45)])->save();
+
+        $never = Business::factory()->create(['name' => 'Negocio Nunca Activo']);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/superadmin/businesses?inactive_days=30');
+
+        $response->assertOk();
+        $names = collect($response->json('data'))->pluck('name');
+        $this->assertContains('Negocio Dormido', $names);
+        $this->assertContains('Negocio Nunca Activo', $names);
+        $this->assertNotContains('Negocio Activo', $names);
     }
 
     public function test_show_reports_the_users_last_active_at_from_their_tokens(): void

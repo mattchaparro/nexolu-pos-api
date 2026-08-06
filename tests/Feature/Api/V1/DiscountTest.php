@@ -18,6 +18,7 @@ class DiscountTest extends TestCase
         $business = Business::factory()->create();
         $otherBusiness = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         Discount::factory()->count(2)->create(['business_id' => $business->id]);
         Discount::factory()->create(['business_id' => $otherBusiness->id]);
@@ -32,6 +33,7 @@ class DiscountTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/discounts', [
             'name' => 'Descuento Fiesta',
@@ -47,6 +49,7 @@ class DiscountTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         Discount::factory()->create(['business_id' => $business->id, 'name' => 'Repetido']);
 
         $this->actingAs($user, 'sanctum')
@@ -66,6 +69,7 @@ class DiscountTest extends TestCase
 
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->postJson('/api/v1/discounts', [
@@ -100,6 +104,7 @@ class DiscountTest extends TestCase
 
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->getJson("/api/v1/discounts/{$discount->id}")
@@ -110,6 +115,7 @@ class DiscountTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $discount = Discount::factory()->create(['business_id' => $business->id, 'is_active' => true]);
 
         $this->actingAs($user, 'sanctum')
@@ -130,6 +136,7 @@ class DiscountTest extends TestCase
         // llegaba null al cliente si el request no lo mandaba.
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->postJson('/api/v1/discounts', [

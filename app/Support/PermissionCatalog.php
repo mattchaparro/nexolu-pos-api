@@ -103,8 +103,14 @@ class PermissionCatalog
         [
             'name' => 'layaways.manage',
             'category' => 'clientes',
-            'label' => 'Gestionar fiados y abonos',
-            'description' => 'Permite ver y administrar los fiados y abonos pendientes de clientes.',
+            'label' => 'Gestionar apartados',
+            'description' => 'Permite crear, editar y abonar los apartados (compras a plazos) de clientes.',
+        ],
+        [
+            'name' => 'receivables.manage',
+            'category' => 'clientes',
+            'label' => 'Gestionar fiados',
+            'description' => 'Permite ver y cobrar los fiados (cuentas por cobrar) pendientes de clientes.',
         ],
         [
             'name' => 'expenses.create',

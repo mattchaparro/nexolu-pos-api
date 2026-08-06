@@ -17,6 +17,7 @@ class ClientTest extends TestCase
         $business = Business::factory()->create();
         $otherBusiness = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         Client::factory()->count(2)->create(['business_id' => $business->id]);
         Client::factory()->create(['business_id' => $otherBusiness->id]);
@@ -31,6 +32,7 @@ class ClientTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         Client::factory()->create(['business_id' => $business->id, 'name' => 'Maria Perez', 'phone' => '3001112222']);
         Client::factory()->create(['business_id' => $business->id, 'name' => 'Carlos Ruiz', 'phone' => '3009998888']);
@@ -46,6 +48,7 @@ class ClientTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/clients', [
             'name' => 'Nuevo Cliente',
@@ -60,6 +63,7 @@ class ClientTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         Client::factory()->count(Client::LIMIT_PER_BUSINESS)->create(['business_id' => $business->id]);
 
         $this->actingAs($user, 'sanctum')
@@ -76,6 +80,7 @@ class ClientTest extends TestCase
 
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->getJson("/api/v1/clients/{$client->id}")
@@ -96,6 +101,7 @@ class ClientTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $client = Client::factory()->create(['business_id' => $business->id]);
 
         $this->actingAs($user, 'sanctum')

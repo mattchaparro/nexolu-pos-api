@@ -19,6 +19,7 @@ class PurchaseTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $supplier = Supplier::factory()->create(['business_id' => $business->id]);
         $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 10, 'cost_price' => 1000]);
 
@@ -60,6 +61,7 @@ class PurchaseTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 0, 'cost_price' => 0]);
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/purchases', [
@@ -78,6 +80,7 @@ class PurchaseTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'is_single_sale' => true]);
 
         $this->actingAs($user, 'sanctum')->postJson('/api/v1/purchases', [
@@ -90,6 +93,7 @@ class PurchaseTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id]);
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/purchases', [
@@ -107,6 +111,7 @@ class PurchaseTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id]);
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/purchases', [
@@ -128,6 +133,7 @@ class PurchaseTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $purchase = Purchase::factory()->credit()->create(['business_id' => $business->id]);
         $product = Product::factory()->create(['business_id' => $business->id]);
         $purchase->lines()->create([
@@ -157,6 +163,7 @@ class PurchaseTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $purchase = Purchase::factory()->credit()->create(['business_id' => $business->id]);
         $purchase->lines()->create([
             'product_id' => Product::factory()->create(['business_id' => $business->id])->id,
@@ -172,6 +179,7 @@ class PurchaseTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $purchase = Purchase::factory()->create(['business_id' => $business->id]);
 
         $this->actingAs($user, 'sanctum')
@@ -184,6 +192,7 @@ class PurchaseTest extends TestCase
         $business = Business::factory()->create();
         $otherBusiness = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         Purchase::factory()->count(2)->create(['business_id' => $business->id]);
         Purchase::factory()->create(['business_id' => $otherBusiness->id]);

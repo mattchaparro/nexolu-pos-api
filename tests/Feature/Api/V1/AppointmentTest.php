@@ -17,6 +17,7 @@ class AppointmentTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $service = Product::factory()->service()->create(['business_id' => $business->id, 'price' => 40000]);
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/appointments', [
@@ -40,6 +41,7 @@ class AppointmentTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $serviceA = Product::factory()->service()->create(['business_id' => $business->id, 'price' => 20000]);
         $serviceB = Product::factory()->service()->create(['business_id' => $business->id, 'price' => 15000]);
 
@@ -59,6 +61,7 @@ class AppointmentTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $service = Product::factory()->service()->create(['business_id' => $business->id, 'price' => 40000]);
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/appointments', [
@@ -79,6 +82,7 @@ class AppointmentTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $staff = User::factory()->create(['business_id' => $business->id]);
         $service = Product::factory()->service()->create(['business_id' => $business->id]);
 
@@ -103,6 +107,7 @@ class AppointmentTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $staff = User::factory()->create(['business_id' => $business->id]);
         $service = Product::factory()->service()->create(['business_id' => $business->id]);
 
@@ -127,6 +132,7 @@ class AppointmentTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $staff = User::factory()->create(['business_id' => $business->id]);
         $service = Product::factory()->service()->create(['business_id' => $business->id]);
 
@@ -151,6 +157,7 @@ class AppointmentTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $service = Product::factory()->service()->create(['business_id' => $business->id]);
         $appointment = Appointment::factory()->create(['business_id' => $business->id, 'status' => 'completed']);
 
@@ -166,6 +173,7 @@ class AppointmentTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $appointment = Appointment::factory()->create(['business_id' => $business->id, 'status' => 'confirmed']);
 
         $newStart = now()->addDays(3)->setTime(14, 0);
@@ -181,6 +189,7 @@ class AppointmentTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $service = Product::factory()->service()->create(['business_id' => $business->id, 'price' => 40000]);
 
         $created = $this->actingAs($user, 'sanctum')->postJson('/api/v1/appointments', [
@@ -211,6 +220,7 @@ class AppointmentTest extends TestCase
         $business = Business::factory()->create();
         $otherBusiness = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         Appointment::factory()->count(2)->create(['business_id' => $business->id]);
         Appointment::factory()->create(['business_id' => $otherBusiness->id]);

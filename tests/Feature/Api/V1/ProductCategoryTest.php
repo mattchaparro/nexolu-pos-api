@@ -17,6 +17,7 @@ class ProductCategoryTest extends TestCase
         $business = Business::factory()->create();
         $otherBusiness = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         ProductCategory::factory()->count(2)->create(['business_id' => $business->id]);
         ProductCategory::factory()->create(['business_id' => $otherBusiness->id]);
@@ -31,6 +32,7 @@ class ProductCategoryTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $response = $this->actingAs($user, 'sanctum')
             ->postJson('/api/v1/product-categories', ['name' => 'Bebidas']);
@@ -49,6 +51,7 @@ class ProductCategoryTest extends TestCase
 
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->getJson("/api/v1/product-categories/{$category->id}")
@@ -62,6 +65,7 @@ class ProductCategoryTest extends TestCase
 
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->postJson('/api/v1/product-categories', [
@@ -75,6 +79,7 @@ class ProductCategoryTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $category = ProductCategory::factory()->create(['business_id' => $business->id]);
 
         $this->actingAs($user, 'sanctum')
@@ -90,6 +95,7 @@ class ProductCategoryTest extends TestCase
         // 'inventory_2') llegaba null al cliente si el request no lo mandaba.
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->postJson('/api/v1/product-categories', ['name' => 'Sin icono explicito'])

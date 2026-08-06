@@ -24,6 +24,7 @@ class CashShiftAndClosingTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $open = $this->actingAs($user, 'sanctum')->postJson('/api/v1/cash-shifts', [
             'opening_cash' => 50000,
@@ -47,6 +48,7 @@ class CashShiftAndClosingTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         CashShift::factory()->create(['business_id' => $business->id, 'user_id' => $user->id]);
 
         $this->actingAs($user, 'sanctum')
@@ -58,6 +60,7 @@ class CashShiftAndClosingTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         CashClosing::factory()->create(['business_id' => $business->id, 'date' => now()->toDateString()]);
 
         $this->actingAs($user, 'sanctum')
@@ -69,7 +72,9 @@ class CashShiftAndClosingTest extends TestCase
     {
         $business = Business::factory()->create();
         $owner = User::factory()->create(['business_id' => $business->id]);
+        $owner->assignRole('admin');
         $otherUser = User::factory()->create(['business_id' => $business->id]);
+        $otherUser->assignRole('admin');
         $shift = CashShift::factory()->create(['business_id' => $business->id, 'user_id' => $owner->id]);
 
         $this->actingAs($otherUser, 'sanctum')
@@ -87,6 +92,7 @@ class CashShiftAndClosingTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $shift = $this->actingAs($user, 'sanctum')->postJson('/api/v1/cash-shifts', [
             'opening_cash' => 10000,
@@ -139,6 +145,7 @@ class CashShiftAndClosingTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         CashShift::factory()->create(['business_id' => $business->id, 'user_id' => $user->id, 'opening_cash' => 20000]);
 
         $response = $this->actingAs($user, 'sanctum')->getJson('/api/v1/cash-shifts/current');
@@ -152,6 +159,7 @@ class CashShiftAndClosingTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')->getJson('/api/v1/cash-shifts/current')
             ->assertOk()
@@ -163,6 +171,7 @@ class CashShiftAndClosingTest extends TestCase
     {
         $business = Business::factory()->create();
         $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
         $cashier = User::factory()->create(['business_id' => $business->id]);
         $shift = CashShift::factory()->create([
             'business_id' => $business->id,
@@ -195,6 +204,7 @@ class CashShiftAndClosingTest extends TestCase
     {
         $business = Business::factory()->create();
         $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
         $cashier = User::factory()->create(['business_id' => $business->id]);
         $shift = CashShift::factory()->create([
             'business_id' => $business->id,
@@ -226,6 +236,7 @@ class CashShiftAndClosingTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         CashClosing::factory()->create(['business_id' => $business->id, 'date' => now()->toDateString()]);
 
         $this->actingAs($user, 'sanctum')->postJson('/api/v1/cash-closings', [
@@ -240,6 +251,7 @@ class CashShiftAndClosingTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $closing = CashClosing::factory()->create([
             'business_id' => $business->id,
             'date' => now()->subDay()->toDateString(),
@@ -256,6 +268,7 @@ class CashShiftAndClosingTest extends TestCase
     {
         $business = Business::factory()->create();
         $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
         $cashier = User::factory()->create(['business_id' => $business->id]);
         $shift = CashShift::factory()->create(['business_id' => $business->id, 'user_id' => $cashier->id]);
 
@@ -280,6 +293,7 @@ class CashShiftAndClosingTest extends TestCase
     {
         $business = Business::factory()->create();
         $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
         $shift = CashShift::factory()->closed()->create([
             'business_id' => $business->id,
             'opening_cash' => 50000,
@@ -302,6 +316,7 @@ class CashShiftAndClosingTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         Expense::factory()->create([
             'business_id' => $business->id,
             'date' => now()->toDateString(),
@@ -324,6 +339,7 @@ class CashShiftAndClosingTest extends TestCase
         $business = Business::factory()->create();
         $otherBusiness = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         CashShift::factory()->count(2)->create(['business_id' => $business->id]);
         CashShift::factory()->create(['business_id' => $otherBusiness->id]);
@@ -341,6 +357,7 @@ class CashShiftAndClosingTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         CashShift::factory()->create(['business_id' => $business->id, 'opening_cash' => 15000]);
 
         $response = $this->actingAs($user, 'sanctum')->getJson('/api/v1/cash-closings/preview?date='.now()->toDateString());

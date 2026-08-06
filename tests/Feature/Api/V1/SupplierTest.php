@@ -17,6 +17,7 @@ class SupplierTest extends TestCase
         $business = Business::factory()->create();
         $otherBusiness = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         Supplier::factory()->count(2)->create(['business_id' => $business->id]);
         Supplier::factory()->create(['business_id' => $otherBusiness->id]);
@@ -31,6 +32,7 @@ class SupplierTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/suppliers', [
             'name' => 'Distribuidora ABC',
@@ -48,6 +50,7 @@ class SupplierTest extends TestCase
 
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->getJson("/api/v1/suppliers/{$supplier->id}")
@@ -60,6 +63,7 @@ class SupplierTest extends TestCase
             'feature_flags' => ['inventory' => false, 'inventory_advanced' => false, 'ingredients' => false],
         ]);
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/suppliers')
@@ -72,6 +76,7 @@ class SupplierTest extends TestCase
             'feature_flags' => ['inventory' => true, 'inventory_advanced' => false, 'ingredients' => false],
         ]);
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/suppliers')
@@ -82,6 +87,7 @@ class SupplierTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $supplier = Supplier::factory()->create(['business_id' => $business->id]);
 
         $this->actingAs($user, 'sanctum')

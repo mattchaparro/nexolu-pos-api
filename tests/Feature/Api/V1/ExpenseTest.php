@@ -19,6 +19,7 @@ class ExpenseTest extends TestCase
         $business = Business::factory()->create();
         $otherBusiness = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         Expense::factory()->count(2)->create(['business_id' => $business->id]);
         Expense::factory()->create(['business_id' => $otherBusiness->id]);
@@ -33,6 +34,7 @@ class ExpenseTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $type = ExpenseType::factory()->global()->create();
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/expenses', [
@@ -52,6 +54,7 @@ class ExpenseTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $type = ExpenseType::factory()->create(['business_id' => $business->id]);
 
         $this->actingAs($user, 'sanctum')
@@ -70,6 +73,7 @@ class ExpenseTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $type = ExpenseType::factory()->create(['business_id' => $business->id]);
 
         $this->actingAs($user, 'sanctum')
@@ -88,6 +92,7 @@ class ExpenseTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $type = ExpenseType::factory()->create(['business_id' => $business->id]);
 
         $this->actingAs($user, 'sanctum')
@@ -107,6 +112,7 @@ class ExpenseTest extends TestCase
 
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->postJson('/api/v1/expenses', [
@@ -122,6 +128,7 @@ class ExpenseTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $type = ExpenseType::factory()->create(['business_id' => $business->id]);
         $product = Product::factory()->create(['business_id' => $business->id]);
 
@@ -141,6 +148,7 @@ class ExpenseTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         Expense::factory()->create(['business_id' => $business->id, 'date' => '2026-01-10']);
         Expense::factory()->create(['business_id' => $business->id, 'date' => '2026-03-10']);
 
@@ -155,6 +163,7 @@ class ExpenseTest extends TestCase
     {
         $business = Business::factory()->create(['feature_flags' => ['expenses' => false]]);
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/expenses')
@@ -165,6 +174,7 @@ class ExpenseTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $expense = Expense::factory()->create(['business_id' => $business->id, 'description' => 'Original']);
 
         $this->actingAs($user, 'sanctum')

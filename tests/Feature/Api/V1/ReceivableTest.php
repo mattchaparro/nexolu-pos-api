@@ -18,6 +18,7 @@ class ReceivableTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 20000, 'stock' => 10]);
 
         $sale = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
@@ -40,6 +41,7 @@ class ReceivableTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
 
         $payload = [
@@ -64,6 +66,7 @@ class ReceivableTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
 
         $payload = [
@@ -82,6 +85,7 @@ class ReceivableTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $table = BusinessTable::factory()->create(['business_id' => $business->id]);
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 15000, 'stock' => 10]);
 
@@ -106,6 +110,7 @@ class ReceivableTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
 
         $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
@@ -120,6 +125,7 @@ class ReceivableTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $receivable = Receivable::factory()->create(['business_id' => $business->id, 'amount' => 30000, 'balance' => 30000]);
 
         $response = $this->actingAs($user, 'sanctum')->postJson("/api/v1/receivables/{$receivable->id}/collect", [
@@ -136,6 +142,7 @@ class ReceivableTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $receivable = Receivable::factory()->paid()->create(['business_id' => $business->id]);
 
         $this->actingAs($user, 'sanctum')
@@ -147,6 +154,7 @@ class ReceivableTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $receivable = Receivable::factory()->create(['business_id' => $business->id]);
 
         $this->actingAs($user, 'sanctum')
@@ -158,6 +166,7 @@ class ReceivableTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
 
         $sale = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
@@ -177,6 +186,7 @@ class ReceivableTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
 
         $sale = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
@@ -203,6 +213,7 @@ class ReceivableTest extends TestCase
 
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->getJson("/api/v1/receivables/{$receivable->id}")
@@ -213,6 +224,7 @@ class ReceivableTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         Receivable::factory()->create(['business_id' => $business->id, 'customer_name' => 'Maria Gomez']);
         Receivable::factory()->paid()->create(['business_id' => $business->id, 'customer_name' => 'Pedro Lopez']);
 
@@ -232,6 +244,7 @@ class ReceivableTest extends TestCase
     {
         $business = Business::factory()->create(['feature_flags' => ['receivables' => false]]);
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/receivables')

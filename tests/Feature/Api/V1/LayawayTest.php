@@ -18,6 +18,7 @@ class LayawayTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/layaways', [
@@ -44,6 +45,7 @@ class LayawayTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'track_stock' => true, 'stock' => 2]);
 
         $this->actingAs($user, 'sanctum')->postJson('/api/v1/layaways', [
@@ -58,6 +60,7 @@ class LayawayTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create([
             'business_id' => $business->id,
             'price_varies_at_sale' => true,
@@ -77,6 +80,7 @@ class LayawayTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/layaways', [
@@ -95,6 +99,7 @@ class LayawayTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
 
         $layaway = $this->actingAs($user, 'sanctum')->postJson('/api/v1/layaways', [
@@ -115,6 +120,7 @@ class LayawayTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
 
         $layaway = $this->actingAs($user, 'sanctum')->postJson('/api/v1/layaways', [
@@ -134,6 +140,7 @@ class LayawayTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
 
         $layaway = $this->actingAs($user, 'sanctum')->postJson('/api/v1/layaways', [
@@ -150,6 +157,7 @@ class LayawayTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
 
         $layaway = $this->actingAs($user, 'sanctum')->postJson('/api/v1/layaways', [
@@ -182,6 +190,7 @@ class LayawayTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $layaway = Layaway::factory()->cancelled()->create(['business_id' => $business->id]);
 
         $this->actingAs($user, 'sanctum')
@@ -193,6 +202,7 @@ class LayawayTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $productA = Product::factory()->create(['business_id' => $business->id, 'price' => 1000, 'stock' => 10]);
         $productB = Product::factory()->create(['business_id' => $business->id, 'price' => 2000, 'stock' => 10]);
 
@@ -215,6 +225,7 @@ class LayawayTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 10]);
         $layaway = Layaway::factory()->cancelled()->create(['business_id' => $business->id]);
 
@@ -229,6 +240,7 @@ class LayawayTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
 
         $layaway = $this->actingAs($user, 'sanctum')->postJson('/api/v1/layaways', [
@@ -245,6 +257,7 @@ class LayawayTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $layaway = Layaway::factory()->cancelled()->create(['business_id' => $business->id]);
 
         $this->actingAs($user, 'sanctum')
@@ -257,6 +270,7 @@ class LayawayTest extends TestCase
         $business = Business::factory()->create();
         $otherBusiness = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         Layaway::factory()->count(2)->create(['business_id' => $business->id]);
         Layaway::factory()->create(['business_id' => $otherBusiness->id]);

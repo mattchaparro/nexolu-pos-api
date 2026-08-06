@@ -17,6 +17,7 @@ class ServiceOrderTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $client = Client::factory()->create(['business_id' => $business->id]);
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/service-orders', [
@@ -35,6 +36,7 @@ class ServiceOrderTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/service-orders', [
             'service_name' => 'Paquete de belleza',
@@ -53,6 +55,7 @@ class ServiceOrderTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $this->actingAs($user, 'sanctum')->postJson('/api/v1/service-orders', [
             'service_name' => 'Sin total',
@@ -63,6 +66,7 @@ class ServiceOrderTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/service-orders', [
             'service_name' => 'Masaje',
@@ -81,6 +85,7 @@ class ServiceOrderTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $order = ServiceOrder::factory()->create(['business_id' => $business->id, 'total' => 40000, 'amount_paid' => 0]);
 
         $response = $this->actingAs($user, 'sanctum')
@@ -96,6 +101,7 @@ class ServiceOrderTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $order = ServiceOrder::factory()->create(['business_id' => $business->id, 'total' => 40000, 'amount_paid' => 0]);
 
         $this->actingAs($user, 'sanctum')
@@ -108,6 +114,7 @@ class ServiceOrderTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $order = ServiceOrder::factory()->create([
             'business_id' => $business->id, 'total' => 40000, 'amount_paid' => 40000, 'status' => 'paid',
         ]);
@@ -121,6 +128,7 @@ class ServiceOrderTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $order = ServiceOrder::factory()->create(['business_id' => $business->id, 'total' => 40000, 'amount_paid' => 30000, 'status' => 'partial']);
 
         $response = $this->actingAs($user, 'sanctum')
@@ -136,6 +144,7 @@ class ServiceOrderTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $order = ServiceOrder::factory()->create(['business_id' => $business->id, 'total' => 20000, 'amount_paid' => 0]);
 
         $response = $this->actingAs($user, 'sanctum')
@@ -151,6 +160,7 @@ class ServiceOrderTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $order = ServiceOrder::factory()->cancelled()->create(['business_id' => $business->id]);
 
         $this->actingAs($user, 'sanctum')
@@ -162,6 +172,7 @@ class ServiceOrderTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $order = ServiceOrder::factory()->create(['business_id' => $business->id, 'total' => 30000, 'amount_paid' => 30000, 'status' => 'paid']);
         $order->payments()->create([
             'business_id' => $business->id, 'amount' => 30000, 'payment_method' => 'cash', 'recorded_by_user_id' => $user->id,
@@ -183,6 +194,7 @@ class ServiceOrderTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
         $order = ServiceOrder::factory()->cancelled()->create(['business_id' => $business->id]);
 
         $this->actingAs($user, 'sanctum')
@@ -195,6 +207,7 @@ class ServiceOrderTest extends TestCase
         $business = Business::factory()->create();
         $otherBusiness = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
 
         ServiceOrder::factory()->count(2)->create(['business_id' => $business->id]);
         ServiceOrder::factory()->create(['business_id' => $otherBusiness->id]);
