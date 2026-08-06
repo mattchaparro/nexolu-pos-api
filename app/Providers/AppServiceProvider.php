@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Listeners\LogSentEmail;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Mail\Events\MessageSent;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -31,5 +32,11 @@ class AppServiceProvider extends ServiceProvider
         // app envie queda en email_logs sin que el codigo que lo dispara
         // tenga que acordarse de loguearlo.
         Event::listen(MessageSent::class, LogSentEmail::class);
+
+        // El producto es exclusivamente para Colombia: translatedFormat()
+        // (usado en fechas de correos, recordatorios, etc.) debe salir en
+        // espanol sin importar APP_LOCALE, que se queda en "en" para los
+        // mensajes de validacion del framework.
+        Carbon::setLocale('es');
     }
 }

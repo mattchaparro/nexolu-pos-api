@@ -14,3 +14,5 @@ Artisan::command('inspire', function () {
 // Colombia para que el dueño lo vea temprano, no a medianoche.
 Schedule::command('subscriptions:notify-expiring')->dailyAt('08:30');
 Schedule::command('trials:notify-expiring')->dailyAt('09:00');
+Schedule::command('audit:prune')->dailyAt('03:15');
+Schedule::command('appointments:send-reminders')->dailyAt('09:00');
