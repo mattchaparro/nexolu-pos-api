@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Mail\WelcomeMail;
 use App\Models\Business;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class RegisterTest extends TestCase
@@ -13,6 +15,8 @@ class RegisterTest extends TestCase
 
     public function test_registering_creates_a_business_and_its_owner_and_logs_them_in(): void
     {
+        Mail::fake();
+
         $response = $this->postJson('/api/v1/register', [
             'business_name' => 'Tienda Nueva',
             'owner_name' => 'Ana Gomez',
@@ -36,6 +40,8 @@ class RegisterTest extends TestCase
         $this->assertSame('Tienda Nueva', $business->name);
         $this->assertSame('Ana Gomez', $business->owner_name);
         $this->assertNotNull($business->trial_ends_at);
+
+        Mail::assertSent(WelcomeMail::class, fn ($mail) => $mail->hasTo('ana@example.com'));
     }
 
     public function test_registration_can_capture_the_business_whatsapp_number(): void

@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Mail\WelcomeMail;
 use App\Models\Business;
 use App\Models\User;
 use App\Support\BusinessFeaturePresets;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * Alta de un negocio nuevo (self-service): crea el Business y su usuario
@@ -21,7 +23,7 @@ class BusinessRegistrationService
      */
     public function register(array $data): array
     {
-        return DB::transaction(function () use ($data) {
+        $result = DB::transaction(function () use ($data) {
             // El self-registro (setup_mode) y el alta manual del superadmin
             // (plan directo) llegan al mismo resultado por dos caminos: uno
             // parte del tipo de negocio, el otro del plan comercial ya
@@ -59,5 +61,18 @@ class BusinessRegistrationService
 
             return ['business' => $business, 'user' => $user];
         });
+
+        // Fuera de la transaccion a proposito: un correo lento no debe tener
+        // el lock de la escritura abierto, y si el envio falla no queremos
+        // revertir un registro que ya se completo. Silencioso a proposito,
+        // igual que NewUserCredentialsMail - el registro no se debe bloquear
+        // por un mailer no configurado (dev sin SMTP).
+        try {
+            Mail::to($result['user']->email)->send(new WelcomeMail($result['user'], $result['business']));
+        } catch (\Throwable) {
+            //
+        }
+
+        return $result;
     }
 }
