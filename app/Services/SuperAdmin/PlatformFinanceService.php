@@ -4,7 +4,6 @@ namespace App\Services\SuperAdmin;
 
 use App\Models\Business;
 use App\Models\SaasSubscriptionPayment;
-use App\Support\BusinessFeaturePresets;
 use Illuminate\Support\Carbon;
 
 /**
@@ -68,7 +67,7 @@ class PlatformFinanceService
     {
         return (int) Business::where('paid_until', '>', now())
             ->get()
-            ->sum(fn (Business $b) => $b->custom_price_cop ?: BusinessFeaturePresets::planPriceCop($b->subscription_plan ?? 'basic'));
+            ->sum(fn (Business $b) => $b->monthlyPriceCop());
     }
 
     /** Ingreso real ya cobrado en el mes en curso. Atajo para el Dashboard. */

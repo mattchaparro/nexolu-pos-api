@@ -43,6 +43,18 @@ return [
         'base_url' => env('IA_CORE_BASE_URL', 'http://localhost:8000'),
     ],
 
+    // Nexolu Payments Core (servicio Python aparte, repo nexolu-payments-core):
+    // pasarela de pagos unificada, este POS ya no le habla a Wompi directo.
+    // api_key autentica las llamadas salientes de este POS al Core
+    // (POST /v1/payments/intents, GET /v1/payments/transactions/{reference}).
+    // webhook_secret verifica que un webhook entrante (POST a nuestro
+    // endpoint) realmente vino del Core - ver PaymentsCoreWebhookController.
+    'payments_core' => [
+        'api_key' => env('PAYMENTS_CORE_API_KEY'),
+        'base_url' => env('PAYMENTS_CORE_BASE_URL', 'http://localhost:8001'),
+        'webhook_secret' => env('PAYMENTS_CORE_WEBHOOK_SECRET'),
+    ],
+
     // WhatsApp Cloud API (asistente IA omnichannel). verify_token valida el
     // webhook (GET), access_token/phone_number_id son para ENVIAR (Graph
     // API) - credenciales distintas, no se derivan una de la otra.

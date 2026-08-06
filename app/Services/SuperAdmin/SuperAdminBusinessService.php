@@ -89,7 +89,7 @@ class SuperAdminBusinessService
             return $customPrice ?: BusinessFeaturePresets::planPriceCop($plan);
         }
 
-        return (int) ($business->custom_price_cop ?: BusinessFeaturePresets::planPriceCop($business->subscription_plan ?? 'basic'));
+        return $business->monthlyPriceCop();
     }
 
     public function changePlan(Business $business, string $plan): Business

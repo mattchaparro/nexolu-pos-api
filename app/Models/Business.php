@@ -416,6 +416,12 @@ class Business extends Model
         return 0;
     }
 
+    /** Precio mensual efectivo: precio personalizado si tiene, si no el del plan. */
+    public function monthlyPriceCop(): int
+    {
+        return (int) ($this->custom_price_cop ?: BusinessFeaturePresets::planPriceCop($this->subscription_plan ?? 'basic'));
+    }
+
     /** Extiende (o inicia) el periodo pago, encadenado al vencimiento vigente si ya estaba pago. */
     public function activate(int $days = 30): void
     {

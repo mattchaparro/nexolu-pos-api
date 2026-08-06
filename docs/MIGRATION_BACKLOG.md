@@ -67,6 +67,47 @@ se tacha en cuanto se construye, sin precondición de cutover.
 - ~~**FixedExpenseTemplate**~~ ✅ Migrado (modelo + `expenses:register-scheduled`).
   Sin API propia todavía (CRUD de plantillas) - solo el job de creación
   automática de gastos.
+- ~~**Checkout de suscripción vía Nexolu Payments Core**~~ ✅ Migrado: este
+  POS ya no habla con Wompi directo. `SubscriptionService::initiateCheckout()`
+  crea una `SubscriptionCheckoutOrder` pendiente y llama
+  `POST /v1/payments/intents` del Core (`PaymentsCoreService`);
+  `PaymentsCoreWebhookController` recibe la confirmación firmada
+  (`POST /api/webhooks/payments-core`, verifica `X-Nexolu-Signature`/
+  `X-Nexolu-Timestamp`), activa la suscripción (`Business::activate()`) y
+  registra el `SaasSubscriptionPayment`, con `lockForUpdate()` + `status`
+  como guarda de idempotencia (mejora sobre el legacy, que no tenía lock y
+  dejaba las órdenes rechazadas en `pending` para siempre - acá se marcan
+  `failed`/`cancelled` explícitamente). API en `GET /v1/subscription/status`
+  y `POST /v1/subscription/checkout`.
+  **Deliberadamente fuera de alcance** (no existían en el legacy vigente o
+  no se pidieron):
+  - **Addon de IA vía suscripción**: en el legacy actual, `ai_addon_included`
+    siempre es `false` (el código que lo cobraba quedó muerto - ver
+    `SubscriptionPricingService::breakdown()` del legacy, que lo fuerza a 0).
+    Las columnas `ai_addon_included`/`ai_addon_amount_cop` existen en la
+    orden pero nunca se llenan con datos reales todavía; tampoco existen los
+    campos `ai_chat_*` en el `Business` de este repo. Si se decide revivir el
+    cobro del addon, hay que portar `AiAccessService::contratarAddon()` del
+    legacy (¡no `activarAddon()`, que es un método que no existe - bug
+    inofensivo en legacy porque esa rama nunca corre hoy!).
+  - **Promociones/descuentos de precio** (`plan_after_promo_cop`, ciclos
+    pagados, etc. de `SubscriptionPricingService` del legacy): no existe
+    ningún equivalente en este repo hoy. El monto se calcula con
+    `Business::monthlyPriceCop()` (precio personalizado o precio del plan),
+    ya usado por `SuperAdminBusinessService`/`PlatformFinanceService` - no se
+    replicó la lógica de promos porque no hay nada que promocionar todavía.
+  - **Notificaciones por correo** de pago aprobado/rechazado a superadmin y
+    al admin del negocio (el legacy sí las manda). No se portaron.
+  - **`WompiFees`** (comisión de Wompi): confirmado que no participa del
+    flujo de cobro/activación en el legacy, solo de un reporte financiero
+    interno (`PlatformFinanceService` legacy). No se necesita replicar acá -
+    si se quiere mostrar comisión neta, pedírsela al Core en vez de
+    recalcularla con una fórmula propia.
+  - **`GET /v1/payments/transactions/{reference}`** (polling del Core): el
+    Core lo expone para que el frontend haga polling de UX mientras espera
+    el webhook, pero no se consume desde este POS todavía - no hay
+    `PaymentsCoreService::getTransaction()` usado por ningún controller aún
+    (el método existe, listo para cuando el frontend lo necesite).
 - **Motor de insights** (`ResumenInteligenteInsight` en legacy): calcula
   salud del negocio/ventas vs. ayer/gasto inusual/prioridad del día. No
   evaluado a fondo todavía - es candidato a vivir como una Capability más

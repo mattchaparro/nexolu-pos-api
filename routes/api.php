@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AiToolCatalogController;
 use App\Http\Controllers\Api\AiToolInvokeController;
+use App\Http\Controllers\Api\PaymentsCoreWebhookController;
 use App\Http\Controllers\Api\V1\AiChannelLinkController;
 use App\Http\Controllers\Api\V1\AiChatController;
 use App\Http\Controllers\Api\V1\AppointmentController;
@@ -28,6 +29,7 @@ use App\Http\Controllers\Api\V1\SaleController;
 use App\Http\Controllers\Api\V1\ServiceOrderController;
 use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\StockMovementController;
+use App\Http\Controllers\Api\V1\SubscriptionController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\SupportTicketController;
 use App\Http\Controllers\Api\WhatsappWebhookController;
@@ -50,6 +52,11 @@ Route::get('/ai/tools/catalog', [AiToolCatalogController::class, 'index'])
 Route::get('/webhooks/whatsapp', [WhatsappWebhookController::class, 'verify'])->name('webhooks.whatsapp.verify');
 Route::post('/webhooks/whatsapp', [WhatsappWebhookController::class, 'handle'])->name('webhooks.whatsapp.handle');
 
+// Publico, sin auth: lo llama Nexolu Payments Core (repo Python aparte), no
+// un usuario. Se autentica con la firma HMAC de X-Nexolu-Signature, no con
+// Sanctum - ver PaymentsCoreWebhookController.
+Route::post('/webhooks/payments-core', [PaymentsCoreWebhookController::class, 'handle'])->name('webhooks.payments-core.handle');
+
 Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::post('/register', [AuthController::class, 'register'])->name('register');
     Route::post('/login', [AuthController::class, 'login'])->name('login');
@@ -68,6 +75,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::get('/business', [BusinessController::class, 'show'])->name('business.show');
         Route::put('/business', [BusinessController::class, 'update'])->name('business.update');
+
+        Route::get('/subscription/status', [SubscriptionController::class, 'status'])->name('subscription.status');
+        Route::post('/subscription/checkout', [SubscriptionController::class, 'initiate'])->name('subscription.checkout');
 
         Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');
         Route::put('/settings/{setting}', [SettingController::class, 'update'])->name('settings.update');
