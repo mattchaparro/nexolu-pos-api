@@ -11,18 +11,20 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
 
 /**
- * Avisa por correo al dueño de un negocio cuando su trial o su suscripcion
- * pagada esta por vencer, dentro de la ventana de dias configurada.
+ * Avisa por correo al dueño de un negocio cuando su suscripcion PAGADA esta
+ * por vencer, dentro de la ventana de dias configurada. El aviso de trials
+ * es un comando aparte (trials:notify-expiring) porque legacy lo trata con
+ * una cadencia distinta (dos ventanas: 3 dias y 1 dia).
  *
  * subscription_expiry_notified_at evita reenviar el aviso todos los dias
  * mientras dure la ventana: solo se vuelve a notificar si el ultimo aviso
  * quedo ANTES de que abriera la ventana del vencimiento actual. Cuando el
- * negocio renueva (Business::activate()/extendTrial() empujan la fecha mas
- * adelante), la ventana se recalcula sola y el aviso vuelve a dispararse en
- * el proximo ciclo - no hace falta limpiar el campo a mano.
+ * negocio renueva (Business::activate() empuja paid_until mas adelante), la
+ * ventana se recalcula sola y el aviso vuelve a dispararse en el proximo
+ * ciclo - no hace falta limpiar el campo a mano.
  */
 #[Signature('subscriptions:notify-expiring {--days=3 : Dias de anticipacion antes del vencimiento}')]
-#[Description('Notifica por correo a los negocios cuyo trial o suscripcion vence pronto')]
+#[Description('Notifica por correo a los negocios cuya suscripcion pagada vence pronto')]
 class SubscriptionsNotifyExpiring extends Command
 {
     public function handle(): int
@@ -32,26 +34,14 @@ class SubscriptionsNotifyExpiring extends Command
 
         $candidates = Business::query()
             ->where('active', true)
-            ->where(function ($query) use ($windowEnd) {
-                $query->whereBetween('paid_until', [now(), $windowEnd])
-                    ->orWhereBetween('trial_ends_at', [now(), $windowEnd]);
-            })
+            ->whereNotNull('paid_until')
+            ->whereBetween('paid_until', [now(), $windowEnd])
             ->get();
 
         $notified = 0;
 
         foreach ($candidates as $business) {
-            $expiresAt = match (true) {
-                $business->isPaid() => $business->paid_until,
-                $business->onTrial() => $business->trial_ends_at,
-                default => null,
-            };
-
-            if (! $expiresAt || $expiresAt->gt($windowEnd)) {
-                continue;
-            }
-
-            $windowStart = $expiresAt->copy()->subDays($days);
+            $windowStart = $business->paid_until->copy()->subDays($days);
             if ($business->subscription_expiry_notified_at?->gte($windowStart)) {
                 continue;
             }
@@ -63,7 +53,7 @@ class SubscriptionsNotifyExpiring extends Command
 
             try {
                 Mail::to($owner->email)->send(
-                    new SubscriptionExpiringMail($owner, $business, $expiresAt, $business->isPaid())
+                    new SubscriptionExpiringMail($owner, $business, $business->paid_until, true)
                 );
             } catch (\Throwable) {
                 continue;

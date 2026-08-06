@@ -22,18 +22,6 @@ class SubscriptionsNotifyExpiringTest extends TestCase
         return $owner;
     }
 
-    public function test_notifies_a_business_whose_trial_expires_within_the_window(): void
-    {
-        Mail::fake();
-        $business = Business::factory()->create(['trial_ends_at' => now()->addDays(2), 'paid_until' => null]);
-        $owner = $this->ownerFor($business);
-
-        $this->artisan('subscriptions:notify-expiring')->assertSuccessful();
-
-        Mail::assertSent(SubscriptionExpiringMail::class, fn ($mail) => $mail->hasTo($owner->email) && ! $mail->isPaidSubscription);
-        $this->assertNotNull($business->fresh()->subscription_expiry_notified_at);
-    }
-
     public function test_notifies_a_business_whose_paid_subscription_expires_within_the_window(): void
     {
         Mail::fake();
@@ -43,12 +31,23 @@ class SubscriptionsNotifyExpiringTest extends TestCase
         $this->artisan('subscriptions:notify-expiring')->assertSuccessful();
 
         Mail::assertSent(SubscriptionExpiringMail::class, fn ($mail) => $mail->hasTo($owner->email) && $mail->isPaidSubscription);
+        $this->assertNotNull($business->fresh()->subscription_expiry_notified_at);
     }
 
     public function test_does_not_notify_a_business_outside_the_window(): void
     {
         Mail::fake();
-        Business::factory()->create(['trial_ends_at' => now()->addDays(10), 'paid_until' => null]);
+        Business::factory()->create(['trial_ends_at' => null, 'paid_until' => now()->addDays(10)]);
+
+        $this->artisan('subscriptions:notify-expiring')->assertSuccessful();
+
+        Mail::assertNothingSent();
+    }
+
+    public function test_does_not_notify_a_business_on_trial(): void
+    {
+        Mail::fake();
+        Business::factory()->create(['trial_ends_at' => now()->addDays(1), 'paid_until' => null]);
 
         $this->artisan('subscriptions:notify-expiring')->assertSuccessful();
 
@@ -58,7 +57,7 @@ class SubscriptionsNotifyExpiringTest extends TestCase
     public function test_does_not_notify_an_inactive_business(): void
     {
         Mail::fake();
-        Business::factory()->create(['active' => false, 'trial_ends_at' => now()->addDays(1), 'paid_until' => null]);
+        Business::factory()->create(['active' => false, 'trial_ends_at' => null, 'paid_until' => now()->addDays(1)]);
 
         $this->artisan('subscriptions:notify-expiring')->assertSuccessful();
 
@@ -68,7 +67,7 @@ class SubscriptionsNotifyExpiringTest extends TestCase
     public function test_does_not_renotify_within_the_same_expiry_window(): void
     {
         Mail::fake();
-        $business = Business::factory()->create(['trial_ends_at' => now()->addDays(2), 'paid_until' => null]);
+        $business = Business::factory()->create(['trial_ends_at' => null, 'paid_until' => now()->addDays(2)]);
         $this->ownerFor($business);
 
         $this->artisan('subscriptions:notify-expiring')->assertSuccessful();
@@ -83,15 +82,15 @@ class SubscriptionsNotifyExpiringTest extends TestCase
     public function test_notifies_again_after_the_business_renews(): void
     {
         Mail::fake();
-        $business = Business::factory()->create(['trial_ends_at' => now()->addDays(2), 'paid_until' => null]);
+        $business = Business::factory()->create(['trial_ends_at' => null, 'paid_until' => now()->addDays(2)]);
         $this->ownerFor($business);
 
         $this->artisan('subscriptions:notify-expiring')->assertSuccessful();
         Mail::assertSentCount(1);
 
-        // Semanas despues, el negocio activa un plan pago que vuelve a
-        // vencer dentro de la ventana: la notificacion anterior quedo bien
-        // atras de esta nueva ventana, tiene que dispararse de nuevo.
+        // Semanas despues, el negocio renueva y vuelve a vencer dentro de la
+        // ventana: la notificacion anterior quedo bien atras de esta nueva
+        // ventana, tiene que dispararse de nuevo.
         Carbon::setTestNow(now()->addDays(20));
         $business->update(['paid_until' => now()->addDays(2)]);
 
@@ -106,7 +105,7 @@ class SubscriptionsNotifyExpiringTest extends TestCase
     public function test_respects_the_days_option(): void
     {
         Mail::fake();
-        $business = Business::factory()->create(['trial_ends_at' => now()->addDays(5), 'paid_until' => null]);
+        $business = Business::factory()->create(['trial_ends_at' => null, 'paid_until' => now()->addDays(5)]);
         $this->ownerFor($business);
 
         $this->artisan('subscriptions:notify-expiring', ['--days' => 7])->assertSuccessful();
