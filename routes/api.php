@@ -15,6 +15,8 @@ use App\Http\Controllers\Api\V1\DiscountController;
 use App\Http\Controllers\Api\V1\EmployeeController;
 use App\Http\Controllers\Api\V1\ExpenseController;
 use App\Http\Controllers\Api\V1\ExpenseTypeController;
+use App\Http\Controllers\Api\V1\IngredientController;
+use App\Http\Controllers\Api\V1\IngredientStockMovementController;
 use App\Http\Controllers\Api\V1\LayawayController;
 use App\Http\Controllers\Api\V1\OpenTabController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
@@ -97,6 +99,19 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::middleware(['feature:clients', 'permission:clients.manage'])->group(function () {
             Route::get('/clients/search', [ClientController::class, 'search'])->name('clients.search');
             Route::apiResource('clients', ClientController::class);
+        });
+
+        Route::middleware('feature:ingredients')->group(function () {
+            Route::middleware('permission:inventory.view')->group(function () {
+                Route::apiResource('ingredients', IngredientController::class)->only(['index', 'show']);
+                Route::get('/ingredient-stock-movements', [IngredientStockMovementController::class, 'index'])->name('ingredient-stock-movements.index');
+            });
+            Route::middleware('permission:inventory.add')->group(function () {
+                Route::apiResource('ingredients', IngredientController::class)->only(['store', 'update', 'destroy']);
+            });
+            Route::middleware('permission:inventory.adjust')->group(function () {
+                Route::post('/ingredient-stock-movements', [IngredientStockMovementController::class, 'store'])->name('ingredient-stock-movements.store');
+            });
         });
 
         Route::middleware('can-access-purchases')->group(function () {

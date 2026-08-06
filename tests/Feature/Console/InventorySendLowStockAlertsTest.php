@@ -4,6 +4,7 @@ namespace Tests\Feature\Console;
 
 use App\Mail\LowStockAlertMail;
 use App\Models\Business;
+use App\Models\Ingredient;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -169,5 +170,23 @@ class InventorySendLowStockAlertsTest extends TestCase
 
         Mail::assertSentCount(1);
         Mail::assertSent(LowStockAlertMail::class, fn ($mail) => $mail->hasTo('target@example.com'));
+    }
+
+    public function test_includes_low_stock_ingredients_alongside_products(): void
+    {
+        Mail::fake();
+        $business = $this->businessWithAdmin(['low_stock_email' => 'dueno@example.com']);
+        Ingredient::factory()->create([
+            'business_id' => $business->id,
+            'is_active' => true,
+            'stock' => 1,
+            'min_stock' => 5,
+        ]);
+
+        $this->artisan('inventory:send-low-stock-alerts')->assertSuccessful();
+
+        Mail::assertSent(LowStockAlertMail::class, fn ($mail) => $mail->hasTo('dueno@example.com')
+            && $mail->items->count() === 1
+            && $mail->items->first()['kind'] === 'ingredient');
     }
 }

@@ -15,6 +15,7 @@ class StockMovementResource extends JsonResource
         return [
             'id' => $this->id,
             'product_id' => $this->product_id,
+            'ingredient_id' => $this->ingredient_id,
             'type' => $this->type,
             'quantity' => $this->quantity,
             'unit_cost_cop' => $this->unit_cost_cop,

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
@@ -88,5 +89,58 @@ class Product extends Model
     public function costHistory(): HasMany
     {
         return $this->hasMany(ProductCostHistory::class);
+    }
+
+    public function ingredients(): BelongsToMany
+    {
+        return $this->belongsToMany(Ingredient::class)->withPivot('quantity')->withTimestamps();
+    }
+
+    /**
+     * Un producto con receta descuenta el stock de sus ingredientes en vez
+     * de mover products.stock directamente (ver
+     * App\Support\ProductAvailability::effectiveStock() para el calculo de
+     * disponibilidad y App\Services\StockService para el descuento).
+     */
+    public function isStockManagedByIngredientsRecipe(): bool
+    {
+        if ($this->is_service || ! $this->track_stock) {
+            return false;
+        }
+
+        $business = $this->relationLoaded('business') ? $this->business : Business::find($this->business_id);
+
+        return (bool) $business?->hasFeature('ingredients') && $this->ingredients()->exists();
+    }
+
+    /**
+     * Costo calculado como Σ(ingredient.cost_price × pivot.quantity). Null
+     * si el producto no tiene receta.
+     */
+    public function recipeCost(): ?float
+    {
+        $ingredients = $this->relationLoaded('ingredients') ? $this->ingredients : $this->ingredients()->get();
+
+        if ($ingredients->isEmpty()) {
+            return null;
+        }
+
+        return round(
+            $ingredients->sum(fn (Ingredient $ingredient) => (float) $ingredient->cost_price * (float) $ingredient->pivot->quantity),
+            2
+        );
+    }
+
+    /**
+     * Recalcula cost_price desde la receta y lo persiste, si tiene receta.
+     */
+    public function syncRecipeCost(): void
+    {
+        $this->load('ingredients');
+        $cost = $this->recipeCost();
+
+        if ($cost !== null) {
+            $this->update(['cost_price' => $cost]);
+        }
     }
 }

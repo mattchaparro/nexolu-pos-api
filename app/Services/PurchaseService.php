@@ -10,6 +10,7 @@ use App\Models\Purchase;
 use App\Models\PurchaseLine;
 use App\Models\PurchasePayment;
 use App\Models\User;
+use App\Support\WeightedAverageCost;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -17,9 +18,10 @@ use Illuminate\Validation\ValidationException;
  * Registro de compras a proveedores: cada linea entra al inventario (via
  * StockService::registerPurchase, con purchase_line_id para trazabilidad) y
  * actualiza el costo promedio ponderado del producto. Solo lineas de
- * producto por ahora - el legacy tambien admite ingredient_id (inventario
- * por receta), pero ese modulo (Ingredient, ingredient_product) no existe
- * todavia en esta API.
+ * producto por ahora - purchase_lines.ingredient_id existe en el schema
+ * compartido (igual que en legacy) pero esta clase todavia no lo admite;
+ * mientras tanto, una entrada de stock de ingrediente se registra por
+ * separado via StockService::ingredientEntry() (ver IngredientStockMovementController).
  */
 class PurchaseService
 {
@@ -96,7 +98,7 @@ class PurchaseService
 
                 $prevStock = $stockTracker[$product->id] ?? (float) $product->stock;
                 $prevCost = (float) $product->cost_price;
-                $newCost = $this->weightedAverageCost($prevStock, $prevCost, $quantity, $unitCost);
+                $newCost = WeightedAverageCost::calculate($prevStock, $prevCost, $quantity, $unitCost);
 
                 $product->update(['cost_price' => $newCost]);
                 $stockTracker[$product->id] = $prevStock + $quantity;
@@ -198,18 +200,5 @@ class PurchaseService
             'linkable_type' => Purchase::class,
             'linkable_id' => $purchase->id,
         ]);
-    }
-
-    /**
-     * Media ponderada de costo unitario al recibir mercancia.
-     */
-    private function weightedAverageCost(float $prevQty, float $prevUnitCost, float $incomingQty, float $incomingUnitCost): float
-    {
-        $den = $prevQty + $incomingQty;
-        if ($den <= 0 || $prevQty <= 0) {
-            return round(max(0, $incomingUnitCost), 4);
-        }
-
-        return round(($prevQty * $prevUnitCost + $incomingQty * $incomingUnitCost) / $den, 4);
     }
 }

@@ -16,7 +16,7 @@ se tacha en cuanto se construye, sin precondición de cutover.
 | `trials:notify-expiring` | ✅ Migrado | — |
 | `audit:prune` | ✅ Migrado | — |
 | `appointments:send-reminders` | ✅ Migrado (solo correo) | — |
-| `inventory:send-low-stock-alerts` | ✅ Migrado (solo correo, solo productos) | Canal WhatsApp: ver abajo. Ingredientes: ver abajo. |
+| `inventory:send-low-stock-alerts` | ✅ Migrado (correo, productos + ingredientes) | Canal WhatsApp: ver abajo. |
 | `reminders:send-whatsapp-notifications` | ✅ Migrado | — |
 | `expenses:register-scheduled` | ✅ Migrado | — |
 | `notifications:send-daily-whatsapp-summary` | ❌ Pendiente | Motor de insights (`ResumenInteligenteInsight` en legacy) - no existe equivalente aquí, es un módulo aparte |
@@ -30,8 +30,8 @@ se tacha en cuanto se construye, sin precondición de cutover.
 - **Fase 2 - WhatsApp Flows** (confirmación nativa de borradores `gasto`,
   `entrada_inventario`, `entrada_ingrediente`): requiere primero un proxy en
   esta API hacia `POST /v1/drafts/{id}/confirm` del IA Core (no existe
-  todavía - hoy solo existe el proxy de `/v1/chat`). `entrada_ingrediente`
-  además depende del módulo Ingredientes (ver abajo).
+  todavía - hoy solo existe el proxy de `/v1/chat`). El módulo Ingredientes
+  que bloqueaba `entrada_ingrediente` ya está migrado.
 - **Fase 3 - Notificaciones proactivas por WhatsApp**:
   - Resumen diario (`resumen_diario`): depende del motor de insights.
   - ~~Recordatorios (`recordatorio`)~~ ✅ Migrado (`reminders:send-whatsapp-notifications`).
@@ -41,11 +41,21 @@ se tacha en cuanto se construye, sin precondición de cutover.
 
 ## Módulos completos que faltan (no son solo un job)
 
-- **Ingredientes/recetas** (`Ingredient`, `ingredient_product` pivot con
-  `Product`): tablas ya existen en `schema.sql`. Bloquea: paridad completa de
-  `LowStockAlertReport` (hoy solo mira productos, ver
-  `app/Support/LowStockAlertReport.php`), el Flow `entrada_ingrediente`, y
-  cualquier negocio que venda con receta (ej. gastronomía).
+- ~~**Ingredientes/recetas**~~ ✅ Migrado (`Ingredient`, `Product::ingredients()`,
+  `ProductAvailability::effectiveStock()`, `StockService::ingredientEntry/Exit/Adjust`,
+  API en `/v1/ingredients` + `/v1/ingredient-stock-movements`).
+  `LowStockAlertReport` ya combina productos + ingredientes. **Sin portar
+  todavía**: el descuento de stock de ingredientes al VENDER un producto con
+  receta - `StockService::registerIngredientsConsumption/restoreIngredientsConsumption`
+  ya existen y quedan listos, pero `SaleService`/`OpenTabService` no los
+  llaman aún, y la validación de stock en `SaleService::applyItems()` sigue
+  mirando `product->stock` en vez de `ProductAvailability::effectiveStock()`
+  para productos con receta. Es un retrofit del flujo de ventas central -
+  amerita su propia sesión enfocada con pruebas dedicadas, no un añadido de
+  último momento. Tampoco se portó el CRUD de la receta en sí
+  (`ingredient_product` attach/sync) ni `PurchaseService` admitiendo líneas
+  de compra de ingrediente (`purchase_lines.ingredient_id` existe en el
+  schema compartido, sin usar).
 - ~~**Reminders**~~ ✅ Migrado (`Reminder` + `ReminderService`, API en
   `/v1/reminders`). El `remindable` polimórfico existe en el modelo pero
   todavía no lo alimenta nada (los hooks desde Purchase/Supplier/

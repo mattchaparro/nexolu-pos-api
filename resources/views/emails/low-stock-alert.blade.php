@@ -34,7 +34,7 @@
                             @foreach($items as $item)
                             <tr>
                                 <td style="padding:8px 0;font-size:14px;color:#374151;border-bottom:1px solid #f1f5f9;">{{ $item['name'] }}</td>
-                                <td style="padding:8px 0;font-size:14px;color:#dc2626;font-weight:700;border-bottom:1px solid #f1f5f9;text-align:right;">{{ rtrim(rtrim(number_format($item['stock'], 2), '0'), '.') }}</td>
+                                <td style="padding:8px 0;font-size:14px;color:#dc2626;font-weight:700;border-bottom:1px solid #f1f5f9;text-align:right;">{{ rtrim(rtrim(number_format($item['stock'], 2), '0'), '.') }}{{ !empty($item['unit']) ? ' '.$item['unit'] : '' }}</td>
                                 <td style="padding:8px 0;font-size:14px;color:#6b7280;border-bottom:1px solid #f1f5f9;text-align:right;">{{ $item['threshold'] }}</td>
                             </tr>
                             @endforeach

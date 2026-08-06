@@ -23,6 +23,7 @@ class StockMovement extends Model
 
     protected $fillable = [
         'product_id',
+        'ingredient_id',
         'business_id',
         'type',
         'stock_movement_reason_id',
@@ -43,34 +44,54 @@ class StockMovement extends Model
     }
 
     /**
-     * El stock del producto SIEMPRE se mueve a través de un StockMovement, nunca
-     * con un update directo a products.stock: así queda auditoria completa de
-     * cada entrada/salida (quién, cuándo, por qué) en vez del machetazo legacy
-     * de mutar la columna sin dejar rastro.
+     * El stock del producto/ingrediente SIEMPRE se mueve a través de un
+     * StockMovement, nunca con un update directo a products.stock/
+     * ingredients.stock: así queda auditoria completa de cada entrada/salida
+     * (quién, cuándo, por qué) en vez del machetazo legacy de mutar la
+     * columna sin dejar rastro. product_id e ingredient_id son mutuamente
+     * excluyentes (igual que en el schema compartido).
      */
     protected static function booted(): void
     {
         static::created(function (StockMovement $movement) {
-            $movement->product()->withoutGlobalScopes()->increment('stock', $movement->quantity);
+            if ($movement->product_id) {
+                self::applyToProduct($movement);
 
-            $product = Product::withoutGlobalScopes()->find($movement->product_id);
-            if (! $product || ! $product->is_single_sale || ! $product->track_stock) {
                 return;
             }
 
-            $product->refresh();
-
-            if ((int) $product->stock <= 0 && $product->is_active) {
-                $product->forceFill(['is_active' => false])->save();
-            } elseif ((int) $product->stock > 0 && ! $product->is_active) {
-                $product->forceFill(['is_active' => true])->save();
+            if ($movement->ingredient_id) {
+                Ingredient::withoutGlobalScopes()->whereKey($movement->ingredient_id)->increment('stock', $movement->quantity);
             }
         });
+    }
+
+    private static function applyToProduct(StockMovement $movement): void
+    {
+        $movement->product()->withoutGlobalScopes()->increment('stock', $movement->quantity);
+
+        $product = Product::withoutGlobalScopes()->find($movement->product_id);
+        if (! $product || ! $product->is_single_sale || ! $product->track_stock) {
+            return;
+        }
+
+        $product->refresh();
+
+        if ((int) $product->stock <= 0 && $product->is_active) {
+            $product->forceFill(['is_active' => false])->save();
+        } elseif ((int) $product->stock > 0 && ! $product->is_active) {
+            $product->forceFill(['is_active' => true])->save();
+        }
     }
 
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function ingredient(): BelongsTo
+    {
+        return $this->belongsTo(Ingredient::class);
     }
 
     public function reason(): BelongsTo

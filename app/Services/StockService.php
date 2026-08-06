@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Ingredient;
 use App\Models\Layaway;
 use App\Models\Product;
 use App\Models\PurchaseLine;
@@ -9,6 +10,7 @@ use App\Models\Sale;
 use App\Models\StockMovement;
 use App\Models\StockMovementReason;
 use App\Models\User;
+use App\Support\WeightedAverageCost;
 
 /**
  * Único lugar de la app que crea StockMovement (y por lo tanto el único que
@@ -178,5 +180,128 @@ class StockService
             'reference' => "Compra #{$line->purchase_id}",
             'user_id' => $user->id,
         ]);
+    }
+
+    /**
+     * Entrada manual de stock de un ingrediente (reposicion, compra suelta).
+     * Si viene $unitCostCop, recalcula el costo promedio ponderado del
+     * ingrediente y lo propaga a las recetas que lo usan.
+     */
+    public function ingredientEntry(User $user, Ingredient $ingredient, float $quantity, ?string $notes = null, ?int $reasonId = null, ?float $unitCostCop = null): StockMovement
+    {
+        $previousStock = (float) $ingredient->stock;
+        $previousCost = (float) $ingredient->cost_price;
+
+        $movement = StockMovement::create([
+            'ingredient_id' => $ingredient->id,
+            'business_id' => $ingredient->business_id,
+            'type' => StockMovement::TYPE_ENTRY,
+            'stock_movement_reason_id' => $reasonId ?? StockMovementReason::systemIdForCode(StockMovementReason::CODE_MANUAL_IN),
+            'quantity' => abs($quantity),
+            'unit_cost_cop' => $unitCostCop,
+            'notes' => $notes,
+            'user_id' => $user->id,
+        ]);
+
+        if ($unitCostCop !== null && $unitCostCop > 0) {
+            $newAverageCost = WeightedAverageCost::calculate($previousStock, $previousCost, abs($quantity), $unitCostCop);
+            $ingredient->update(['cost_price' => $newAverageCost]);
+            $ingredient->syncLinkedProductCosts();
+        }
+
+        return $movement;
+    }
+
+    public function ingredientExit(User $user, Ingredient $ingredient, float $quantity, ?string $notes = null, ?int $reasonId = null, ?float $unitCostCop = null): StockMovement
+    {
+        $cost = $unitCostCop ?? (float) $ingredient->cost_price;
+
+        return StockMovement::create([
+            'ingredient_id' => $ingredient->id,
+            'business_id' => $ingredient->business_id,
+            'type' => StockMovement::TYPE_EXIT,
+            'stock_movement_reason_id' => $reasonId ?? StockMovementReason::systemIdForCode(StockMovementReason::CODE_MANUAL_OUT),
+            'quantity' => -abs($quantity),
+            'unit_cost_cop' => $cost > 0 ? $cost : null,
+            'notes' => $notes,
+            'user_id' => $user->id,
+        ]);
+    }
+
+    /**
+     * Ajusta el stock de un ingrediente a un valor absoluto ($newStock),
+     * registrando la diferencia con el stock actual como el movimiento.
+     */
+    public function ingredientAdjust(User $user, Ingredient $ingredient, float $newStock, ?string $notes = null, ?int $reasonId = null): StockMovement
+    {
+        $diff = $newStock - (float) $ingredient->stock;
+
+        return StockMovement::create([
+            'ingredient_id' => $ingredient->id,
+            'business_id' => $ingredient->business_id,
+            'type' => StockMovement::TYPE_ADJUSTMENT,
+            'stock_movement_reason_id' => $reasonId ?? StockMovementReason::systemIdForCode(StockMovementReason::CODE_ADJUSTMENT),
+            'quantity' => $diff,
+            'notes' => $notes ?? 'Ajuste manual',
+            'user_id' => $user->id,
+        ]);
+    }
+
+    /**
+     * Descuenta el stock de cada ingrediente de la receta de $product por la
+     * venta de $quantity unidades (pivot.quantity * $quantity por
+     * ingrediente). A diferencia de legacy (que mutaba ingredients.stock
+     * directo sin dejar rastro), aqui cada descuento queda como un
+     * StockMovement auditable, igual que el resto de esta clase.
+     *
+     * No hace nada si el producto no gestiona su stock por receta (ver
+     * Product::isStockManagedByIngredientsRecipe()) - StockService::registerSale()
+     * ya cubre ese caso con un StockMovement normal de producto.
+     */
+    public function registerIngredientsConsumption(User $user, Product $product, int $quantity, Sale $sale): void
+    {
+        if (! $product->isStockManagedByIngredientsRecipe()) {
+            return;
+        }
+
+        $product->loadMissing('ingredients');
+
+        foreach ($product->ingredients as $ingredient) {
+            StockMovement::create([
+                'ingredient_id' => $ingredient->id,
+                'business_id' => $ingredient->business_id,
+                'type' => StockMovement::TYPE_EXIT,
+                'stock_movement_reason_id' => StockMovementReason::systemIdForCode(StockMovementReason::CODE_SALE),
+                'quantity' => -abs((float) $ingredient->pivot->quantity * $quantity),
+                'reference' => "Venta #{$sale->id}",
+                'user_id' => $user->id,
+            ]);
+        }
+    }
+
+    /**
+     * Restaura el consumo de ingredientes de un reverso/edicion a la baja de
+     * cuenta abierta. Contraparte de registerIngredientsConsumption().
+     */
+    public function restoreIngredientsConsumption(User $user, Product $product, int $quantity, Sale $sale, ?string $notes = null): void
+    {
+        if (! $product->isStockManagedByIngredientsRecipe()) {
+            return;
+        }
+
+        $product->loadMissing('ingredients');
+
+        foreach ($product->ingredients as $ingredient) {
+            StockMovement::create([
+                'ingredient_id' => $ingredient->id,
+                'business_id' => $ingredient->business_id,
+                'type' => StockMovement::TYPE_ENTRY,
+                'stock_movement_reason_id' => StockMovementReason::systemIdForCode(StockMovementReason::CODE_SALE_REVERSAL),
+                'quantity' => abs((float) $ingredient->pivot->quantity * $quantity),
+                'reference' => "Ajuste venta #{$sale->id}",
+                'notes' => $notes,
+                'user_id' => $user->id,
+            ]);
+        }
     }
 }

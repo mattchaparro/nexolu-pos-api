@@ -12,8 +12,8 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Collection;
 
 /**
- * Alerta de que uno o mas productos del negocio estan por debajo de su
- * umbral de inventario. Enviado por el comando
+ * Alerta de que uno o mas productos o ingredientes del negocio estan por
+ * debajo de su umbral de inventario. Enviado por el comando
  * inventory:send-low-stock-alerts. Los headers X-Nexolu-Business-Id /
  * X-Nexolu-Email-Type hacen que LogSentEmail clasifique este envio
  * automaticamente en el historial de correos del panel de SuperAdmin.
@@ -23,7 +23,7 @@ class LowStockAlertMail extends Mailable
     use Queueable, SerializesModels;
 
     /**
-     * @param  Collection<int, array{id: int, name: string, stock: float, threshold: int}>  $items
+     * @param  Collection<int, array{kind: string, id: int, name: string, stock: float, threshold: int, unit: ?string}>  $items
      */
     public function __construct(
         public Business $business,
