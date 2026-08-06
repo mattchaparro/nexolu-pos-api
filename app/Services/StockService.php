@@ -124,11 +124,14 @@ class StockService
      * el legacy. El legacy ademas usaba type='layaway' a secas, un valor que
      * nunca estuvo en el enum de la columna (entry/exit/adjustment/sale) -
      * confirmado que revienta con "Data truncated for column 'type'" en modo
-     * estricto.
+     * estricto. Tampoco mueve products.stock si el producto gestiona su
+     * disponibilidad por receta (ver Product::isStockManagedByIngredientsRecipe) -
+     * en ese caso quien llama debe usar reserveIngredientsForLayaway() en su
+     * lugar.
      */
     public function reserveForLayaway(User $user, Product $product, int $quantity, Layaway $layaway): ?StockMovement
     {
-        if (! $product->track_stock) {
+        if (! $product->track_stock || $product->isStockManagedByIngredientsRecipe()) {
             return null;
         }
 
@@ -149,7 +152,7 @@ class StockService
      */
     public function releaseLayawayReservation(User $user, Product $product, int $quantity, Layaway $layaway, ?string $notes = null): ?StockMovement
     {
-        if (! $product->track_stock) {
+        if (! $product->track_stock || $product->isStockManagedByIngredientsRecipe()) {
             return null;
         }
 
@@ -264,23 +267,10 @@ class StockService
      */
     public function registerIngredientsConsumption(User $user, Product $product, int $quantity, Sale $sale): void
     {
-        if (! $product->isStockManagedByIngredientsRecipe()) {
-            return;
-        }
-
-        $product->loadMissing('ingredients');
-
-        foreach ($product->ingredients as $ingredient) {
-            StockMovement::create([
-                'ingredient_id' => $ingredient->id,
-                'business_id' => $ingredient->business_id,
-                'type' => StockMovement::TYPE_EXIT,
-                'stock_movement_reason_id' => StockMovementReason::systemIdForCode(StockMovementReason::CODE_SALE),
-                'quantity' => -abs((float) $ingredient->pivot->quantity * $quantity),
-                'reference' => "Venta #{$sale->id}",
-                'user_id' => $user->id,
-            ]);
-        }
+        $this->adjustIngredientsForRecipeProduct(
+            $user, $product, $quantity, StockMovement::TYPE_EXIT,
+            StockMovementReason::CODE_SALE, "Venta #{$sale->id}"
+        );
     }
 
     /**
@@ -289,20 +279,70 @@ class StockService
      */
     public function restoreIngredientsConsumption(User $user, Product $product, int $quantity, Sale $sale, ?string $notes = null): void
     {
+        $this->adjustIngredientsForRecipeProduct(
+            $user, $product, $quantity, StockMovement::TYPE_ENTRY,
+            StockMovementReason::CODE_SALE_REVERSAL, "Ajuste venta #{$sale->id}", $notes
+        );
+    }
+
+    /**
+     * Contraparte de reserveForLayaway() para un producto con receta: reserva
+     * cada ingrediente en vez de products.stock (columna "fantasma" para
+     * estos productos).
+     */
+    public function reserveIngredientsForLayaway(User $user, Product $product, int $quantity, Layaway $layaway): void
+    {
+        $this->adjustIngredientsForRecipeProduct(
+            $user, $product, $quantity, StockMovement::TYPE_EXIT,
+            StockMovementReason::CODE_LAYAWAY, "Apartado #{$layaway->id}"
+        );
+    }
+
+    /**
+     * Contraparte de releaseLayawayReservation() para un producto con receta.
+     */
+    public function releaseIngredientsLayawayReservation(User $user, Product $product, int $quantity, Layaway $layaway, ?string $notes = null): void
+    {
+        $this->adjustIngredientsForRecipeProduct(
+            $user, $product, $quantity, StockMovement::TYPE_ENTRY,
+            StockMovementReason::CODE_LAYAWAY_CANCEL, "Apartado #{$layaway->id}", $notes
+        );
+    }
+
+    /**
+     * Nucleo compartido por las 4 variantes de consumo/reserva de
+     * ingredientes de arriba: mismo bucle "un StockMovement por ingrediente
+     * de la receta", solo cambia direccion (type), motivo y referencia. No
+     * hace nada si el producto no gestiona su stock por receta (ver
+     * Product::isStockManagedByIngredientsRecipe()) - quien llama ya cubrio
+     * ese caso con el StockMovement normal de producto (registerSale,
+     * reserveForLayaway, etc.).
+     */
+    private function adjustIngredientsForRecipeProduct(
+        User $user,
+        Product $product,
+        int $quantity,
+        string $type,
+        string $reasonCode,
+        string $reference,
+        ?string $notes = null,
+    ): void {
         if (! $product->isStockManagedByIngredientsRecipe()) {
             return;
         }
 
         $product->loadMissing('ingredients');
+        $sign = $type === StockMovement::TYPE_EXIT ? -1 : 1;
+        $reasonId = StockMovementReason::systemIdForCode($reasonCode);
 
         foreach ($product->ingredients as $ingredient) {
             StockMovement::create([
                 'ingredient_id' => $ingredient->id,
                 'business_id' => $ingredient->business_id,
-                'type' => StockMovement::TYPE_ENTRY,
-                'stock_movement_reason_id' => StockMovementReason::systemIdForCode(StockMovementReason::CODE_SALE_REVERSAL),
-                'quantity' => abs((float) $ingredient->pivot->quantity * $quantity),
-                'reference' => "Ajuste venta #{$sale->id}",
+                'type' => $type,
+                'stock_movement_reason_id' => $reasonId,
+                'quantity' => $sign * abs((float) $ingredient->pivot->quantity * $quantity),
+                'reference' => $reference,
                 'notes' => $notes,
                 'user_id' => $user->id,
             ]);

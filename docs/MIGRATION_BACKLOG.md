@@ -52,12 +52,21 @@ se tacha en cuanto se construye, sin precondición de cutover.
   en vez de `product->stock` crudo para productos con receta.
   `StockService::registerSale/registerSaleReversal` no mueven `products.stock`
   cuando el producto es gestionado por receta (`isStockManagedByIngredientsRecipe()`).
-  **Sin portar todavía**: el mismo retrofit en `LayawayService` (apartados
-  reservan/liberan stock via `reserveForLayaway`/`releaseLayawayReservation`,
-  que siguen sin considerar recetas - un apartado de un producto con receta
-  hoy mueve `products.stock`, que es la columna "fantasma"). Tampoco se portó
-  `PurchaseService` admitiendo líneas de compra de ingrediente
-  (`purchase_lines.ingredient_id` existe en el schema compartido, sin usar).
+  ~~**Sin portar todavía**: el mismo retrofit en `LayawayService`~~ ✅ Migrado:
+  `LayawayService::applyItems/cancel/updateItems` ahora llaman
+  `StockService::reserveIngredientsForLayaway`/`releaseIngredientsLayawayReservation`
+  (nuevas, análogas a `registerIngredientsConsumption`/`restoreIngredientsConsumption`
+  de ventas) y validan disponibilidad con `ProductAvailability::effectiveStock()`.
+  `reserveForLayaway`/`releaseLayawayReservation` ganaron el mismo guard
+  `isStockManagedByIngredientsRecipe()` que ya tenían `registerSale`/
+  `registerSaleReversal`, así que un apartado de un producto con receta ya
+  no mueve `products.stock`. De paso se extrajo `adjustIngredientsForRecipeProduct()`
+  como núcleo compartido de las 4 variantes de movimiento de ingredientes
+  (venta/reverso/reserva de apartado/liberación de apartado - antes las dos
+  de venta duplicaban el mismo bucle "un `StockMovement` por ingrediente").
+  Sigue pendiente: `PurchaseService` admitiendo líneas de compra de
+  ingrediente (`purchase_lines.ingredient_id` existe en el schema
+  compartido, sin usar).
 - ~~**CRUD de la receta desde el endpoint de productos**~~ ✅ Migrado: igual
   que el legacy, `ingredients` (`[{ingredient_id, quantity}]`) viaja como
   parte del payload de `POST`/`PUT /v1/products`, no por un endpoint aparte -

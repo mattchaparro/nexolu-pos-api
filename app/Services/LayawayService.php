@@ -9,6 +9,7 @@ use App\Models\LayawayPayment;
 use App\Models\Product;
 use App\Models\User;
 use App\Support\PaymentRefunder;
+use App\Support\ProductAvailability;
 use App\Support\SaleLineUnitPrice;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -54,15 +55,20 @@ class LayawayService
     /**
      * Crea los LayawayItem de $items sobre $layaway y reserva stock, bajo
      * lockForUpdate (mismo cuidado que SaleService::applyItems - el legacy no
-     * validaba stock disponible al crear un apartado).
+     * validaba stock disponible al crear un apartado). Para un producto con
+     * receta, reserva cada ingrediente en vez de products.stock - mismo
+     * retrofit que SaleService::applyItems/OpenTabService::syncItems.
      *
      * @param  array<int, array{product_id: int, quantity: int, unit_price?: float|int|string|null}>  $items
      */
     private function applyItems(User $user, Layaway $layaway, Business $business, array $items): void
     {
+        $ingredientsEnabled = $business->hasFeature('ingredients');
+
         $productIds = collect($items)->pluck('product_id')->unique()->values()->all();
         $products = Product::where('business_id', $business->id)
             ->whereIn('id', $productIds)
+            ->when($ingredientsEnabled, fn ($query) => $query->with('ingredients'))
             ->lockForUpdate()
             ->get()
             ->keyBy('id');
@@ -70,10 +76,11 @@ class LayawayService
         foreach ($items as $item) {
             $product = $products->get($item['product_id']);
             $quantity = (int) $item['quantity'];
+            $availableStock = ProductAvailability::effectiveStock($product, $ingredientsEnabled);
 
-            if ($product->track_stock && $quantity > $product->stock) {
+            if ($product->track_stock && $quantity > $availableStock) {
                 throw ValidationException::withMessages([
-                    'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $product->stock.').',
+                    'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $availableStock.').',
                 ]);
             }
 
@@ -86,10 +93,17 @@ class LayawayService
 
             if ($product->track_stock) {
                 $this->stockService->reserveForLayaway($user, $product, $quantity, $layaway);
-                // Ver la nota equivalente en SaleService::applyItems: si $items
-                // trae dos lineas del mismo producto, la siguiente vuelta debe
-                // ver el stock ya reservado.
-                $product->stock -= $quantity;
+                $this->stockService->reserveIngredientsForLayaway($user, $product, $quantity, $layaway);
+
+                // Ajuste en memoria (el movimiento ya persistio el cambio real en
+                // BD): ver la nota equivalente en SaleService::applyItems.
+                if ($product->isStockManagedByIngredientsRecipe()) {
+                    foreach ($product->ingredients as $ingredient) {
+                        $ingredient->stock -= (float) $ingredient->pivot->quantity * $quantity;
+                    }
+                } else {
+                    $product->stock -= $quantity;
+                }
             }
         }
     }
@@ -147,12 +161,16 @@ class LayawayService
                 ]);
             }
 
-            $layaway->loadMissing('items.product');
+            $ingredientsEnabled = $layaway->business->hasFeature('ingredients');
+            $layaway->loadMissing($ingredientsEnabled ? 'items.product.ingredients' : 'items.product');
 
             foreach ($layaway->items as $item) {
                 $product = $item->product;
                 if ($product) {
                     $this->stockService->releaseLayawayReservation(
+                        $user, $product, (int) $item->quantity, $layaway, 'Cancelacion del apartado'
+                    );
+                    $this->stockService->releaseIngredientsLayawayReservation(
                         $user, $product, (int) $item->quantity, $layaway, 'Cancelacion del apartado'
                     );
                 }
@@ -215,6 +233,7 @@ class LayawayService
 
         return DB::transaction(function () use ($user, $layaway, $items) {
             $business = $layaway->business;
+            $ingredientsEnabled = $business->hasFeature('ingredients');
             $layaway->loadMissing('items');
 
             $currentQtyByProduct = $layaway->items
@@ -236,6 +255,7 @@ class LayawayService
             $productIds = $currentQtyByProduct->keys()->merge($desiredQtyByProduct->keys())->unique()->values();
             $products = Product::where('business_id', $business->id)
                 ->whereIn('id', $productIds)
+                ->when($ingredientsEnabled, fn ($query) => $query->with('ingredients'))
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
@@ -252,14 +272,19 @@ class LayawayService
                 }
 
                 if ($delta > 0) {
-                    if ($delta > $product->stock) {
+                    $availableStock = ProductAvailability::effectiveStock($product, $ingredientsEnabled);
+                    if ($delta > $availableStock) {
                         throw ValidationException::withMessages([
-                            'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $product->stock.').',
+                            'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $availableStock.').',
                         ]);
                     }
                     $this->stockService->reserveForLayaway($user, $product, $delta, $layaway);
+                    $this->stockService->reserveIngredientsForLayaway($user, $product, $delta, $layaway);
                 } else {
                     $this->stockService->releaseLayawayReservation(
+                        $user, $product, abs($delta), $layaway, 'Reduccion de cantidad al editar apartado'
+                    );
+                    $this->stockService->releaseIngredientsLayawayReservation(
                         $user, $product, abs($delta), $layaway, 'Reduccion de cantidad al editar apartado'
                     );
                 }
