@@ -160,6 +160,11 @@ This application is a Laravel application and its main Laravel ecosystems packag
 
 ## Project rules (nexolu-pos-api)
 
+### Idioma de las respuestas al usuario (regla inamovible)
+
+- Toda respuesta de chat al usuario (texto fuera de código/commits/nombres de archivo) debe ser **en español**, siempre, sin excepción y sin que haga falta pedirlo cada vez. Esto es independiente de la regla de "Language" de abajo, que aplica solo a identificadores de código, no a la conversación.
+- Código, commits, nombres de identificadores, etc. se rigen por la regla de "Language" de abajo (identificadores en inglés, comentarios pueden ir en español).
+
 ### Language
 
 - All identifiers (classes, methods, variables, route names, config keys, table/column aliases you introduce) must be in **English**, even when porting logic from the legacy monolith that mixes English and Spanish. Rename as you port.
