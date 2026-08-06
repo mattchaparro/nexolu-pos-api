@@ -41,6 +41,12 @@ return [
         // llamar POST {base_url}/v1/chat - ver AiChatService.
         'api_key' => env('IA_CORE_API_KEY'),
         'base_url' => env('IA_CORE_BASE_URL', 'http://localhost:8000'),
+
+        // API key de PLATAFORMA del IA Core (NEXOLU_PLATFORM_API_KEY del lado
+        // de ese servicio, no una app individual): unico uso, GET
+        // /v1/platform/usage para el costo real de IA en el dashboard de
+        // Finance de SuperAdmin - ver AiPlatformUsageService.
+        'platform_api_key' => env('IA_CORE_PLATFORM_API_KEY'),
     ],
 
     // Nexolu Payments Core (servicio Python aparte, repo nexolu-payments-core):

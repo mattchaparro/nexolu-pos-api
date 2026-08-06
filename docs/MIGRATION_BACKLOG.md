@@ -23,7 +23,7 @@ se tacha en cuanto se construye, sin precondición de cutover.
 | `businesses:send-trial-winback` | ✅ Migrado | — |
 | `businesses:warn-inactive-trial` | ✅ Migrado | — |
 | `queue:work` / `database:backup` | N/A | Infra de hosting legacy, no aplica a esta API (Cloud/Sail maneja colas y backups distinto) |
-| `exchange-rate:fetch` | ❌ Sin decidir | Encaje arquitectónico poco claro - los costos de IA ya se rastrean en USD en el IA Core, no en COP aquí |
+| `exchange-rate:fetch` | ✅ Migrado | — |
 
 Los dos jobs de correo de reactivación (`send-trial-winback`,
 `warn-inactive-trial`) se portaron usando el mismo patrón ya establecido en
@@ -277,6 +277,36 @@ con el modelo `Business`.
   legacy la dispara al registrar un gasto, un abono, etc.) queda para cuando
   el dashboard consuma esto de verdad y se sienta el "insight cacheado
   contradice el dato fresco".
+- ~~**`exchange-rate:fetch` + gastos reales en Finance**~~ ✅ Migrado. Estaba
+  "sin decidir" porque cuando se construyó el dashboard de Finance de
+  SuperAdmin (más arriba en este documento) esta API todavía no tenía ni
+  costo de IA ni de WhatsApp que valorar - ya no es cierto, así que se cerró
+  del todo, no solo el job:
+  - `App\Models\ExchangeRate` + `App\Services\ExchangeRateService` +
+    `exchange-rate:fetch` (`dailyAt('06:00')`, mismo horario que legacy):
+    TRM oficial (`datos.gov.co`) con respaldo de mercado
+    (`open.er-api.com`), igual que legacy. La tabla `exchange_rates` ya
+    existía en el schema compartido (legacy también le escribe) - sin
+    migración, solo el modelo.
+  - `App\Services\AiPlatformUsageService`: cliente nuevo hacia
+    `GET /v1/platform/usage` del IA Core - a diferencia de todo lo demás que
+    habla con el Core, este usa la API key de **plataforma**
+    (`IA_CORE_PLATFORM_API_KEY` / `NEXOLU_PLATFORM_API_KEY` del lado del
+    Core), no la simétrica de `/v1/chat`, porque ese endpoint ve el gasto de
+    TODAS las apps del Core. Nunca lanza: sin credencial o si el Core no
+    responde, el costo de IA queda `null` (no `$0`), y
+    `PlatformFinanceService` lo excluye del total marcando
+    `ai_cost_available: false` en vez de mostrar un margen artificialmente
+    mejor por una falla de red.
+  - `App\Services\SuperAdmin\PlatformFinanceService::monthlySummary()`
+    ahora sí calcula gastos y margen, como legacy: servidor + dominio
+    (`SystemConfigStore`, ya existía), WhatsApp (`WhatsAppUsageDaily`, ya
+    existía) e IA (nuevo, arriba), todo convertido con la TRM del día real
+    (con fallback a `finance.usd_to_cop_rate` de `system_configs`, default
+    4000). **A diferencia de legacy, sin comisión de Wompi**: esta API ya no
+    cobra suscripciones vía Wompi directo (Nexolu Payments Core), así que
+    esa comisión no es un gasto que esta plataforma pague - decisión ya
+    tomada antes, no una omisión nueva.
 
 ## Deuda dejada a propósito en el módulo Reminders
 

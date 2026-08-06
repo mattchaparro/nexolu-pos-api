@@ -22,3 +22,6 @@ Schedule::command('expenses:register-scheduled')->dailyAt('00:05');
 Schedule::command('notifications:send-daily-whatsapp-summary')->dailyAt('20:00');
 Schedule::command('businesses:send-trial-winback')->weeklyOn(1, '10:00');
 Schedule::command('businesses:warn-inactive-trial')->dailyAt('10:00');
+// 06:00: temprano, para que TODO gasto del dia (IA y WhatsApp) se pueda
+// valorar con la tasa de ese mismo dia. La TRM ya esta publicada a esa hora.
+Schedule::command('exchange-rate:fetch')->dailyAt('06:00');
