@@ -19,7 +19,7 @@ se tacha en cuanto se construye, sin precondición de cutover.
 | `inventory:send-low-stock-alerts` | ✅ Migrado (correo, productos + ingredientes) | Canal WhatsApp: ver abajo. |
 | `reminders:send-whatsapp-notifications` | ✅ Migrado | — |
 | `expenses:register-scheduled` | ✅ Migrado | — |
-| `notifications:send-daily-whatsapp-summary` | ❌ Pendiente | Motor de insights (`ResumenInteligenteInsight` en legacy) - no existe equivalente aquí, es un módulo aparte |
+| `notifications:send-daily-whatsapp-summary` | ✅ Migrado | Falta solo el nombre real de la plantilla aprobada en Meta - ver abajo. |
 | `businesses:send-trial-winback` | ❌ Pendiente | Decisión de mailer/Brevo pendiente (no evaluado a fondo todavía) |
 | `businesses:warn-inactive-trial` | ❌ Pendiente | Nada - es portable ya, paralelo al filtro de negocios inactivos de SuperAdmin ya construido |
 | `queue:work` / `database:backup` | N/A | Infra de hosting legacy, no aplica a esta API (Cloud/Sail maneja colas y backups distinto) |
@@ -33,11 +33,15 @@ se tacha en cuanto se construye, sin precondición de cutover.
   todavía - hoy solo existe el proxy de `/v1/chat`). El módulo Ingredientes
   que bloqueaba `entrada_ingrediente` ya está migrado.
 - **Fase 3 - Notificaciones proactivas por WhatsApp**:
-  - Resumen diario (`resumen_diario`): depende del motor de insights.
+  - ~~Resumen diario (`resumen_diario`)~~ ✅ Migrado (`notifications:send-daily-whatsapp-summary`
+    + `DailyBusinessSummaryService`). El comando no envía nada todavía porque
+    `services.whatsapp.templates.resumen_diario.name` está en `null` - falta
+    aprobar la plantilla en Meta y poner el nombre real ahí.
   - ~~Recordatorios (`recordatorio`)~~ ✅ Migrado (`reminders:send-whatsapp-notifications`).
   - Inventario bajo (`inventario_bajo`): depende de `AiChannelIdentity`
-    (ya existe, Fase 1) + `WhatsAppRecipients` (falta portar, es trivial) +
-    extender `InventorySendLowStockAlerts` con el canal WhatsApp.
+    (ya existe, Fase 1) + `WhatsAppRecipients` (✅ ya portado en
+    `app/Support/WhatsAppRecipients.php`, se reusa en el resumen diario) +
+    extender `InventorySendLowStockAlerts` con el canal WhatsApp (pendiente).
 
 ## Módulos completos que faltan (no son solo un job)
 
@@ -173,11 +177,27 @@ se tacha en cuanto se construye, sin precondición de cutover.
     interno (`PlatformFinanceService` legacy). No se necesita replicar acá -
     si se quiere mostrar comisión neta, pedírsela al Core en vez de
     recalcularla con una fórmula propia.
-- **Motor de insights** (`ResumenInteligenteInsight` en legacy): calcula
-  salud del negocio/ventas vs. ayer/gasto inusual/prioridad del día. No
-  evaluado a fondo todavía - es candidato a vivir como una Capability más
-  (`App\Capabilities`) reutilizable tanto por el resumen diario de WhatsApp
-  como por el chat de IA, en vez de portarlo tal cual de legacy.
+- ~~**Motor de insights**~~ ✅ Migrado, con alcance reducido a propósito: en
+  legacy vive repartido en `ResumenInteligenteInsight` + 6 sub-insights, cada
+  uno con su propia interfaz (`AiInsightDefinition`) porque alimentan
+  tarjetas de dashboard con prosa generada por IA y cacheada
+  (`AiInsightService`). Esta API no tiene dashboard, así que se portó solo el
+  cálculo determinístico (`gatherData()`) que el resumen diario de WhatsApp
+  necesita, consolidado en `App\Services\DailyBusinessSummaryService` - sin
+  las clases por insight, sin prompts de sistema/usuario, sin caché ni
+  `teaser()`/`preguntaSugerida()`/`accionSugerida()` (nada de eso tiene un
+  consumidor en esta API todavía). Si en el futuro el chat de IA necesita
+  estos mismos números como una Capability más, se expone el servicio ya
+  existente en vez de recalcular.
+  Bug real de legacy corregido al portar (no solo trasladado): `calcularSalud()`
+  contaba "productos por agotarse" a partir de la lista de nombres ya topada
+  a 3 para mostrar en el dashboard (`productos_por_agotarse`), así que un
+  negocio con 20 productos cerca de agotarse computaba la misma salud que uno
+  con 3. `DailyBusinessSummaryService` cuenta el total real bajo umbral.
+  De paso, `LowStockAlertReport` (que antes ordenaba solo por stock crudo) se
+  alineó con el `StockUrgency` completo de legacy (velocidad real de venta/consumo,
+  no cercanía al umbral) - esto ya estaba señalado como TODO en su propio
+  docblock desde que se construyó, en el módulo de Inventario.
 
 ## Deuda dejada a propósito en el módulo Reminders
 

@@ -19,3 +19,4 @@ Schedule::command('appointments:send-reminders')->dailyAt('09:00');
 Schedule::command('inventory:send-low-stock-alerts')->dailyAt('08:00');
 Schedule::command('reminders:send-whatsapp-notifications')->everyFiveMinutes();
 Schedule::command('expenses:register-scheduled')->dailyAt('00:05');
+Schedule::command('notifications:send-daily-whatsapp-summary')->dailyAt('20:00');
