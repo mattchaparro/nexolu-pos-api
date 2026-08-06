@@ -3,13 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\ProcessWhatsAppFlowReply;
-use App\Jobs\ProcessWhatsAppInbound;
-use App\Jobs\ProcessWhatsAppUnsupportedMessage;
-use App\Support\ChannelPhone;
+use App\Services\WhatsApp\InboundMessageDispatcher;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -18,10 +14,13 @@ use Illuminate\Support\Facades\Log;
  *
  * handle() SIEMPRE responde 200 de inmediato: el trabajo real se hace en
  * cola. Si se demorara aqui, Meta daria la entrega por fallida y
- * reintentaria, duplicando el mensaje.
+ * reintentaria, duplicando el mensaje. El parseo del mensaje en si vive en
+ * InboundMessageDispatcher, compartido con NexoluCommsWebhookController.
  */
 class WhatsappWebhookController extends Controller
 {
+    public function __construct(private InboundMessageDispatcher $dispatcher) {}
+
     public function verify(Request $request): Response
     {
         $mode = $request->query('hub_mode') ?? $request->query('hub.mode');
@@ -39,7 +38,9 @@ class WhatsappWebhookController extends Controller
 
     public function handle(Request $request): Response
     {
-        foreach ($request->input('entry', []) as $entry) {
+        $entries = $request->input('entry', []);
+
+        foreach ($entries as $entry) {
             foreach ($entry['changes'] ?? [] as $change) {
                 foreach ($change['value']['statuses'] ?? [] as $status) {
                     if (($status['status'] ?? null) === 'failed') {
@@ -50,73 +51,11 @@ class WhatsappWebhookController extends Controller
                         ]);
                     }
                 }
-
-                foreach ($change['value']['messages'] ?? [] as $message) {
-                    $this->dispatchInboundMessage($message);
-                }
             }
         }
+
+        $this->dispatcher->dispatch($entries);
 
         return response('', 200);
-    }
-
-    /**
-     * @param  array<string, mixed>  $message
-     */
-    private function dispatchInboundMessage(array $message): void
-    {
-        $wamid = $message['id'] ?? null;
-        $from = $message['from'] ?? null;
-
-        if ($wamid === null || $from === null) {
-            return;
-        }
-
-        // Deduplicacion: si Meta reintenta, el mismo wamid no se procesa dos
-        // veces. Cache::add es atomico: false si la clave ya existia.
-        if (! Cache::add("wa_msg:{$wamid}", true, now()->addHours(6))) {
-            return;
-        }
-
-        $from = ChannelPhone::normalize($from) ?? $from;
-        $type = $message['type'] ?? null;
-
-        if ($type === 'text') {
-            $text = $message['text']['body'] ?? null;
-            if ($text !== null) {
-                ProcessWhatsAppInbound::dispatch($from, $text, $wamid);
-            }
-
-            return;
-        }
-
-        // Respuesta de un WhatsApp Flow (formulario nativo de confirmacion de
-        // un borrador). response_json llega como STRING JSON, no como objeto.
-        if ($type === 'interactive' && ($message['interactive']['type'] ?? null) === 'nfm_reply') {
-            $raw = $message['interactive']['nfm_reply']['response_json'] ?? null;
-            $data = is_string($raw) ? json_decode($raw, true) : null;
-
-            if (is_array($data)) {
-                ProcessWhatsAppFlowReply::dispatch($from, $data);
-            }
-
-            return;
-        }
-
-        // Toque en fila de lista: reenvia el titulo elegido como si el
-        // usuario lo hubiera escrito -> mismo job de texto.
-        if ($type === 'interactive' && ($message['interactive']['type'] ?? null) === 'list_reply') {
-            $title = $message['interactive']['list_reply']['title'] ?? null;
-            if ($title !== null) {
-                ProcessWhatsAppInbound::dispatch($from, $title, $wamid);
-            }
-
-            return;
-        }
-
-        $unsupportedTypes = ['audio', 'image', 'video', 'document', 'sticker', 'location', 'contacts'];
-        if (in_array($type, $unsupportedTypes, true)) {
-            ProcessWhatsAppUnsupportedMessage::dispatch($from, $type);
-        }
     }
 }

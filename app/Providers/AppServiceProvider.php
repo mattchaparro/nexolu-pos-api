@@ -7,6 +7,8 @@ use App\Services\Messaging\Contracts\MessagingChannel;
 use App\Services\Messaging\Contracts\MessagingCostReporter;
 use App\Services\WhatsApp\Contracts\ChannelOtpSender;
 use App\Services\WhatsApp\LogChannelOtpSender;
+use App\Services\WhatsApp\NexoluCommsChannel;
+use App\Services\WhatsApp\NexoluCommsCostReporter;
 use App\Services\WhatsApp\WhatsAppCloudClient;
 use App\Services\WhatsApp\WhatsAppCostReporter;
 use App\Services\WhatsApp\WhatsAppOtpSender;
@@ -23,13 +25,20 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Unico punto que sabe que el proveedor de mensajeria de HOY es
-        // WhatsApp Cloud API. Migrar a Nexolu Communications mas adelante es
-        // cambiar estos dos bindings, nada mas - todo lo demas (jobs,
+        // Unico punto que sabe cual proveedor de mensajeria esta activo -
+        // config('services.comms_core.driver'): 'whatsapp_direct' (Meta
+        // directo, WhatsAppCloudClient, valor de hoy) o 'nexolu_comms' (via
+        // Nexolu Communications, NexoluCommsChannel). Todo lo demas (jobs,
         // comandos, PlatformFinanceService) depende de las interfaces, no de
-        // App\Services\WhatsApp\* directamente.
-        $this->app->bind(MessagingChannel::class, WhatsAppCloudClient::class);
-        $this->app->bind(MessagingCostReporter::class, WhatsAppCostReporter::class);
+        // App\Services\WhatsApp\* directamente, asi que el cambio de
+        // proveedor en produccion es solo tocar MESSAGING_DRIVER.
+        $this->app->bind(MessagingChannel::class, fn () => config('services.comms_core.driver') === 'nexolu_comms'
+            ? $this->app->make(NexoluCommsChannel::class)
+            : $this->app->make(WhatsAppCloudClient::class));
+
+        $this->app->bind(MessagingCostReporter::class, fn () => config('services.comms_core.driver') === 'nexolu_comms'
+            ? $this->app->make(NexoluCommsCostReporter::class)
+            : $this->app->make(WhatsAppCostReporter::class));
 
         // Sin credenciales de WhatsApp (local/testing), el OTP de vinculacion
         // cae a un emisor que solo loguea - nunca a un intento de envio real

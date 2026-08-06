@@ -61,6 +61,24 @@ return [
         'webhook_secret' => env('PAYMENTS_CORE_WEBHOOK_SECRET'),
     ],
 
+    // Nexolu Communications (servicio Python aparte, repo nexolu-comms-api):
+    // envio centralizado de WhatsApp/email para todo el ecosistema Nexolu.
+    // api_key autentica las llamadas salientes de este POS
+    // (POST /v1/notifications/send, POST /v1/whatsapp/read-receipt,
+    // GET /v1/usage/summary - ver NexoluCommsChannel/NexoluCommsCostReporter).
+    // webhook_secret verifica que un evento entrante (POST a nuestro
+    // endpoint, reenviado por Nexolu Communications) de verdad vino de alli
+    // y no fue interpretado/alterado en el camino - ver
+    // NexoluCommsWebhookController. `driver` decide si el envio saliente de
+    // WhatsApp usa este servicio ('nexolu_comms') o sigue yendo directo a
+    // Meta ('whatsapp_direct', valor de hoy) - ver AppServiceProvider.
+    'comms_core' => [
+        'driver' => env('MESSAGING_DRIVER', 'whatsapp_direct'),
+        'api_key' => env('COMMS_CORE_API_KEY'),
+        'base_url' => env('COMMS_CORE_BASE_URL', 'http://localhost:8010'),
+        'webhook_secret' => env('COMMS_CORE_WEBHOOK_SECRET'),
+    ],
+
     // WhatsApp Cloud API (asistente IA omnichannel). verify_token valida el
     // webhook (GET), access_token/phone_number_id son para ENVIAR (Graph
     // API) - credenciales distintas, no se derivan una de la otra.

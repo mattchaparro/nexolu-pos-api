@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AiToolCatalogController;
 use App\Http\Controllers\Api\AiToolInvokeController;
+use App\Http\Controllers\Api\NexoluCommsWebhookController;
 use App\Http\Controllers\Api\NotificationSnoozeController;
 use App\Http\Controllers\Api\PaymentsCoreWebhookController;
 use App\Http\Controllers\Api\V1\AccountingController;
@@ -62,6 +63,13 @@ Route::post('/webhooks/whatsapp', [WhatsappWebhookController::class, 'handle'])-
 // un usuario. Se autentica con la firma HMAC de X-Nexolu-Signature, no con
 // Sanctum - ver PaymentsCoreWebhookController.
 Route::post('/webhooks/payments-core', [PaymentsCoreWebhookController::class, 'handle'])->name('webhooks.payments-core.handle');
+
+// Publico, sin auth: lo llama Nexolu Communications (repo Python aparte,
+// reenvio del webhook de WhatsApp), no un usuario. Se autentica con la
+// firma HMAC de X-Nexolu-Signature, no con Sanctum - ver
+// NexoluCommsWebhookController. Convive con /webhooks/whatsapp mientras
+// services.comms_core.driver siga en whatsapp_direct.
+Route::post('/webhooks/nexolu-comms/whatsapp', [NexoluCommsWebhookController::class, 'handle'])->name('webhooks.nexolu-comms.whatsapp');
 
 // Publico, sin auth: se abre directo desde el enlace del correo de alerta de
 // inventario bajo. La firma de la URL (middleware `signed`) es la unica
