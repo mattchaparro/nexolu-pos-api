@@ -2,11 +2,12 @@
 
 namespace App\Services\WhatsApp;
 
+use App\Services\Messaging\Contracts\MessagingChannel;
 use App\Services\WhatsApp\Contracts\ChannelOtpSender;
 
 class WhatsAppOtpSender implements ChannelOtpSender
 {
-    public function __construct(private WhatsAppCloudClient $client) {}
+    public function __construct(private MessagingChannel $client) {}
 
     public function send(string $channel, string $externalId, string $code): void
     {

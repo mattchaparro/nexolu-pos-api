@@ -88,6 +88,33 @@ con el modelo `Business`.
     que legacy: negocio, cantidad total, bloque de hasta 5 items mas
     urgentes separados por `\x0B` (Meta rechaza `\n` en parametros de
     plantilla).
+- **Abstracción de mensajería (Nexolu Communications, pendiente de crear)**:
+  todo el envío saliente y el costeo de WhatsApp ahora pasan por dos
+  interfaces nuevas en `App\Services\Messaging\Contracts`:
+  `MessagingChannel` (`sendText`/`sendTemplate`/`sendFlow`/`markAsReadWithTyping`/`isConfigured`)
+  y `MessagingCostReporter` (`costUsdForPeriod`). `WhatsAppCloudClient`
+  implementa `MessagingChannel` sin cambiar de namespace; `WhatsAppCostReporter`
+  (nuevo, extraído de lo que antes era un método privado en
+  `PlatformFinanceService`) implementa `MessagingCostReporter` sumando
+  `whatsapp_usage_daily`. El único lugar que sabe que el proveedor de hoy es
+  WhatsApp es el binding en `AppServiceProvider::register()` - todos los
+  jobs/comandos (`ProcessWhatsAppInbound`, `ProcessWhatsAppFlowReply`,
+  `RemindersSendWhatsAppNotifications`, `SendDailyWhatsAppSummary`,
+  `InventorySendLowStockAlerts`, `WhatsAppOtpSender`) y `PlatformFinanceService`
+  dependen de las interfaces, no de las clases concretas de WhatsApp. Cuando
+  exista Nexolu Communications (servicio externo, mismo patrón que Nexolu
+  Payments Core / Nexolu IA Core), migrar el envío real es: escribir una
+  clase nueva que implemente cada interfaz y cambiar esos dos bindings - cero
+  cambios en los consumidores. A propósito **no** se abstrajo el lado
+  entrante (`WhatsappWebhookController`, parseo de `nfm_reply`/`list_reply`)
+  ni la resolución de identidad/destinatarios (`IdentityResolver`,
+  `WhatsAppRecipients`, `AiChannelIdentity`): el formato de webhook es propio
+  de cada proveedor y prematuro de abstraer sin conocer el del reemplazo, y
+  vincular identidad es dato propio de Nexolú, no lógica de envío. La clave
+  `whatsapp_cop` del resumen de Finance (`PlatformFinanceService::monthlySummary()`)
+  pasó a `messaging_cop` + `messaging_cost_available` (mismo patrón que
+  `ai_cop`/`ai_cost_available`), aunque hoy siempre está disponible porque la
+  única implementación es local.
 
 ## Módulos completos que faltan (no son solo un job)
 

@@ -3,9 +3,12 @@
 namespace App\Providers;
 
 use App\Listeners\LogSentEmail;
+use App\Services\Messaging\Contracts\MessagingChannel;
+use App\Services\Messaging\Contracts\MessagingCostReporter;
 use App\Services\WhatsApp\Contracts\ChannelOtpSender;
 use App\Services\WhatsApp\LogChannelOtpSender;
 use App\Services\WhatsApp\WhatsAppCloudClient;
+use App\Services\WhatsApp\WhatsAppCostReporter;
 use App\Services\WhatsApp\WhatsAppOtpSender;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Mail\Events\MessageSent;
@@ -20,11 +23,19 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Unico punto que sabe que el proveedor de mensajeria de HOY es
+        // WhatsApp Cloud API. Migrar a Nexolu Communications mas adelante es
+        // cambiar estos dos bindings, nada mas - todo lo demas (jobs,
+        // comandos, PlatformFinanceService) depende de las interfaces, no de
+        // App\Services\WhatsApp\* directamente.
+        $this->app->bind(MessagingChannel::class, WhatsAppCloudClient::class);
+        $this->app->bind(MessagingCostReporter::class, WhatsAppCostReporter::class);
+
         // Sin credenciales de WhatsApp (local/testing), el OTP de vinculacion
         // cae a un emisor que solo loguea - nunca a un intento de envio real
         // que va a fallar igual.
         $this->app->bind(ChannelOtpSender::class, function ($app) {
-            return $app->make(WhatsAppCloudClient::class)->isConfigured()
+            return $app->make(MessagingChannel::class)->isConfigured()
                 ? $app->make(WhatsAppOtpSender::class)
                 : $app->make(LogChannelOtpSender::class);
         });

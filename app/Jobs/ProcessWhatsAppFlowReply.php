@@ -3,8 +3,8 @@
 namespace App\Jobs;
 
 use App\Services\AiDraftService;
+use App\Services\Messaging\Contracts\MessagingChannel;
 use App\Services\WhatsApp\IdentityResolver;
-use App\Services\WhatsApp\WhatsAppCloudClient;
 use App\Support\AiTenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -40,7 +40,7 @@ class ProcessWhatsAppFlowReply implements ShouldQueue
         private readonly array $response,
     ) {}
 
-    public function handle(IdentityResolver $resolver, AiDraftService $drafts, WhatsAppCloudClient $client): void
+    public function handle(IdentityResolver $resolver, AiDraftService $drafts, MessagingChannel $client): void
     {
         $user = $resolver->resolveUser('whatsapp', $this->from);
 

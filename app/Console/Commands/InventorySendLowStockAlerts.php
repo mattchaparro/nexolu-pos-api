@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use App\Mail\LowStockAlertMail;
 use App\Models\AiChannelIdentity;
 use App\Models\Business;
-use App\Services\WhatsApp\WhatsAppCloudClient;
+use App\Services\Messaging\Contracts\MessagingChannel;
 use App\Support\LowStockAlertReport;
 use App\Support\WhatsAppRecipients;
 use Illuminate\Console\Attributes\Description;
@@ -25,7 +25,7 @@ use Illuminate\Support\Facades\Mail;
 #[Description('Envia una alerta de inventario bajo (correo y/o WhatsApp) a los negocios configurados')]
 class InventorySendLowStockAlerts extends Command
 {
-    public function handle(WhatsAppCloudClient $whatsapp): int
+    public function handle(MessagingChannel $whatsapp): int
     {
         $businessId = $this->option('business_id');
 
@@ -104,7 +104,7 @@ class InventorySendLowStockAlerts extends Command
     }
 
     /** @param  array{name?: string, lang?: string}  $template */
-    private function sendWhatsApp(WhatsAppCloudClient $client, Business $business, array $template): int
+    private function sendWhatsApp(MessagingChannel $client, Business $business, array $template): int
     {
         $recipients = WhatsAppRecipients::linkedAdmins($business);
         if ($recipients->isEmpty()) {

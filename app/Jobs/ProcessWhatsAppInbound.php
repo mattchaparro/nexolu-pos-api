@@ -5,8 +5,8 @@ namespace App\Jobs;
 use App\Models\ExpenseType;
 use App\Models\User;
 use App\Services\AiChatService;
+use App\Services\Messaging\Contracts\MessagingChannel;
 use App\Services\WhatsApp\IdentityResolver;
-use App\Services\WhatsApp\WhatsAppCloudClient;
 use App\Support\AiTenantContext;
 use App\Support\WhatsAppTextFormatter;
 use Illuminate\Bus\Queueable;
@@ -49,7 +49,7 @@ class ProcessWhatsAppInbound implements ShouldQueue
         public readonly ?string $wamid = null,
     ) {}
 
-    public function handle(IdentityResolver $resolver, AiChatService $chat, WhatsAppCloudClient $client): void
+    public function handle(IdentityResolver $resolver, AiChatService $chat, MessagingChannel $client): void
     {
         $user = $resolver->resolveUser(self::CHANNEL, $this->from);
 
@@ -127,7 +127,7 @@ class ProcessWhatsAppInbound implements ShouldQueue
      *
      * @param  array<string, mixed>  $draft  un item de $result['drafts'] (id, tool_type, summary, fields, values)
      */
-    private function sendExpenseFlow(WhatsAppCloudClient $client, User $user, array $draft): bool
+    private function sendExpenseFlow(MessagingChannel $client, User $user, array $draft): bool
     {
         $flow = config('services.whatsapp.flows.gasto');
 

@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Business;
 use App\Services\Ai\Insights\SmartSummaryInsight;
-use App\Services\WhatsApp\WhatsAppCloudClient;
+use App\Services\Messaging\Contracts\MessagingChannel;
 use App\Support\WhatsAppRecipients;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -30,7 +30,7 @@ use Illuminate\Console\Command;
 #[Description('Envia el resumen diario del negocio por WhatsApp a los admins que lo activaron')]
 class SendDailyWhatsAppSummary extends Command
 {
-    public function handle(SmartSummaryInsight $insight, WhatsAppCloudClient $client): int
+    public function handle(SmartSummaryInsight $insight, MessagingChannel $client): int
     {
         $template = config('services.whatsapp.templates.resumen_diario');
 

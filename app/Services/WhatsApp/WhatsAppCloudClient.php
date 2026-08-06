@@ -3,17 +3,19 @@
 namespace App\Services\WhatsApp;
 
 use App\Models\WhatsAppUsageDaily;
+use App\Services\Messaging\Contracts\MessagingChannel;
 use App\Support\WhatsAppSettings;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Cliente de la Graph API de WhatsApp Cloud. Cada metodo publico arma un tipo
- * de mensaje distinto; post() es el unico punto que de verdad llama a Meta y
- * registra el consumo (solo lo que Meta acepto, para no inflar el costo con
- * envios rechazados).
+ * Cliente de la Graph API de WhatsApp Cloud - la implementacion de
+ * MessagingChannel de hoy. Cada metodo publico arma un tipo de mensaje
+ * distinto; post() es el unico punto que de verdad llama a Meta y registra
+ * el consumo (solo lo que Meta acepto, para no inflar el costo con envios
+ * rechazados).
  */
-class WhatsAppCloudClient
+class WhatsAppCloudClient implements MessagingChannel
 {
     private ?string $token;
 

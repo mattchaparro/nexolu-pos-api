@@ -4,9 +4,9 @@ namespace App\Services\SuperAdmin;
 
 use App\Models\Business;
 use App\Models\SaasSubscriptionPayment;
-use App\Models\WhatsAppUsageDaily;
 use App\Services\AiPlatformUsageService;
 use App\Services\ExchangeRateService;
+use App\Services\Messaging\Contracts\MessagingCostReporter;
 use App\Services\SubscriptionPricingService;
 use App\Support\SystemConfigStore;
 use Illuminate\Support\Carbon;
@@ -17,10 +17,10 @@ use Illuminate\Support\Carbon;
  * trafico de esta pantalla es solo el dueno revisando sus numeros.
  *
  * Gastos cubiertos: servidor, dominio (anual, prorrateado al mes), IA (costo
- * real vs el IA Core) y WhatsApp (tarifa por mensaje segun categoria). Todo
- * gasto en dolares se convierte con la TRM real del dia (ver
- * ExchangeRateService), no con una tasa fija - una constante desactualizada
- * distorsiona justo el numero que decide el margen.
+ * real vs el IA Core) y mensajeria (hoy WhatsApp, vs MessagingCostReporter -
+ * ver ese contrato). Todo gasto en dolares se convierte con la TRM real del
+ * dia (ver ExchangeRateService), no con una tasa fija - una constante
+ * desactualizada distorsiona justo el numero que decide el margen.
  *
  * A diferencia de legacy, no incluye comision de Wompi: esta API ya no cobra
  * suscripciones via Wompi directo (ver Nexolu Payments Core), asi que esa
@@ -32,6 +32,7 @@ class PlatformFinanceService
         private SubscriptionPricingService $pricing,
         private ExchangeRateService $exchangeRates,
         private AiPlatformUsageService $aiUsage,
+        private MessagingCostReporter $messagingUsage,
     ) {}
 
     /**
@@ -40,7 +41,7 @@ class PlatformFinanceService
      *     income: array{total_cop: int, count: int, by_payment_method: array<string, int>},
      *     expenses: array{
      *         usd_to_cop_rate: float, server_cop: int, domain_cop: int,
-     *         ai_cop: int, ai_cost_available: bool, whatsapp_cop: int, total_cop: int,
+     *         ai_cop: int, ai_cost_available: bool, messaging_cop: int, messaging_cost_available: bool, total_cop: int,
      *     },
      *     margin: array{cop: int, percent: ?float},
      *     projection: ?array{days_elapsed: int, days_in_month: int, income_cop: int},
@@ -95,7 +96,7 @@ class PlatformFinanceService
     }
 
     /**
-     * @return array{usd_to_cop_rate: float, server_cop: int, domain_cop: int, ai_cop: int, ai_cost_available: bool, whatsapp_cop: int, total_cop: int}
+     * @return array{usd_to_cop_rate: float, server_cop: int, domain_cop: int, ai_cop: int, ai_cost_available: bool, messaging_cop: int, messaging_cost_available: bool, total_cop: int}
      */
     private function expensesCop(Carbon $start, Carbon $end): array
     {
@@ -110,12 +111,12 @@ class PlatformFinanceService
         $domainCostUsdYear = (float) SystemConfigStore::get('finance.domain_cost_usd_year', '15');
 
         $aiCostUsd = $this->aiUsage->costUsdForPeriod($start->toDateString(), $end->toDateString());
-        $whatsappCostUsd = $this->whatsappCostUsdForPeriod($start->toDateString(), $end->toDateString());
+        $messagingCostUsd = $this->messagingUsage->costUsdForPeriod($start->toDateString(), $end->toDateString());
 
         $serverCop = (int) round($serverCostUsd * $usdToCopRate);
         $domainCop = (int) round(($domainCostUsdYear / 12) * $usdToCopRate);
         $aiCop = $aiCostUsd !== null ? (int) round($aiCostUsd * $usdToCopRate) : 0;
-        $whatsappCop = (int) round($whatsappCostUsd * $usdToCopRate);
+        $messagingCop = $messagingCostUsd !== null ? (int) round($messagingCostUsd * $usdToCopRate) : 0;
 
         return [
             'usd_to_cop_rate' => $usdToCopRate,
@@ -126,18 +127,10 @@ class PlatformFinanceService
             // en vez de mostrarse en $0 - un margen "mejor" por una falla de
             // red seria peor que avisar que ese dato no esta disponible.
             'ai_cost_available' => $aiCostUsd !== null,
-            'whatsapp_cop' => $whatsappCop,
-            'total_cop' => $serverCop + $domainCop + $aiCop + $whatsappCop,
+            'messaging_cop' => $messagingCop,
+            'messaging_cost_available' => $messagingCostUsd !== null,
+            'total_cop' => $serverCop + $domainCop + $aiCop + $messagingCop,
         ];
-    }
-
-    private function whatsappCostUsdForPeriod(string $from, string $to): float
-    {
-        $micros = (int) WhatsAppUsageDaily::query()
-            ->whereBetween('date', [$from, $to])
-            ->sum('cost_micros');
-
-        return round($micros / 1_000_000, 6);
     }
 
     /**

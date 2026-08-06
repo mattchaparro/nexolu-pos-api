@@ -74,7 +74,8 @@ class FinanceAndDashboardTest extends TestCase
         // Sin fila en exchange_rates ni en system_configs, cae al default
         // 4000 COP/USD (ver PlatformFinanceService::expensesCop()).
         $response->assertJsonPath('summary.expenses.usd_to_cop_rate', 4000);
-        $response->assertJsonPath('summary.expenses.whatsapp_cop', 8000); // $2 USD * 4000
+        $response->assertJsonPath('summary.expenses.messaging_cop', 8000); // $2 USD * 4000
+        $response->assertJsonPath('summary.expenses.messaging_cost_available', true);
         $response->assertJsonPath('summary.expenses.ai_cost_available', true);
         $response->assertJsonPath('summary.expenses.ai_cop', 0);
         $this->assertIsInt($response->json('summary.margin.cop'));

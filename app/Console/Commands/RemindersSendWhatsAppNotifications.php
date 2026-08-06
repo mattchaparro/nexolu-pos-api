@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\AiChannelIdentity;
 use App\Models\Reminder;
-use App\Services\WhatsApp\WhatsAppCloudClient;
+use App\Services\Messaging\Contracts\MessagingChannel;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -24,7 +24,7 @@ use Illuminate\Support\Carbon;
 #[Description('Avisa por WhatsApp los recordatorios pendientes que ya llegaron a su hora')]
 class RemindersSendWhatsAppNotifications extends Command
 {
-    public function handle(WhatsAppCloudClient $client): int
+    public function handle(MessagingChannel $client): int
     {
         $template = config('services.whatsapp.templates.recordatorio');
 
