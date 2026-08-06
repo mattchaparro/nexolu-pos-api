@@ -202,4 +202,72 @@ class PurchaseTest extends TestCase
             ->assertOk()
             ->assertJsonCount(2, 'data');
     }
+
+    public function test_a_credit_purchase_with_a_reminder_date_creates_a_payment_reminder(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $supplier = Supplier::factory()->create(['business_id' => $business->id, 'name' => 'Distribuidora ABC']);
+        $product = Product::factory()->create(['business_id' => $business->id]);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/purchases', [
+            'supplier_id' => $supplier->id,
+            'purchased_at' => now()->toDateString(),
+            'is_credit' => true,
+            'payment_reminder_date' => now()->addDays(15)->toDateString(),
+            'lines' => [['product_id' => $product->id, 'quantity' => 1, 'line_total_cop' => 5000]],
+        ]);
+
+        $response->assertCreated();
+
+        $this->assertDatabaseHas('reminders', [
+            'remindable_type' => Purchase::class,
+            'remindable_id' => $response->json('id'),
+            'title' => 'Pagar compra a Distribuidora ABC',
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_a_credit_purchase_without_a_reminder_date_does_not_create_a_reminder(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $product = Product::factory()->create(['business_id' => $business->id]);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/purchases', [
+            'purchased_at' => now()->toDateString(),
+            'is_credit' => true,
+            'lines' => [['product_id' => $product->id, 'quantity' => 1, 'line_total_cop' => 5000]],
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseMissing('reminders', ['remindable_type' => Purchase::class, 'remindable_id' => $response->json('id')]);
+    }
+
+    public function test_paying_off_a_credit_purchase_removes_its_pending_reminder(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $product = Product::factory()->create(['business_id' => $business->id]);
+
+        $purchaseId = $this->actingAs($user, 'sanctum')->postJson('/api/v1/purchases', [
+            'purchased_at' => now()->toDateString(),
+            'is_credit' => true,
+            'payment_reminder_date' => now()->addDays(10)->toDateString(),
+            'lines' => [['product_id' => $product->id, 'quantity' => 1, 'line_total_cop' => 5000]],
+        ])->json('id');
+
+        $this->actingAs($user, 'sanctum')->postJson("/api/v1/purchases/{$purchaseId}/pay", [
+            'amount' => 5000,
+            'payment_method' => 'cash',
+        ])->assertOk()->assertJsonPath('payment_status', 'paid');
+
+        $this->assertDatabaseMissing('reminders', [
+            'remindable_type' => Purchase::class,
+            'remindable_id' => $purchaseId,
+        ]);
+    }
 }

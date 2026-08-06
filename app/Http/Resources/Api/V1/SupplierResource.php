@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Models\Reminder;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -22,6 +23,10 @@ class SupplierResource extends JsonResource
             'phone' => $this->phone,
             'address' => $this->address,
             'notes' => $this->notes,
+            'has_pending_visit_reminder' => $this->whenLoaded(
+                'reminders',
+                fn () => $this->reminders->contains(fn (Reminder $r) => $r->status === Reminder::STATUS_PENDING)
+            ),
         ];
     }
 }

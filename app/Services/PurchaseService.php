@@ -10,6 +10,7 @@ use App\Models\ProductCostHistory;
 use App\Models\Purchase;
 use App\Models\PurchaseLine;
 use App\Models\PurchasePayment;
+use App\Models\Reminder;
 use App\Models\User;
 use App\Support\WeightedAverageCost;
 use Illuminate\Support\Collection;
@@ -250,6 +251,11 @@ class PurchaseService
             $purchase->load('payments');
             if ($purchase->balance <= 0.009) {
                 $purchase->update(['payment_status' => 'paid', 'paid_at' => now()]);
+
+                // Ya se pago: el recordatorio de pago que se haya creado al
+                // registrarla a credito (ver PurchaseController::store()) ya
+                // no tiene nada que recordar.
+                $purchase->reminders()->where('status', Reminder::STATUS_PENDING)->delete();
             }
 
             return $payment;

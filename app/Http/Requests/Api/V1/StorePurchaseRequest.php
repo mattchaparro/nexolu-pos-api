@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Api\V1;
 
 use App\Models\Expense;
+use App\Models\Reminder;
 use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -31,6 +32,14 @@ class StorePurchaseRequest extends FormRequest
             'is_credit' => ['sometimes', 'boolean'],
             'create_expense' => ['sometimes', 'boolean'],
             'expense_payment_method' => ['sometimes', 'nullable', 'string', Rule::in(Expense::PAYMENT_METHODS)],
+            // Recordatorio de pago opcional, solo tiene sentido si la compra
+            // queda a credito - PurchaseController::store() lo ignora si no
+            // hay payment_reminder_date, aunque is_credit venga true.
+            'payment_reminder_title' => ['sometimes', 'nullable', 'string', 'max:150'],
+            'payment_reminder_date' => ['sometimes', 'nullable', 'date'],
+            'payment_reminder_recurrence' => ['sometimes', 'nullable', Rule::in(Reminder::RECURRENCES)],
+            'payment_reminder_end_date' => ['sometimes', 'nullable', 'date', 'after_or_equal:payment_reminder_date'],
+            'payment_reminder_notes' => ['sometimes', 'nullable', 'string', 'max:500'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_id' => ['nullable', 'integer', BusinessScopedExists::for('products', $businessId)],
             'lines.*.ingredient_id' => ['nullable', 'integer', BusinessScopedExists::for('ingredients', $businessId)],

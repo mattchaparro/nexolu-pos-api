@@ -128,6 +128,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::middleware('can-access-purchases')->group(function () {
             Route::middleware('permission:purchases.manage')->group(function () {
+                Route::post('/suppliers/{supplier}/remind-visit', [SupplierController::class, 'remindVisit'])->name('suppliers.remind-visit');
                 Route::apiResource('suppliers', SupplierController::class);
 
                 Route::post('/purchases/{purchase}/pay', [PurchaseController::class, 'pay'])->name('purchases.pay');

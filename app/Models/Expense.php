@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -73,15 +74,19 @@ class Expense extends Model
         return $this->belongsTo(ExpenseType::class, 'type_id');
     }
 
+    public function reminders(): MorphMany
+    {
+        return $this->morphMany(Reminder::class, 'remindable');
+    }
+
     public function fixedExpenseTemplate(): BelongsTo
     {
         return $this->belongsTo(FixedExpenseTemplate::class);
     }
 
     /**
-     * Producto opcional al que se asocia el gasto (reposicion de stock, etc.).
-     * El vinculo a Ingredient de la app legacy no esta soportado aun: ese
-     * modulo no existe en esta API todavia.
+     * Producto o ingrediente opcional al que se asocia el gasto (reposicion
+     * de stock, etc.) - ver StoreExpenseRequest para los tipos permitidos.
      */
     public function linkable(): MorphTo
     {

@@ -101,4 +101,59 @@ class SupplierTest extends TestCase
 
         $this->assertDatabaseMissing('suppliers', ['id' => $supplier->id]);
     }
+
+    public function test_user_can_create_a_visit_reminder_for_a_supplier(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $supplier = Supplier::factory()->create(['business_id' => $business->id, 'name' => 'Postobón']);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson("/api/v1/suppliers/{$supplier->id}/remind-visit", [
+            'due_date' => now()->addDay()->toDateString(),
+            'recurrence' => 'weekly',
+        ]);
+
+        $response->assertCreated()->assertJsonPath('title', 'Visita de Postobón');
+
+        $this->assertDatabaseHas('reminders', [
+            'remindable_type' => Supplier::class,
+            'remindable_id' => $supplier->id,
+            'title' => 'Visita de Postobón',
+            'recurrence' => 'weekly',
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/suppliers/{$supplier->id}")
+            ->assertOk();
+    }
+
+    public function test_remind_visit_requires_a_due_date(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $supplier = Supplier::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/suppliers/{$supplier->id}/remind-visit", [])
+            ->assertStatus(422);
+    }
+
+    public function test_index_flags_suppliers_with_a_pending_visit_reminder(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $supplier = Supplier::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')->postJson("/api/v1/suppliers/{$supplier->id}/remind-visit", [
+            'due_date' => now()->addDay()->toDateString(),
+        ])->assertCreated();
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/suppliers')
+            ->assertOk()
+            ->assertJsonPath('data.0.has_pending_visit_reminder', true);
+    }
 }

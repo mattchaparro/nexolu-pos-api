@@ -8,6 +8,7 @@ use App\Http\Requests\Api\V1\UpdateExpenseRequest;
 use App\Http\Resources\Api\V1\ExpenseResource;
 use App\Models\Expense;
 use App\Services\ExpenseService;
+use App\Services\ReminderService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -15,7 +16,13 @@ use Illuminate\Http\Response;
 
 class ExpenseController extends Controller
 {
-    public function __construct(private ExpenseService $expenseService) {}
+    /** Claves de recordatorio del payload: no son de Expense, se separan antes de pasarlas a ExpenseService::create(). */
+    private const REMINDER_KEYS = ['reminder_title', 'reminder_date', 'reminder_recurrence', 'reminder_end_date', 'reminder_notes'];
+
+    public function __construct(
+        private ExpenseService $expenseService,
+        private ReminderService $reminderService,
+    ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -50,10 +57,21 @@ class ExpenseController extends Controller
 
     public function store(StoreExpenseRequest $request): ExpenseResource
     {
-        $expense = $this->expenseService->create([
-            ...$request->defaults(),
-            ...$request->validated(),
-        ]);
+        $data = [...$request->defaults(), ...$request->validated()];
+        $reminderData = array_intersect_key($data, array_flip(self::REMINDER_KEYS));
+        $expense = $this->expenseService->create(array_diff_key($data, array_flip(self::REMINDER_KEYS)));
+
+        if (! empty($reminderData['reminder_date'])) {
+            $this->reminderService->create($request->user()->business_id, $request->user()->id, [
+                'title' => ($reminderData['reminder_title'] ?? null) ?: ('Gasto: '.$data['description']),
+                'due_date' => $reminderData['reminder_date'],
+                'recurrence' => $reminderData['reminder_recurrence'] ?? 'none',
+                'end_date' => $reminderData['reminder_end_date'] ?? null,
+                'notes' => $reminderData['reminder_notes'] ?? null,
+                'remindable_type' => Expense::class,
+                'remindable_id' => $expense->id,
+            ]);
+        }
 
         return new ExpenseResource($expense->load('type'));
     }

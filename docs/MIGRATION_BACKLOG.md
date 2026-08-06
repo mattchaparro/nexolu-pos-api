@@ -181,12 +181,23 @@ se tacha en cuanto se construye, sin precondición de cutover.
 
 ## Deuda dejada a propósito en el módulo Reminders
 
-- **Hooks polimórficos de otros módulos**: en legacy, una compra a crédito
-  (`Purchase`), un proveedor (`Supplier`), una plantilla de gasto fijo
-  (`FixedExpenseTemplate`, patrón toggle on/off) y un gasto (`Expense`)
+- ~~**Hooks polimórficos de otros módulos**~~ ✅ Migrado por completo: en
+  legacy, una compra a crédito (`Purchase`), un proveedor (`Supplier`), una
+  plantilla de gasto fijo (`FixedExpenseTemplate`) y un gasto (`Expense`)
   pueden crear un `Reminder` ligado via `remindable_type`/`remindable_id`.
-  ~~Ninguno de esos hooks se portó todavía~~ **Parcial**: el de
-  `FixedExpenseTemplate` (`toggleReminder()`, ver arriba) ya está portado -
-  quedan Purchase, Supplier y Expense. Portar cuando se retome cada uno de
-  esos módulos (Purchase y Expense ya existen aquí, así que son los
-  primeros candidatos).
+  Los 4 hooks ya están portados:
+  - `Purchase`: `payment_reminder_*` opcional en `POST /v1/purchases`
+    (solo si `is_credit=true` y trae `payment_reminder_date`) -
+    `PurchaseController::store()`. Al saldarse por completo, `PurchaseService::pay()`
+    borra el recordatorio pendiente (igual que legacy).
+  - `Supplier`: `POST /v1/suppliers/{supplier}/remind-visit`, toggle
+    inexistente a propósito (a diferencia de `FixedExpenseTemplate`, legacy
+    no lo hace toggle acá) - simplemente crea el recordatorio de visita.
+    `SupplierResource`/`index()` exponen `has_pending_visit_reminder` (igual
+    que legacy eager-carga `reminders` pendientes en su listado).
+  - `Expense`: `reminder_*` opcional en `POST /v1/expenses` -
+    `ExpenseController::store()`.
+  - `FixedExpenseTemplate`: ya migrado antes (`toggleReminder()`).
+  De paso, `StoreExpenseRequest.linkable_type` ahora admite `Ingredient::class`
+  además de `Product::class` (el docblock decía "Ingredient no soportado
+  aún", ya no es cierto desde que el módulo de Ingredientes se migró).

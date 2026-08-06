@@ -3,7 +3,9 @@
 namespace App\Http\Requests\Api\V1;
 
 use App\Models\Expense;
+use App\Models\Ingredient;
 use App\Models\Product;
+use App\Models\Reminder;
 use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -38,14 +40,24 @@ class StoreExpenseRequest extends FormRequest
                 'required',
                 BusinessScopedExists::forOrGlobal('expense_types', $businessId),
             ],
-            'linkable_type' => ['sometimes', 'nullable', Rule::in([Product::class])],
+            'linkable_type' => ['sometimes', 'nullable', Rule::in([Product::class, Ingredient::class])],
             'linkable_id' => [
                 'sometimes',
                 'nullable',
                 'integer',
                 'required_with:linkable_type',
-                BusinessScopedExists::for('products', $businessId),
+                BusinessScopedExists::for(
+                    $this->input('linkable_type') === Ingredient::class ? 'ingredients' : 'products',
+                    $businessId
+                ),
             ],
+            // Recordatorio de pago opcional - ExpenseController::store() lo
+            // ignora si no hay reminder_date.
+            'reminder_title' => ['sometimes', 'nullable', 'string', 'max:150'],
+            'reminder_date' => ['sometimes', 'nullable', 'date'],
+            'reminder_recurrence' => ['sometimes', 'nullable', Rule::in(Reminder::RECURRENCES)],
+            'reminder_end_date' => ['sometimes', 'nullable', 'date', 'after_or_equal:reminder_date'],
+            'reminder_notes' => ['sometimes', 'nullable', 'string', 'max:500'],
         ];
     }
 

@@ -8,12 +8,16 @@ use App\Http\Requests\Api\V1\StorePurchaseRequest;
 use App\Http\Resources\Api\V1\PurchaseResource;
 use App\Models\Purchase;
 use App\Services\PurchaseService;
+use App\Services\ReminderService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class PurchaseController extends Controller
 {
-    public function __construct(private PurchaseService $purchaseService) {}
+    public function __construct(
+        private PurchaseService $purchaseService,
+        private ReminderService $reminderService,
+    ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -36,7 +40,24 @@ class PurchaseController extends Controller
 
     public function store(StorePurchaseRequest $request): PurchaseResource
     {
-        $purchase = $this->purchaseService->registerPurchase($request->user(), $request->validated());
+        $data = $request->validated();
+        $purchase = $this->purchaseService->registerPurchase($request->user(), $data);
+
+        // El recordatorio de pago solo tiene sentido si de verdad quedo a
+        // credito: una compra pagada de una vez no tiene nada pendiente que
+        // recordar.
+        if (! empty($data['is_credit']) && ! empty($data['payment_reminder_date'])) {
+            $supplierName = $purchase->supplier?->name;
+            $this->reminderService->create($request->user()->business_id, $request->user()->id, [
+                'title' => ($data['payment_reminder_title'] ?? null) ?: ('Pagar compra'.($supplierName ? " a {$supplierName}" : '')),
+                'due_date' => $data['payment_reminder_date'],
+                'recurrence' => $data['payment_reminder_recurrence'] ?? 'none',
+                'end_date' => $data['payment_reminder_end_date'] ?? null,
+                'notes' => $data['payment_reminder_notes'] ?? null,
+                'remindable_type' => Purchase::class,
+                'remindable_id' => $purchase->id,
+            ]);
+        }
 
         return new PurchaseResource($purchase);
     }

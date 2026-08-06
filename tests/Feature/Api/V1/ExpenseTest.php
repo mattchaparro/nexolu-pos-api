@@ -188,4 +188,49 @@ class ExpenseTest extends TestCase
 
         $this->assertSoftDeleted('expenses', ['id' => $expense->id]);
     }
+
+    public function test_an_expense_with_a_reminder_date_creates_a_reminder(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $type = ExpenseType::factory()->create(['business_id' => $business->id]);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/expenses', [
+            'date' => now()->toDateString(),
+            'description' => 'Arriendo local',
+            'value' => 1500000,
+            'type_id' => $type->id,
+            'reminder_date' => now()->addDays(5)->toDateString(),
+            'reminder_recurrence' => 'monthly',
+        ]);
+
+        $response->assertCreated();
+
+        $this->assertDatabaseHas('reminders', [
+            'remindable_type' => Expense::class,
+            'remindable_id' => $response->json('id'),
+            'title' => 'Gasto: Arriendo local',
+            'recurrence' => 'monthly',
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_an_expense_without_a_reminder_date_does_not_create_a_reminder(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $type = ExpenseType::factory()->create(['business_id' => $business->id]);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/expenses', [
+            'date' => now()->toDateString(),
+            'description' => 'Papeleria',
+            'value' => 20000,
+            'type_id' => $type->id,
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseMissing('reminders', ['remindable_type' => Expense::class, 'remindable_id' => $response->json('id')]);
+    }
 }
