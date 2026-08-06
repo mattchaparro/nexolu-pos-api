@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AiToolCatalogController;
 use App\Http\Controllers\Api\AiToolInvokeController;
 use App\Http\Controllers\Api\V1\AiChatController;
 use App\Http\Controllers\Api\V1\AppointmentController;
@@ -34,6 +35,10 @@ use Illuminate\Support\Facades\Route;
 Route::post('/ai/tools/invoke', [AiToolInvokeController::class, 'invoke'])
     ->middleware('ia-core.key')
     ->name('ai.tools.invoke');
+
+Route::get('/ai/tools/catalog', [AiToolCatalogController::class, 'index'])
+    ->middleware('ia-core.key')
+    ->name('ai.tools.catalog');
 
 Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::post('/register', [AuthController::class, 'register'])->name('register');
