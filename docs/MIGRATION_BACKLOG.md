@@ -350,12 +350,20 @@ falta migración, solo el código.
   cada vez que una venta cierra - acá esos 3 campos ya se guardan en `sales`
   (`app/Models/Sale.php`), pero nunca se agregan a un perfil de cliente
   recurrente. No hay modelo `Customer`, ni hook en `SaleService`, ni endpoint.
-- **Kitchen Board (comandas de cocina)**: `sale_items.kitchen_status`/
-  `kitchen_updated_at` (y las mismas 2 columnas en `sales`) existen en el
-  schema pero el `SaleItem`/`Sale` de este repo no las tocan. En legacy,
-  `Admin/KitchenBoardController` + `Employee/KitchenBoardController` listan
-  tickets abiertos con sus items y permiten cambiar `pending/preparing/ready`
-  por item o por venta completa. Nada de esto tiene endpoint acá todavía.
+- ~~**Kitchen Board (comandas de cocina)**~~ ✅ Migrado. `SaleItem` ganó
+  `kitchen_status`/`kitchen_updated_at` en fillable/casts (ya existían en
+  `Sale`, sin usar - el propio docblock del modelo decía "modulo aparte que
+  todavia no existe en esta API", ya no es cierto). `App\Services\KitchenBoardService`:
+  `openTickets()` (ventas `status=open` con al menos un item, mismo query
+  que legacy) + `updateStatus()` (actualiza uno, varios o todos los items de
+  una venta y recalcula el rollup de la venta como el "menos avanzado" de
+  sus items - si algo sigue pendiente, la comanda completa se ve pendiente
+  aunque otro item ya este listo). API: `GET /v1/kitchen/tickets`,
+  `POST /v1/kitchen/tickets/{sale}/status`. Gateado solo por
+  `feature:kitchen_board`, **sin** `permission:` - a proposito, igual que
+  legacy (accesible por igual a admin y a cualquier empleado, no es una
+  accion administrativa sensible; incluso legacy comparte el mismo metodo
+  `updateStatus` entre sus namespaces Admin y Employee).
 - ~~**Contabilidad gerencial (cierre de mes)**~~ ✅ Migrado. `AccountingPeriodClosing`
   (tabla ya existía en el schema, sin usar) + `App\Services\ManagerialAccountingService`
   (`monthlyReport()`/`monthlyLines()`/`annualReport()`/`closeMonth()`, mismo

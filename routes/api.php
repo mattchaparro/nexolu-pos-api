@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\V1\ExpenseTypeController;
 use App\Http\Controllers\Api\V1\FixedExpenseTemplateController;
 use App\Http\Controllers\Api\V1\IngredientController;
 use App\Http\Controllers\Api\V1\IngredientStockMovementController;
+use App\Http\Controllers\Api\V1\KitchenBoardController;
 use App\Http\Controllers\Api\V1\LayawayController;
 use App\Http\Controllers\Api\V1\OpenTabController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
@@ -200,6 +201,14 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::put('/open-tabs/{sale}/items', [OpenTabController::class, 'syncItems'])->name('open-tabs.items.sync');
             Route::post('/open-tabs/{sale}/partial-payments', [OpenTabController::class, 'recordPartialPayment'])->name('open-tabs.partial-payments.store');
             Route::post('/open-tabs/{sale}/close', [OpenTabController::class, 'close'])->name('open-tabs.close');
+        });
+
+        // Sin permission: middleware a proposito, igual que legacy (comandera
+        // accesible por igual a admin y a cualquier empleado con el feature
+        // habilitado - no es una accion administrativa sensible).
+        Route::middleware('feature:kitchen_board')->prefix('kitchen')->name('kitchen.')->group(function () {
+            Route::get('/tickets', [KitchenBoardController::class, 'index'])->name('tickets.index');
+            Route::post('/tickets/{sale}/status', [KitchenBoardController::class, 'updateStatus'])->name('tickets.status.update');
         });
 
         Route::middleware(['feature:receivables', 'permission:receivables.manage'])->group(function () {

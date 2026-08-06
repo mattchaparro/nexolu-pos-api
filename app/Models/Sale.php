@@ -16,8 +16,9 @@ use Illuminate\Support\Collection;
  * Una venta puede ser directa (mostrador: nace y se cierra en el mismo
  * instante, status='closed') o una cuenta abierta (status='open': mesa/tab que
  * se cobra despues, con abonos parciales y posible pago dividido al cerrar).
- * La comandera (kitchen board) lee kitchen_status pero es un modulo aparte que
- * todavia no existe en esta API.
+ * kitchen_status es el rollup de los kitchen_status de sus items, calculado
+ * por App\Services\KitchenBoardService::syncSaleStatus() - no se edita
+ * directo.
  */
 #[Fillable([
     'business_id',

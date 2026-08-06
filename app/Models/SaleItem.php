@@ -16,6 +16,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'subtotal',
     'discount_id',
     'discount_amount',
+    'kitchen_status',
+    'kitchen_updated_at',
 ])]
 class SaleItem extends Model
 {
@@ -28,6 +30,7 @@ class SaleItem extends Model
             'unit_cost_at_sale' => 'decimal:4',
             'subtotal' => 'decimal:2',
             'discount_amount' => 'decimal:2',
+            'kitchen_updated_at' => 'datetime',
         ];
     }
 
