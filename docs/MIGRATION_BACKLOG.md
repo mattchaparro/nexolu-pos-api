@@ -79,8 +79,38 @@ se tacha en cuanto se construye, sin precondición de cutover.
   dejaba las órdenes rechazadas en `pending` para siempre - acá se marcan
   `failed`/`cancelled` explícitamente). API en `GET /v1/subscription/status`
   y `POST /v1/subscription/checkout`.
-  **Deliberadamente fuera de alcance** (no existían en el legacy vigente o
-  no se pidieron):
+  Además, ya migrado en una segunda pasada:
+  - ~~**Promociones/descuentos de precio**~~ ✅ Migrado: `SystemConfig` +
+    `SystemConfigStore` (config editable en caliente, tabla `system_configs`
+    ya existía en el schema compartido, sin usar) + `SubscriptionPricingService`
+    (`breakdown()`/`totalCop()`, con `config/marketing.php` como default:
+    40% de descuento los primeros 2 ciclos) + `Business::subscriptionPromoCyclesConsumed()`.
+    `SubscriptionService::initiateCheckout()` y `GET /v1/subscription/status`
+    (campo `pricing`) ya usan el monto con promo aplicada, no el precio de
+    lista. `PlatformFinanceService::realMonthlyRecurringRevenueCop()` tambien
+    se actualizó a usar `SubscriptionPricingService::totalCop()` (antes usaba
+    `Business::monthlyPriceCop()`, que ignora la promo - así calculaba el
+    legacy también). `Business::monthlyPriceCop()` (precio de lista, sin
+    promo) se mantiene intacto para lo que ya lo usaba
+    (`SuperAdminBusinessService::resolveActivationAmount()`, activación
+    manual del superadmin - una promo pensada para autoservicio online no
+    aplica ahí). **Gap real**: no hay todavía un `SuperAdmin\SettingsController`
+    (existe en legacy) para que el superadmin edite `marketing.promo_*`/
+    `plans.*_price_cop` sin tocar la base de datos directamente - hoy sólo
+    corren los defaults de `config/marketing.php` (65000 COP, 40% x 2 meses)
+    hasta que alguien escriba una fila en `system_configs`.
+  - ~~**Notificaciones por correo de pago**~~ ✅ Migrado:
+    `SubscriptionPaymentResultMail` (al admin del negocio,
+    `is_business_owner=true`) y `SubscriptionPaymentSuperadminNoticeMail`
+    (a cada usuario con rol `superadmin`), encoladas (`Mail::queue()`, no
+    síncronas) desde `PaymentsCoreWebhookController::notifyPaymentResult()`
+    tanto en `payment.approved` como en `payment.declined`/`payment.error`.
+  - ~~**Polling `GET /v1/payments/transactions/{reference}`**~~ ✅ Migrado:
+    `SubscriptionService::checkoutStatus()` + `GET /v1/subscription/checkout/{reference}`,
+    scoped al negocio del usuario autenticado; sólo llama al Core cuando la
+    orden local sigue `pending` (si ya está `confirmed`/`failed`/`cancelled`,
+    responde con el estado local sin tocar la red).
+  **Sigue deliberadamente fuera de alcance**:
   - **Addon de IA vía suscripción**: en el legacy actual, `ai_addon_included`
     siempre es `false` (el código que lo cobraba quedó muerto - ver
     `SubscriptionPricingService::breakdown()` del legacy, que lo fuerza a 0).
@@ -90,24 +120,11 @@ se tacha en cuanto se construye, sin precondición de cutover.
     cobro del addon, hay que portar `AiAccessService::contratarAddon()` del
     legacy (¡no `activarAddon()`, que es un método que no existe - bug
     inofensivo en legacy porque esa rama nunca corre hoy!).
-  - **Promociones/descuentos de precio** (`plan_after_promo_cop`, ciclos
-    pagados, etc. de `SubscriptionPricingService` del legacy): no existe
-    ningún equivalente en este repo hoy. El monto se calcula con
-    `Business::monthlyPriceCop()` (precio personalizado o precio del plan),
-    ya usado por `SuperAdminBusinessService`/`PlatformFinanceService` - no se
-    replicó la lógica de promos porque no hay nada que promocionar todavía.
-  - **Notificaciones por correo** de pago aprobado/rechazado a superadmin y
-    al admin del negocio (el legacy sí las manda). No se portaron.
   - **`WompiFees`** (comisión de Wompi): confirmado que no participa del
     flujo de cobro/activación en el legacy, solo de un reporte financiero
     interno (`PlatformFinanceService` legacy). No se necesita replicar acá -
     si se quiere mostrar comisión neta, pedírsela al Core en vez de
     recalcularla con una fórmula propia.
-  - **`GET /v1/payments/transactions/{reference}`** (polling del Core): el
-    Core lo expone para que el frontend haga polling de UX mientras espera
-    el webhook, pero no se consume desde este POS todavía - no hay
-    `PaymentsCoreService::getTransaction()` usado por ningún controller aún
-    (el método existe, listo para cuando el frontend lo necesite).
 - **Motor de insights** (`ResumenInteligenteInsight` en legacy): calcula
   salud del negocio/ventas vs. ayer/gasto inusual/prioridad del día. No
   evaluado a fondo todavía - es candidato a vivir como una Capability más

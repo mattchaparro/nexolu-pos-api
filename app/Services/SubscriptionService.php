@@ -5,8 +5,10 @@ namespace App\Services;
 use App\Models\Business;
 use App\Models\SubscriptionCheckoutOrder;
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 
 /**
  * Cobro de la suscripcion del negocio a Nexolu, orquestado via Nexolu
@@ -19,7 +21,10 @@ class SubscriptionService
     /** Dias que otorga un ciclo de pago. Igual al default de Business::activate(). */
     private const SUBSCRIPTION_DAYS = 30;
 
-    public function __construct(private PaymentsCoreService $paymentsCore) {}
+    public function __construct(
+        private PaymentsCoreService $paymentsCore,
+        private SubscriptionPricingService $pricing,
+    ) {}
 
     /**
      * Crea una orden pendiente y, con esa referencia, un intent de cobro en
@@ -32,7 +37,7 @@ class SubscriptionService
      */
     public function initiateCheckout(Business $business, User $user, string $redirectUrl): array
     {
-        $amount = $business->monthlyPriceCop();
+        $amount = $this->pricing->totalCop($business);
 
         if ($amount <= 0) {
             throw ValidationException::withMessages([
@@ -77,5 +82,53 @@ class SubscriptionService
             'amount_cop' => $amount,
             'checkout' => $intent['checkout'] ?? [],
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function pricingBreakdown(Business $business): array
+    {
+        return $this->pricing->breakdown($business);
+    }
+
+    /**
+     * Estado de una orden de checkout, para que el frontend haga polling
+     * mientras espera el webhook de confirmacion (fallback de UX, igual
+     * proposito que GET /v1/payments/transactions/{reference} del Core -
+     * ver docs/APP_INTEGRATION.md seccion 2). Scoped al negocio del usuario
+     * autenticado: una orden de otro negocio no debe ser consultable.
+     *
+     * @return array<string, mixed>
+     */
+    public function checkoutStatus(Business $business, string $reference): array
+    {
+        $order = SubscriptionCheckoutOrder::where('business_id', $business->id)
+            ->where('order_key', $reference)
+            ->firstOrFail();
+
+        $result = [
+            'order_key' => $order->order_key,
+            'status' => $order->status,
+            'amount_cop' => $order->amount_cop,
+            'confirmed_at' => $order->confirmed_at?->toIso8601String(),
+        ];
+
+        if ($order->status === 'pending') {
+            // El Core es la fuente de verdad, pero es solo un fallback de UX:
+            // si no responde, el frontend se queda con lo que ya sabemos
+            // localmente y sigue esperando el webhook.
+            try {
+                $transaction = $this->paymentsCore->getTransaction($reference);
+                $result['provider_status'] = $transaction['status'] ?? null;
+            } catch (RuntimeException $e) {
+                Log::info('subscription.checkout_status: no se pudo consultar Payments Core', [
+                    'reference' => $reference,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $result;
     }
 }

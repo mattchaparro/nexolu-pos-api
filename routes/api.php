@@ -78,6 +78,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::get('/subscription/status', [SubscriptionController::class, 'status'])->name('subscription.status');
         Route::post('/subscription/checkout', [SubscriptionController::class, 'initiate'])->name('subscription.checkout');
+        Route::get('/subscription/checkout/{reference}', [SubscriptionController::class, 'checkoutStatus'])->name('subscription.checkout.status');
 
         Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');
         Route::put('/settings/{setting}', [SettingController::class, 'update'])->name('settings.update');

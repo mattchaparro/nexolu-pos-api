@@ -2,11 +2,16 @@
 
 namespace Tests\Feature\Api;
 
+use App\Mail\SubscriptionPaymentResultMail;
+use App\Mail\SubscriptionPaymentSuperadminNoticeMail;
 use App\Models\Business;
 use App\Models\SaasSubscriptionPayment;
 use App\Models\SubscriptionCheckoutOrder;
+use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Testing\TestResponse;
+use Tests\Support\ActsAsSuperAdmin;
 use Tests\TestCase;
 
 /**
@@ -18,7 +23,7 @@ use Tests\TestCase;
  */
 class PaymentsCoreWebhookTest extends TestCase
 {
-    use DatabaseTransactions;
+    use ActsAsSuperAdmin, DatabaseTransactions;
 
     private const SECRET = 'test-webhook-secret';
 
@@ -158,5 +163,53 @@ class PaymentsCoreWebhookTest extends TestCase
             'transaction_id' => 'core-tx-3',
             'reference' => 'NEX-does-not-exist',
         ])->assertOk();
+    }
+
+    public function test_approved_event_queues_result_emails_to_the_business_admin_and_superadmins(): void
+    {
+        Mail::fake();
+
+        $business = Business::factory()->create(['paid_until' => null]);
+        $admin = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+        $superadmin = $this->superadmin();
+        $order = SubscriptionCheckoutOrder::factory()->for($business)->create([
+            'status' => 'pending',
+            'amount_cop' => 65000,
+            'subscription_days' => 30,
+        ]);
+
+        $this->postSigned([
+            'event' => 'payment.approved',
+            'transaction_id' => 'core-tx-1',
+            'reference' => $order->order_key,
+            'provider_transaction_id' => 'wompi-tx-1',
+            'status' => 'approved',
+        ])->assertOk();
+
+        Mail::assertQueued(SubscriptionPaymentResultMail::class, fn ($mail) => $mail->hasTo($admin->email) && $mail->succeeded === true && $mail->daysGranted === 30
+        );
+        Mail::assertQueued(SubscriptionPaymentSuperadminNoticeMail::class, fn ($mail) => $mail->hasTo($superadmin->email) && $mail->succeeded === true
+        );
+    }
+
+    public function test_declined_event_queues_failure_emails(): void
+    {
+        Mail::fake();
+
+        $business = Business::factory()->create(['paid_until' => null]);
+        $admin = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+        $this->superadmin();
+        $order = SubscriptionCheckoutOrder::factory()->for($business)->create(['status' => 'pending']);
+
+        $this->postSigned([
+            'event' => 'payment.declined',
+            'transaction_id' => 'core-tx-2',
+            'reference' => $order->order_key,
+            'status' => 'DECLINED',
+        ])->assertOk();
+
+        Mail::assertQueued(SubscriptionPaymentResultMail::class, fn ($mail) => $mail->hasTo($admin->email) && $mail->succeeded === false && $mail->failureStatus === 'DECLINED'
+        );
+        Mail::assertQueued(SubscriptionPaymentSuperadminNoticeMail::class);
     }
 }

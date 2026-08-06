@@ -432,6 +432,42 @@ class Business extends Model
         ]);
     }
 
+    /**
+     * Ciclos de precio promocional ya "consumidos" para la pantalla de
+     * facturacion. Usa el maximo entre pagos registrados en
+     * SaasSubscriptionPayment y periodos de ~30 dias desde el fin del trial
+     * (o desde la creacion del negocio si nunca hubo trial), asi la promo no
+     * queda pegada en "mes 1" cuando los cobros son manuales y no dejan
+     * fila de pago.
+     */
+    public function subscriptionPromoCyclesConsumed(): int
+    {
+        $recorded = (int) $this->saasSubscriptionPayments()->count();
+
+        if ($this->trial_ends_at && $this->trial_ends_at->isFuture()) {
+            // Prueba aun vigente: si ya pago por adelantado, el primer ciclo
+            // promocional no debe repetirse como "mes 1".
+            if ($this->isPaid()) {
+                return max($recorded, 1);
+            }
+
+            return $recorded;
+        }
+
+        $billingStart = ($this->trial_ends_at && $this->trial_ends_at->isPast())
+            ? $this->trial_ends_at
+            : $this->created_at;
+
+        if (! $billingStart) {
+            return $recorded;
+        }
+
+        $days = max(0, (int) $billingStart->copy()->startOfDay()->diffInDays(now()->copy()->startOfDay()));
+        $elapsedByTime = intdiv($days, 30);
+
+        return max($recorded, $elapsedByTime);
+    }
+
     public function extendTrial(int $days): void
     {
         $from = $this->onTrial() ? $this->trial_ends_at : now();

@@ -3,12 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\SubscriptionPaymentResultMail;
+use App\Mail\SubscriptionPaymentSuperadminNoticeMail;
 use App\Models\SaasSubscriptionPayment;
 use App\Models\SubscriptionCheckoutOrder;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Throwable;
 
 /**
  * Webhook publico del Nexolu Payments Core (servicio Python aparte, repo
@@ -69,7 +74,9 @@ class PaymentsCoreWebhookController extends Controller
      */
     private function approve(string $reference, array $payload): void
     {
-        DB::transaction(function () use ($reference, $payload) {
+        // El envio de correos queda fuera de la transaccion a proposito: no
+        // hay razon para retener el lock de la fila mientras se encolan.
+        $order = DB::transaction(function () use ($reference, $payload) {
             // lockForUpdate + status=pending como guarda de idempotencia: un
             // reintento del Core para la misma referencia ya no encuentra la
             // orden en pending (paso a confirmed) y no vuelve a activar nada.
@@ -83,7 +90,7 @@ class PaymentsCoreWebhookController extends Controller
             if (! $order) {
                 Log::info('payments_core.webhook: orden no encontrada o ya procesada', ['reference' => $reference]);
 
-                return;
+                return null;
             }
 
             $order->update([
@@ -112,7 +119,13 @@ class PaymentsCoreWebhookController extends Controller
                 'days' => $order->subscription_days,
                 'transaction_id' => $payload['transaction_id'] ?? null,
             ]);
+
+            return $order;
         });
+
+        if ($order) {
+            $this->notifyPaymentResult($order, succeeded: true, payload: $payload);
+        }
     }
 
     /**
@@ -134,6 +147,46 @@ class PaymentsCoreWebhookController extends Controller
         $order->update(['status' => 'failed', 'payload' => $payload]);
 
         Log::info('payments_core.webhook: pago fallido', ['reference' => $reference, 'status' => $payload['status'] ?? null]);
+
+        $this->notifyPaymentResult($order, succeeded: false, payload: $payload);
+    }
+
+    /**
+     * Encola el aviso al admin del negocio y a cada superadmin. Se encola
+     * (Mail::queue), no se envia sincrono - el Core espera una respuesta
+     * rapida del webhook (ver docs/APP_INTEGRATION.md seccion 3 del Core).
+     * Un fallo al encolar nunca debe tumbar el procesamiento del webhook,
+     * por eso cada envio va en su propio try/catch.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function notifyPaymentResult(SubscriptionCheckoutOrder $order, bool $succeeded, array $payload): void
+    {
+        $business = $order->business;
+        $providerTransactionId = $payload['provider_transaction_id'] ?? $payload['transaction_id'] ?? null;
+        $failureStatus = $succeeded ? null : (string) ($payload['status'] ?? 'rechazado');
+        $daysGranted = $succeeded ? $order->subscription_days : null;
+
+        $admin = User::where('business_id', $business->id)->where('is_business_owner', true)->first();
+        if ($admin) {
+            try {
+                Mail::to($admin->email)->queue(new SubscriptionPaymentResultMail(
+                    $admin, $business, $succeeded, $order->amount_cop, $daysGranted, $failureStatus,
+                ));
+            } catch (Throwable $e) {
+                Log::warning('payments_core.webhook: error notificando admin del negocio', ['error' => $e->getMessage()]);
+            }
+        }
+
+        foreach (User::role('superadmin')->get() as $superadmin) {
+            try {
+                Mail::to($superadmin->email)->queue(new SubscriptionPaymentSuperadminNoticeMail(
+                    $business, $succeeded, $order->amount_cop, $order->order_key, $providerTransactionId, $daysGranted, $failureStatus,
+                ));
+            } catch (Throwable $e) {
+                Log::warning('payments_core.webhook: error notificando superadmin', ['error' => $e->getMessage()]);
+            }
+        }
     }
 
     /**

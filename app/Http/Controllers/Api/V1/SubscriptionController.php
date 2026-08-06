@@ -21,7 +21,7 @@ class SubscriptionController extends Controller
             'status' => $business->subscriptionStatus(),
             'days_remaining' => $business->daysRemaining(),
             'paid_until' => $business->paid_until?->toDateString(),
-            'monthly_price_cop' => $business->monthlyPriceCop(),
+            'pricing' => $this->subscriptions->pricingBreakdown($business),
         ]);
     }
 
@@ -38,5 +38,12 @@ class SubscriptionController extends Controller
         }
 
         return response()->json($result, 201);
+    }
+
+    public function checkoutStatus(Request $request, string $reference): JsonResponse
+    {
+        return response()->json(
+            $this->subscriptions->checkoutStatus($request->user()->business, $reference)
+        );
     }
 }

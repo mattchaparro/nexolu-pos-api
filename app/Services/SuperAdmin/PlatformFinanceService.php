@@ -4,6 +4,7 @@ namespace App\Services\SuperAdmin;
 
 use App\Models\Business;
 use App\Models\SaasSubscriptionPayment;
+use App\Services\SubscriptionPricingService;
 use Illuminate\Support\Carbon;
 
 /**
@@ -18,6 +19,8 @@ use Illuminate\Support\Carbon;
  */
 class PlatformFinanceService
 {
+    public function __construct(private SubscriptionPricingService $pricing) {}
+
     /**
      * @return array{year: int, month: int, is_current_month: bool, income: array{total_cop: int, count: int, by_payment_method: array<string, int>}, projection: ?array{days_elapsed: int, days_in_month: int, income_cop: int}}
      */
@@ -67,7 +70,7 @@ class PlatformFinanceService
     {
         return (int) Business::where('paid_until', '>', now())
             ->get()
-            ->sum(fn (Business $b) => $b->monthlyPriceCop());
+            ->sum(fn (Business $b) => $this->pricing->totalCop($b));
     }
 
     /** Ingreso real ya cobrado en el mes en curso. Atajo para el Dashboard. */
