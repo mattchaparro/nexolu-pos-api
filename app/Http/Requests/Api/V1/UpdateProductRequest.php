@@ -2,10 +2,12 @@
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Models\Product;
 use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdateProductRequest extends FormRequest
 {
@@ -53,6 +55,52 @@ class UpdateProductRequest extends FormRequest
                 'sometimes',
                 BusinessScopedExists::for('product_categories', $businessId),
             ],
+            'ingredients' => ['sometimes', 'array'],
+            'ingredients.*.ingredient_id' => [
+                'required_with:ingredients',
+                BusinessScopedExists::for('ingredients', $businessId),
+            ],
+            'ingredients.*.quantity' => ['required_with:ingredients', 'numeric', 'min:0.001'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $v) {
+            $this->validateIngredientsRules($v);
+        });
+    }
+
+    private function validateIngredientsRules(Validator $v): void
+    {
+        if (! $this->user()?->business?->hasFeature('ingredients')) {
+            return;
+        }
+
+        $product = $this->route('product');
+
+        // Estado EFECTIVO tras esta request: lo que viene en el payload si
+        // se mando, si no lo que el producto ya tiene guardado - a
+        // diferencia de validar solo contra el estado persistido, esto
+        // permite quitar la receta y marcar is_service/is_single_sale en la
+        // misma request.
+        $effectiveIngredients = $this->has('ingredients')
+            ? $this->input('ingredients', [])
+            : ($product instanceof Product ? $product->ingredients()->get(['ingredients.id'])->all() : []);
+
+        if (empty($effectiveIngredients)) {
+            return;
+        }
+
+        $isService = $this->boolean('is_service', $product instanceof Product ? $product->is_service : false);
+        $isSingleSale = $this->boolean('is_single_sale', $product instanceof Product ? $product->is_single_sale : false);
+
+        if ($isService) {
+            $v->errors()->add('ingredients', 'Los servicios no pueden tener receta por ingredientes.');
+        }
+
+        if ($isSingleSale) {
+            $v->errors()->add('is_single_sale', 'Quita primero la receta de ingredientes para usar venta única.');
+        }
     }
 }

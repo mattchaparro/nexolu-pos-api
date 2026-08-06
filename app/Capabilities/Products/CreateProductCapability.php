@@ -41,7 +41,7 @@ class CreateProductCapability implements Capability
     {
         $category = $this->resolveCategory($arguments['categoria'] ?? null);
 
-        $product = $this->productService->create([
+        $product = $this->productService->create($business, [
             'name' => $arguments['nombre'],
             'price' => $arguments['precio'],
             'cost_price' => $arguments['costo'] ?? 0,

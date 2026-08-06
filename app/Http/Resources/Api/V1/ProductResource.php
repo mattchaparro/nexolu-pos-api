@@ -33,6 +33,8 @@ class ProductResource extends JsonResource
             'sku' => $this->sku,
             'image' => $this->image,
             'is_active' => $this->is_active,
+            'ingredients' => IngredientResource::collection($this->whenLoaded('ingredients')),
+            'has_recipe' => $this->whenLoaded('ingredients', fn () => $this->ingredients->isNotEmpty()),
         ];
     }
 }

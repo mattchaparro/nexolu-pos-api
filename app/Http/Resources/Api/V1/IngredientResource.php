@@ -22,6 +22,9 @@ class IngredientResource extends JsonResource
             'min_stock' => $this->min_stock,
             'is_active' => $this->is_active,
             'created_at' => $this->created_at?->toIso8601String(),
+            // Solo presente cuando este recurso viene de la relacion
+            // Product::ingredients() (pivot ingredient_product cargado).
+            'quantity' => $this->whenPivotLoaded('ingredient_product', fn () => $this->pivot->quantity),
         ];
     }
 }

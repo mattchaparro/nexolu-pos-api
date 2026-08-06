@@ -56,10 +56,24 @@ se tacha en cuanto se construye, sin precondición de cutover.
   reservan/liberan stock via `reserveForLayaway`/`releaseLayawayReservation`,
   que siguen sin considerar recetas - un apartado de un producto con receta
   hoy mueve `products.stock`, que es la columna "fantasma"). Tampoco se portó
-  el CRUD de la receta en sí (`ingredient_product` attach/sync desde el
-  endpoint de productos) ni `PurchaseService` admitiendo líneas de compra de
-  ingrediente (`purchase_lines.ingredient_id` existe en el schema compartido,
-  sin usar).
+  `PurchaseService` admitiendo líneas de compra de ingrediente
+  (`purchase_lines.ingredient_id` existe en el schema compartido, sin usar).
+- ~~**CRUD de la receta desde el endpoint de productos**~~ ✅ Migrado: igual
+  que el legacy, `ingredients` (`[{ingredient_id, quantity}]`) viaja como
+  parte del payload de `POST`/`PUT /v1/products`, no por un endpoint aparte -
+  `ProductService::syncIngredients()` hace el `sync()` del pivot
+  `ingredient_product` + `Product::syncRecipeCost()`. Reglas de negocio
+  portadas en `Store/UpdateProductRequest`: un servicio o un producto de
+  venta única no puede tener receta; con receta no vacía se fuerza
+  `track_stock=true`; sin el feature `ingredients` la receta enviada se
+  ignora en silencio. `ProductResource` expone `ingredients`/`has_recipe`
+  (cargados condicionalmente en `index`/`show` solo si el negocio tiene el
+  feature). **Mejora sobre el legacy**: la regla "no se puede activar
+  `is_single_sale` con receta" en legacy solo miraba el estado YA guardado
+  del producto, así que quitar la receta y activar `is_single_sale` en la
+  misma request quedaba bloqueado sin razón - acá se valida el estado
+  EFECTIVO (payload si lo manda, si no el persistido), permitiendo ambos
+  cambios en un solo `PUT`.
 - ~~**Reminders**~~ ✅ Migrado (`Reminder` + `ReminderService`, API en
   `/v1/reminders`). El `remindable` polimórfico existe en el modelo pero
   todavía no lo alimenta nada (los hooks desde Purchase/Supplier/

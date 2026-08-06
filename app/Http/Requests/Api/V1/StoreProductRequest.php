@@ -6,6 +6,7 @@ use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreProductRequest extends FormRequest
 {
@@ -52,6 +53,38 @@ class StoreProductRequest extends FormRequest
                 'required',
                 BusinessScopedExists::for('product_categories', $businessId),
             ],
+            'ingredients' => ['sometimes', 'array'],
+            'ingredients.*.ingredient_id' => [
+                'required_with:ingredients',
+                BusinessScopedExists::for('ingredients', $businessId),
+            ],
+            'ingredients.*.quantity' => ['required_with:ingredients', 'numeric', 'min:0.001'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $v) {
+            $this->validateIngredientsRules($v);
+        });
+    }
+
+    private function validateIngredientsRules(Validator $v): void
+    {
+        if (! $this->user()?->business?->hasFeature('ingredients')) {
+            return;
+        }
+
+        if (empty($this->input('ingredients', []))) {
+            return;
+        }
+
+        if ($this->boolean('is_service')) {
+            $v->errors()->add('ingredients', 'Los servicios no pueden tener receta por ingredientes.');
+        }
+
+        if ($this->boolean('is_single_sale')) {
+            $v->errors()->add('ingredients', 'Los productos de venta única no pueden tener receta por ingredientes.');
+        }
     }
 }
