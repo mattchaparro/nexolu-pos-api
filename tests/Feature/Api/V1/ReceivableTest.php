@@ -95,7 +95,10 @@ class ReceivableTest extends TestCase
         ])->json();
 
         $this->actingAs($user, 'sanctum')
-            ->postJson("/api/v1/open-tabs/{$tab['id']}/close", ['payment_method' => 'credit'])
+            ->postJson("/api/v1/open-tabs/{$tab['id']}/close", [
+                'payment_method' => 'credit',
+                'customer_name' => 'Cliente Frecuente',
+            ])
             ->assertOk();
 
         $this->assertDatabaseHas('receivables', [

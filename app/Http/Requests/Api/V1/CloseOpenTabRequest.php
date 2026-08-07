@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Models\Sale;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 class CloseOpenTabRequest extends FormRequest
 {
@@ -42,5 +44,42 @@ class CloseOpenTabRequest extends FormRequest
             'apply_service_charge' => ['sometimes', 'boolean'],
             'apply_ipoconsumo' => ['sometimes', 'boolean'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            if ($this->boolean('is_non_revenue')) {
+                return;
+            }
+
+            // El fiado solo es alcanzable por el payment_method "plano", sin
+            // pago dividido ni abonos previos - OpenTabService::close()
+            // fuerza forbidCredit=true en cualquier otro camino (splits,
+            // abonos, saldo restante). Mismo bug real que StoreSaleRequest
+            // (venta directa) ya tenia y se corrigio ahi: una cuenta se
+            // podia cerrar como fiado sin ningun dato de cliente, dejando
+            // una deuda sin forma de cobrarla despues.
+            $hasSplits = is_array($this->input('payment_splits')) && count($this->input('payment_splits')) >= 2;
+            $sale = $this->route('sale');
+            $hasPartials = $sale instanceof Sale && $sale->partialPayments()->exists();
+
+            if ($hasSplits || $hasPartials || ! $this->filled('payment_method')) {
+                return;
+            }
+
+            $business = $this->user()?->business;
+            $isCredit = (bool) $business?->isCreditPaymentMethod($this->input('payment_method'));
+
+            if ($isCredit
+                && ! $this->filled('customer_name')
+                && ! $this->filled('customer_phone')
+                && ! $this->filled('customer_identification')) {
+                $validator->errors()->add(
+                    'customer_name',
+                    'Un fiado necesita al menos un dato del cliente (nombre, telefono o cedula) para poder cobrarlo despues.'
+                );
+            }
+        });
     }
 }

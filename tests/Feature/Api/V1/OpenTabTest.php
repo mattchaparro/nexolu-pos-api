@@ -214,9 +214,46 @@ class OpenTabTest extends TestCase
         ])->json();
 
         $this->actingAs($user, 'sanctum')
-            ->postJson("/api/v1/open-tabs/{$tab['id']}/close", ['payment_method' => 'credit'])
+            ->postJson("/api/v1/open-tabs/{$tab['id']}/close", [
+                'payment_method' => 'credit',
+                'customer_name' => 'Cliente Frecuente',
+            ])
             ->assertOk()
             ->assertJsonPath('is_credit', true);
+    }
+
+    public function test_closing_as_credit_requires_at_least_one_customer_identifier(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+
+        $tab = $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->json();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/open-tabs/{$tab['id']}/close", ['payment_method' => 'credit'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('customer_name');
+    }
+
+    public function test_closing_as_credit_accepts_a_customer_phone_without_a_name(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+
+        $tab = $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->json();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/open-tabs/{$tab['id']}/close", [
+                'payment_method' => 'credit',
+                'customer_phone' => '3001234567',
+            ])
+            ->assertOk();
     }
 
     public function test_closing_with_mixed_payment_splits(): void
