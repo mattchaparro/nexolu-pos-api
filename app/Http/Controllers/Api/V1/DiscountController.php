@@ -25,7 +25,16 @@ class DiscountController extends Controller
             $query->where('name', 'like', '%'.$request->string('search').'%');
         }
 
-        return DiscountResource::collection($query->paginate(20)->withQueryString());
+        if ($request->boolean('active_only')) {
+            $query->where('is_active', true);
+        }
+
+        // El POS (Vender) necesita el catalogo completo de descuentos activos
+        // para el selector de carrito/item - mismo per_page override acotado
+        // que ProductController::index.
+        $perPage = max(1, min((int) $request->integer('per_page', 20), 200));
+
+        return DiscountResource::collection($query->paginate($perPage)->withQueryString());
     }
 
     public function store(StoreDiscountRequest $request): DiscountResource

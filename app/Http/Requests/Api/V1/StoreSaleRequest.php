@@ -71,6 +71,22 @@ class StoreSaleRequest extends FormRequest
                 $validator->errors()->add('payment_method', 'Selecciona un metodo de pago.');
             }
 
+            // Bug real del legacy (SalesTerminal.vue): un fiado se podia
+            // registrar sin ningun dato del cliente, dejando una deuda
+            // sin forma de cobrarla despues. Se corrige acá, no solo se
+            // traslada - ver docs/BACKEND_READINESS.md del frontend.
+            $business = $this->user()?->business;
+            $isCredit = ! $isNonRevenue && $business?->isCreditPaymentMethod($this->input('payment_method'));
+            if ($isCredit
+                && ! $this->filled('customer_name')
+                && ! $this->filled('customer_phone')
+                && ! $this->filled('customer_identification')) {
+                $validator->errors()->add(
+                    'customer_name',
+                    'Un fiado necesita al menos un dato del cliente (nombre, telefono o cedula) para poder cobrarlo despues.'
+                );
+            }
+
             $this->validateSaleItemLines($validator);
         });
     }
