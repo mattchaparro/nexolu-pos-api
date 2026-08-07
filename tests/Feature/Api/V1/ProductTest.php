@@ -29,6 +29,56 @@ class ProductTest extends TestCase
             ->assertJsonCount(2, 'data');
     }
 
+    public function test_per_page_can_be_bumped_up_to_the_pos_catalog_cap(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        Product::factory()->count(30)->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?per_page=200')
+            ->assertOk()
+            ->assertJsonCount(30, 'data');
+    }
+
+    public function test_per_page_above_the_cap_is_clamped_to_200(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        Product::factory()->count(3)->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?per_page=9999')
+            ->assertOk()
+            ->assertJsonPath('meta.per_page', 200);
+    }
+
+    public function test_products_can_be_searched_by_name_or_sku(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        Product::factory()->create(['business_id' => $business->id, 'name' => 'Gaseosa Manzana', 'sku' => 'BEB-001']);
+        Product::factory()->create(['business_id' => $business->id, 'name' => 'Papas fritas', 'sku' => 'SNK-002']);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?search=gaseosa')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Gaseosa Manzana');
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?search=SNK-002')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Papas fritas');
+    }
+
     public function test_creating_a_product_without_an_explicit_sku_generates_one(): void
     {
         $business = Business::factory()->create();

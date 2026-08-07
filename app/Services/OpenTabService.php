@@ -263,8 +263,15 @@ class OpenTabService
 
             $business = $sale->business;
 
+            // Base sin el domicilio, igual que SaleService::createSale y el
+            // legacy (closeChargeBase en OpenTabs.vue) - $sale->total de una
+            // cuenta abierta ya incluye el delivery_fee desde que se abrio
+            // (ver openTab()/syncItems() mas abajo), asi que hay que
+            // restarlo antes de calcular el cargo o se cobra servicio/
+            // ipoconsumo tambien sobre el domicilio.
+            $chargeBase = max(0.0, (float) $sale->total - (float) $sale->delivery_fee);
             [$serviceChargeAmount, $ipoconsumoAmount] = $this->saleService->resolveCharges(
-                $business, (float) $sale->total, $data
+                $business, $chargeBase, $data
             );
             $totalWithCharges = round((float) $sale->total + $serviceChargeAmount + $ipoconsumoAmount, 2);
 

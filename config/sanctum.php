@@ -48,9 +48,14 @@ return [
     | considered expired. This will override any values set in the token's
     | "expires_at" attribute, but first-party sessions are not affected.
     |
+    | 240 (4h) por defecto: el legacy expira sesiones por seguridad (session
+    | lifetime, config/session.php), este API-first debe hacer lo mismo -
+    | ver AuthController::login(). El frontend (nexolu-pos-front) ya maneja
+    | el 401 resultante limpiando la sesion local y redirigiendo a /login.
+    |
     */
 
-    'expiration' => null,
+    'expiration' => env('SANCTUM_TOKEN_EXPIRATION', 240),
 
     /*
     |--------------------------------------------------------------------------

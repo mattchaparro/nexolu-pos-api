@@ -9,6 +9,7 @@ use App\Http\Resources\Api\V1\ProductCategoryResource;
 use App\Models\ProductCategory;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
+use Illuminate\Validation\ValidationException;
 
 class ProductCategoryController extends Controller
 {
@@ -42,6 +43,23 @@ class ProductCategoryController extends Controller
 
     public function destroy(ProductCategory $productCategory): Response
     {
+        // products.category_id no tiene FK en el schema compartido (sin
+        // "on delete") y product_categories.parent_id es "on delete set
+        // null" - sin este guard, borrar una categoria dejaria productos
+        // con un category_id colgando o promoveria sus subcategorias a
+        // nivel raiz en silencio, sin que el usuario lo pida.
+        if ($productCategory->products()->count() > 0) {
+            throw ValidationException::withMessages([
+                'category' => 'No se puede eliminar: tiene productos asociados.',
+            ]);
+        }
+
+        if ($productCategory->children()->count() > 0) {
+            throw ValidationException::withMessages([
+                'category' => 'No se puede eliminar: tiene subcategorías asociadas.',
+            ]);
+        }
+
         $productCategory->delete();
 
         return response()->noContent();

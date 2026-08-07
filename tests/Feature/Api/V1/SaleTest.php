@@ -256,10 +256,41 @@ class SaleTest extends TestCase
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
             'payment_method' => 'credit',
+            'customer_name' => 'Cliente Frecuente',
             'items' => [['product_id' => $product->id, 'quantity' => 1]],
         ]);
 
         $response->assertCreated()->assertJsonPath('is_credit', true);
+    }
+
+    public function test_credit_sale_requires_at_least_one_customer_identifier(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 5000, 'stock' => 10]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/sales', [
+                'payment_method' => 'credit',
+                'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('customer_name');
+    }
+
+    public function test_credit_sale_accepts_a_customer_phone_without_a_name(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 5000, 'stock' => 10]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/sales', [
+                'payment_method' => 'credit',
+                'customer_phone' => '3001234567',
+                'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            ])
+            ->assertCreated();
     }
 
     public function test_payment_method_must_be_one_the_business_has_configured(): void

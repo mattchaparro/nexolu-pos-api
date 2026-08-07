@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Support\CategoryIconResolver;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -20,7 +21,9 @@ class ProductCategoryResource extends JsonResource
             'parent_id' => $this->parent_id,
             'name' => $this->name,
             'description' => $this->description,
-            'icon' => $this->icon,
+            // Nombre de Material Icon (mismo vocabulario que el legacy) -
+            // CategoryIconResolver solo evita devolverlo vacio.
+            'icon' => CategoryIconResolver::resolve($this->icon),
         ];
     }
 }

@@ -214,9 +214,46 @@ class OpenTabTest extends TestCase
         ])->json();
 
         $this->actingAs($user, 'sanctum')
-            ->postJson("/api/v1/open-tabs/{$tab['id']}/close", ['payment_method' => 'credit'])
+            ->postJson("/api/v1/open-tabs/{$tab['id']}/close", [
+                'payment_method' => 'credit',
+                'customer_name' => 'Cliente Frecuente',
+            ])
             ->assertOk()
             ->assertJsonPath('is_credit', true);
+    }
+
+    public function test_closing_as_credit_requires_at_least_one_customer_identifier(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+
+        $tab = $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->json();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/open-tabs/{$tab['id']}/close", ['payment_method' => 'credit'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('customer_name');
+    }
+
+    public function test_closing_as_credit_accepts_a_customer_phone_without_a_name(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+
+        $tab = $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->json();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/open-tabs/{$tab['id']}/close", [
+                'payment_method' => 'credit',
+                'customer_phone' => '3001234567',
+            ])
+            ->assertOk();
     }
 
     public function test_closing_with_mixed_payment_splits(): void
@@ -299,6 +336,40 @@ class OpenTabTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('service_charge_amount', '1000.00')
             ->assertJsonPath('total', '11000.00');
+    }
+
+    public function test_charges_at_close_exclude_the_delivery_fee_from_their_base(): void
+    {
+        // Bug real: el cargo se calculaba sobre sale->total, que en una
+        // cuenta abierta ya incluye el domicilio desde que se abrio -
+        // cobraba servicio/ipoconsumo tambien sobre el domicilio. La venta
+        // directa (SaleService::createSale) y el legacy (closeChargeBase en
+        // OpenTabs.vue) siempre excluyeron el domicilio de esa base.
+        $business = Business::factory()->create([
+            'service_charge_enabled' => true,
+            'service_charge_rate' => 10,
+            'ipoconsumo_enabled' => false,
+            'delivery_enabled' => true,
+            'delivery_fee' => 5000,
+        ]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+
+        $tab = $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            'is_delivery' => true,
+        ])->json();
+
+        $this->assertSame('15000.00', $tab['total']);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson("/api/v1/open-tabs/{$tab['id']}/close", [
+            'payment_method' => 'cash',
+        ]);
+
+        // 10% sobre 10000 (consumo, sin el domicilio) = 1000, no 1500.
+        $response->assertOk()
+            ->assertJsonPath('service_charge_amount', '1000.00')
+            ->assertJsonPath('total', '16000.00');
     }
 
     public function test_cancelling_a_tab_restores_stock_and_deletes_it(): void

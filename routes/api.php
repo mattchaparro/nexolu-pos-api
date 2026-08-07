@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\V1\BusinessTableController;
 use App\Http\Controllers\Api\V1\CashClosingController;
 use App\Http\Controllers\Api\V1\CashShiftController;
 use App\Http\Controllers\Api\V1\ClientController;
+use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DiscountController;
 use App\Http\Controllers\Api\V1\EmployeeController;
 use App\Http\Controllers\Api\V1\ExpenseController;
@@ -100,6 +101,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::get('/business', [BusinessController::class, 'show'])->name('business.show');
         Route::put('/business', [BusinessController::class, 'update'])->name('business.update');
+
+        Route::get('/dashboard/summary', [DashboardController::class, 'summary'])->name('dashboard.summary');
 
         Route::get('/subscription/status', [SubscriptionController::class, 'status'])->name('subscription.status');
         Route::post('/subscription/checkout', [SubscriptionController::class, 'initiate'])->name('subscription.checkout');

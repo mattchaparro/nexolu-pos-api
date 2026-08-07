@@ -95,7 +95,10 @@ class ReceivableTest extends TestCase
         ])->json();
 
         $this->actingAs($user, 'sanctum')
-            ->postJson("/api/v1/open-tabs/{$tab['id']}/close", ['payment_method' => 'credit'])
+            ->postJson("/api/v1/open-tabs/{$tab['id']}/close", [
+                'payment_method' => 'credit',
+                'customer_name' => 'Cliente Frecuente',
+            ])
             ->assertOk();
 
         $this->assertDatabaseHas('receivables', [
@@ -171,6 +174,7 @@ class ReceivableTest extends TestCase
 
         $sale = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
             'payment_method' => 'credit',
+            'customer_name' => 'Juan Perez',
             'items' => [['product_id' => $product->id, 'quantity' => 1]],
         ])->json();
 
@@ -191,6 +195,7 @@ class ReceivableTest extends TestCase
 
         $sale = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
             'payment_method' => 'credit',
+            'customer_name' => 'Juan Perez',
             'items' => [['product_id' => $product->id, 'quantity' => 1]],
         ])->json();
 

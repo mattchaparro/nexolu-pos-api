@@ -29,6 +29,33 @@ class DiscountTest extends TestCase
             ->assertJsonCount(2, 'data');
     }
 
+    public function test_active_only_filter_excludes_inactive_discounts(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        Discount::factory()->create(['business_id' => $business->id, 'is_active' => true]);
+        Discount::factory()->create(['business_id' => $business->id, 'is_active' => false]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/discounts?active_only=1')
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+    }
+
+    public function test_per_page_above_the_cap_is_clamped_to_200(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/discounts?per_page=9999')
+            ->assertOk()
+            ->assertJsonPath('meta.per_page', 200);
+    }
+
     public function test_user_can_create_a_percentage_discount(): void
     {
         $business = Business::factory()->create();

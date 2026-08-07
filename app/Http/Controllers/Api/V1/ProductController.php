@@ -20,12 +20,24 @@ class ProductController extends Controller
     {
         $ingredientsEnabled = (bool) $request->user()?->business?->hasFeature('ingredients');
 
-        return ProductResource::collection(
-            Product::with('category')
-                ->when($ingredientsEnabled, fn ($query) => $query->with('ingredients'))
-                ->orderBy('name')
-                ->paginate()
-        );
+        $query = Product::with('category')
+            ->when($ingredientsEnabled, fn ($q) => $q->with('ingredients'))
+            ->orderBy('name');
+
+        if ($request->filled('search')) {
+            $term = '%'.trim((string) $request->input('search')).'%';
+            $query->where(function ($sub) use ($term) {
+                $sub->where('name', 'like', $term)->orWhere('sku', 'like', $term);
+            });
+        }
+
+        // El POS (Vender) necesita el catalogo casi completo de una sola vez
+        // para filtrar/buscar en el cliente sin ida y vuelta por cada tecla -
+        // per_page override acotado a 200 en vez de dejar la paginacion
+        // abierta a pedir miles de filas de un tiro.
+        $perPage = max(1, min((int) $request->integer('per_page', 15), 200));
+
+        return ProductResource::collection($query->paginate($perPage)->withQueryString());
     }
 
     public function store(StoreProductRequest $request): ProductResource
