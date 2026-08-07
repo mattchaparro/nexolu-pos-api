@@ -293,6 +293,82 @@ class SaleTest extends TestCase
             ->assertCreated();
     }
 
+    public function test_sale_with_mixed_payment_splits(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
+            'payment_splits' => [
+                ['method' => 'cash', 'amount' => 6000],
+                ['method' => 'transfer', 'amount' => 4000],
+            ],
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('payment_method', 'mixed')
+            ->assertJsonPath('total', '10000.00')
+            ->assertJsonCount(2, 'payment_splits');
+    }
+
+    public function test_payment_splits_with_only_one_non_zero_line_are_rejected(): void
+    {
+        // Mismo comportamiento que OpenTabService::close(): pago dividido
+        // exige al menos dos lineas con monto real, no colapsa a un metodo
+        // unico si solo una tiene monto.
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/sales', [
+                'payment_splits' => [
+                    ['method' => 'cash', 'amount' => 10000],
+                    ['method' => 'transfer', 'amount' => 0],
+                ],
+                'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('payment_splits');
+    }
+
+    public function test_payment_splits_must_add_up_to_the_sale_total(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/sales', [
+                'payment_splits' => [
+                    ['method' => 'cash', 'amount' => 3000],
+                    ['method' => 'transfer', 'amount' => 4000],
+                ],
+                'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('payment_splits');
+    }
+
+    public function test_payment_splits_reject_credit_as_one_of_the_methods(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/sales', [
+                'payment_splits' => [
+                    ['method' => 'cash', 'amount' => 5000],
+                    ['method' => 'credit', 'amount' => 5000],
+                ],
+                'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            ])
+            ->assertStatus(422);
+    }
+
     public function test_payment_method_must_be_one_the_business_has_configured(): void
     {
         $business = Business::factory()->create();

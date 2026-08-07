@@ -34,6 +34,10 @@ class StoreSaleRequest extends FormRequest
         return [
             ...$this->saleItemRules(),
             'payment_method' => ['nullable', 'string', 'max:50', Rule::in($business?->allowedPaymentMethodIds() ?? [])],
+            'payment_splits' => ['sometimes', 'nullable', 'array'],
+            'payment_splits.*.method' => ['required_with:payment_splits', 'string', 'max:50'],
+            'payment_splits.*.amount' => ['nullable', 'numeric', 'min:0'],
+            'payment_splits.*.label' => ['nullable', 'string', 'max:120'],
             'customer_name' => ['sometimes', 'nullable', 'string', 'max:100'],
             'customer_phone' => ['sometimes', 'nullable', 'string', 'max:30'],
             'customer_identification' => ['sometimes', 'nullable', 'string', 'max:50'],
@@ -67,16 +71,21 @@ class StoreSaleRequest extends FormRequest
     {
         $validator->after(function (Validator $validator) {
             $isNonRevenue = $this->boolean('is_non_revenue');
-            if (! $isNonRevenue && ! $this->filled('payment_method')) {
+            $hasSplits = is_array($this->input('payment_splits')) && count($this->input('payment_splits')) >= 2;
+
+            if (! $isNonRevenue && ! $hasSplits && ! $this->filled('payment_method')) {
                 $validator->errors()->add('payment_method', 'Selecciona un metodo de pago.');
             }
 
             // Bug real del legacy (SalesTerminal.vue): un fiado se podia
             // registrar sin ningun dato del cliente, dejando una deuda
             // sin forma de cobrarla despues. Se corrige acá, no solo se
-            // traslada - ver docs/BACKEND_READINESS.md del frontend.
+            // traslada - ver docs/BACKEND_READINESS.md del frontend. Un pago
+            // dividido nunca es fiado (SaleService::applyMixedPaymentRows
+            // fuerza forbidCredit=true en cada linea), asi que $hasSplits no
+            // necesita chequeo de cliente aca.
             $business = $this->user()?->business;
-            $isCredit = ! $isNonRevenue && $business?->isCreditPaymentMethod($this->input('payment_method'));
+            $isCredit = ! $isNonRevenue && ! $hasSplits && $business?->isCreditPaymentMethod($this->input('payment_method'));
             if ($isCredit
                 && ! $this->filled('customer_name')
                 && ! $this->filled('customer_phone')

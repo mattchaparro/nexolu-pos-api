@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\SalePaymentSplit;
 use App\Models\User;
 use App\Support\ProductAvailability;
 use App\Support\SaleLineUnitPrice;
@@ -33,7 +34,7 @@ class SaleService
             $sale = Sale::create([
                 'business_id' => $business->id,
                 'user_id' => $user->id,
-                'payment_method' => $flags['payment_method'],
+                'payment_method' => null,
                 'total' => 0,
                 'status' => 'closed',
                 'customer_name' => $data['customer_name'] ?? null,
@@ -43,7 +44,7 @@ class SaleService
                 'delivery_fee' => $flags['delivery_fee'],
                 'is_non_revenue' => $flags['is_non_revenue'],
                 'non_revenue_reason' => $flags['is_non_revenue'] ? ($data['non_revenue_reason'] ?? 'Cortesia') : null,
-                'is_credit' => $flags['is_credit'],
+                'is_credit' => false,
             ]);
 
             $total = $this->applyItems($user, $sale, $business, $data['items']);
@@ -54,8 +55,16 @@ class SaleService
 
             [$serviceChargeAmount, $ipoconsumoAmount] = $this->resolveCharges($business, $total, $data);
 
+            $grandTotal = round($total + $flags['delivery_fee'] + $serviceChargeAmount + $ipoconsumoAmount, 2);
+
+            [$resolvedPaymentMethod, $isCredit] = $flags['is_non_revenue']
+                ? [null, false]
+                : $this->resolvePaymentMethodOrSplits($business, $sale, $data, $grandTotal);
+
             $sale->update([
-                'total' => $total + $flags['delivery_fee'] + $serviceChargeAmount + $ipoconsumoAmount,
+                'total' => $grandTotal,
+                'payment_method' => $resolvedPaymentMethod,
+                'is_credit' => $isCredit,
                 'cart_discount_id' => $cartDiscountId,
                 'cart_discount_amount' => $cartDiscountAmount,
                 'service_charge_amount' => $serviceChargeAmount,
@@ -65,8 +74,114 @@ class SaleService
             $this->ensureInvoiceNumber($sale);
             $this->syncReceivable($sale->fresh());
 
-            return $sale->load('items.product', 'cartDiscount');
+            return $sale->load('items.product', 'cartDiscount', 'paymentSplits');
         });
+    }
+
+    /**
+     * Resuelve el metodo de pago de una venta directa: un solo medio, o
+     * pago dividido (2+ medios) si $data trae payment_splits - misma logica
+     * de pago dividido que OpenTabService::close(), reutilizada via los
+     * metodos publicos de abajo para no duplicarla.
+     *
+     * @return array{0: ?string, 1: bool} [payment_method resuelto, is_credit]
+     */
+    private function resolvePaymentMethodOrSplits(Business $business, Sale $sale, array $data, float $grandTotal): array
+    {
+        if (is_array($data['payment_splits'] ?? null) && count($data['payment_splits']) >= 2) {
+            $normalized = $this->normalizePaymentSplitInput($data['payment_splits']);
+            $this->assertValidPaymentSplits($normalized, $grandTotal);
+            $method = $this->applyMixedPaymentRows($business, $sale, $normalized);
+
+            return [$method, $business->isCreditPaymentMethod($method)];
+        }
+
+        if (! empty($data['payment_method'])) {
+            $method = strtolower(trim((string) $data['payment_method']));
+            $business->assertValidPaymentMethod($method);
+
+            return [$method, $business->isCreditPaymentMethod($method)];
+        }
+
+        throw ValidationException::withMessages([
+            'payment_method' => 'Selecciona un metodo de pago o usa pago dividido con dos o mas medios.',
+        ]);
+    }
+
+    /**
+     * Normaliza filas de pago dividido {method, amount, label} desde input
+     * crudo del cliente. Publico y compartido con OpenTabService::close() -
+     * unica logica de pago dividido en toda la app.
+     *
+     * @param  array<int, array{method?: string, amount?: float|int|string, label?: string, payer_label?: string}>  $paymentSplits
+     * @return array<int, array{method: string, amount: float, label: ?string}>
+     */
+    public function normalizePaymentSplitInput(array $paymentSplits): array
+    {
+        return collect($paymentSplits)
+            ->map(function ($row) {
+                $rawLabel = $row['label'] ?? $row['payer_label'] ?? null;
+                $label = $rawLabel !== null && $rawLabel !== '' ? mb_substr(trim((string) $rawLabel), 0, 120) : null;
+
+                return [
+                    'method' => strtolower(trim((string) ($row['method'] ?? ''))),
+                    'amount' => round((float) ($row['amount'] ?? 0), 2),
+                    'label' => $label,
+                ];
+            })
+            ->filter(fn ($r) => $r['amount'] > 0.009)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, array{method: string, amount: float, label?: ?string}>  $rows
+     */
+    public function assertValidPaymentSplits(array $rows, float $expectedTotal): void
+    {
+        $filtered = collect($rows)->filter(fn ($r) => $r['amount'] > 0.009)->values();
+
+        if ($filtered->count() < 2) {
+            throw ValidationException::withMessages([
+                'payment_splits' => 'Indica al menos dos lineas de pago con montos mayores a cero.',
+            ]);
+        }
+
+        if (abs(round($filtered->sum('amount'), 2) - round($expectedTotal, 2)) > 0.02) {
+            throw ValidationException::withMessages([
+                'payment_splits' => 'La suma de los pagos debe coincidir con el total de la cuenta.',
+            ]);
+        }
+    }
+
+    /**
+     * Crea las filas SalePaymentSplit para $rows y devuelve el payment_method
+     * a guardar en la venta: el metodo unico si solo hay una linea valida, o
+     * 'mixed' si hay dos o mas.
+     *
+     * @param  array<int, array{method: string, amount: float, label?: ?string}>  $rows
+     */
+    public function applyMixedPaymentRows(Business $business, Sale $sale, array $rows): string
+    {
+        $filtered = array_values(array_filter($rows, fn ($r) => $r['amount'] > 0.009));
+
+        if (count($filtered) === 1) {
+            $business->assertValidPaymentMethod($filtered[0]['method']);
+
+            return $filtered[0]['method'];
+        }
+
+        foreach ($filtered as $row) {
+            $business->assertValidPaymentMethod($row['method'], forbidCredit: true);
+            SalePaymentSplit::create([
+                'sale_id' => $sale->id,
+                'payment_method' => $row['method'],
+                'amount' => round($row['amount'], 2),
+                'payer_label' => $row['label'] ?? null,
+            ]);
+        }
+
+        return 'mixed';
     }
 
     /**
@@ -217,22 +332,15 @@ class SaleService
     }
 
     /**
-     * @return array{is_non_revenue: bool, payment_method: ?string, is_credit: bool, is_delivery: bool, delivery_fee: float}
+     * @return array{is_non_revenue: bool, is_delivery: bool, delivery_fee: float}
      */
     private function resolveSaleFlags(Business $business, array $data): array
     {
         $isDelivery = (bool) $business->delivery_enabled && (bool) ($data['is_delivery'] ?? false);
         $deliveryFee = $isDelivery ? (float) $business->delivery_fee : 0.0;
 
-        $isNonRevenue = (bool) ($data['is_non_revenue'] ?? false);
-        $paymentMethod = (! $isNonRevenue && isset($data['payment_method']) && $data['payment_method'] !== null)
-            ? strtolower(trim((string) $data['payment_method']))
-            : null;
-
         return [
-            'is_non_revenue' => $isNonRevenue,
-            'payment_method' => $paymentMethod,
-            'is_credit' => ! $isNonRevenue && $business->isCreditPaymentMethod($paymentMethod),
+            'is_non_revenue' => (bool) ($data['is_non_revenue'] ?? false),
             'is_delivery' => $isDelivery,
             'delivery_fee' => $deliveryFee,
         ];

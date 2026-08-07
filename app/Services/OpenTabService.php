@@ -304,17 +304,17 @@ class OpenTabService
 
                 $lineCount = count(array_filter($mixedRows, fn ($r) => $r['amount'] > 0.009));
                 if ($lineCount >= 2) {
-                    $this->assertValidPaymentSplits($mixedRows, $totalWithCharges);
-                    $resolvedPaymentMethod = $this->applyMixedPaymentRows($business, $sale, $mixedRows);
+                    $this->saleService->assertValidPaymentSplits($mixedRows, $totalWithCharges);
+                    $resolvedPaymentMethod = $this->saleService->applyMixedPaymentRows($business, $sale, $mixedRows);
                 } else {
                     $this->assertSingleLineMatchesTotal($mixedRows, $totalWithCharges);
                     $resolvedPaymentMethod = $mixedRows[0]['method'];
                 }
                 $isCredit = $business->isCreditPaymentMethod($resolvedPaymentMethod);
             } elseif (is_array($data['payment_splits'] ?? null) && count($data['payment_splits']) >= 2) {
-                $normalized = $this->normalizePaymentSplitInput($data['payment_splits']);
-                $this->assertValidPaymentSplits($normalized, $totalWithCharges);
-                $resolvedPaymentMethod = $this->applyMixedPaymentRows($business, $sale, $normalized);
+                $normalized = $this->saleService->normalizePaymentSplitInput($data['payment_splits']);
+                $this->saleService->assertValidPaymentSplits($normalized, $totalWithCharges);
+                $resolvedPaymentMethod = $this->saleService->applyMixedPaymentRows($business, $sale, $normalized);
             } elseif (! empty($data['payment_method'])) {
                 $method = strtolower(trim((string) $data['payment_method']));
                 $this->assertValidPaymentMethod($business, $method);
@@ -428,8 +428,8 @@ class OpenTabService
     private function resolveRemainderPaymentRows(Business $business, ?string $paymentMethod, ?array $paymentSplits, float $remainderAmount): array
     {
         if (is_array($paymentSplits) && count($paymentSplits) >= 2) {
-            $normalized = $this->normalizePaymentSplitInput($paymentSplits);
-            $this->assertValidPaymentSplits($normalized, $remainderAmount);
+            $normalized = $this->saleService->normalizePaymentSplitInput($paymentSplits);
+            $this->saleService->assertValidPaymentSplits($normalized, $remainderAmount);
 
             return $normalized;
         }
@@ -444,48 +444,6 @@ class OpenTabService
         throw ValidationException::withMessages([
             'payment_method' => 'Indica como se cubre el saldo pendiente o usa pago dividido para el restante.',
         ]);
-    }
-
-    /**
-     * @param  array<int, array{method?: string, amount?: float|int|string, label?: string, payer_label?: string}>  $paymentSplits
-     * @return array<int, array{method: string, amount: float, label: ?string}>
-     */
-    private function normalizePaymentSplitInput(array $paymentSplits): array
-    {
-        return collect($paymentSplits)
-            ->map(function ($row) {
-                $rawLabel = $row['label'] ?? $row['payer_label'] ?? null;
-                $label = $rawLabel !== null && $rawLabel !== '' ? mb_substr(trim((string) $rawLabel), 0, 120) : null;
-
-                return [
-                    'method' => strtolower(trim((string) ($row['method'] ?? ''))),
-                    'amount' => round((float) ($row['amount'] ?? 0), 2),
-                    'label' => $label,
-                ];
-            })
-            ->filter(fn ($r) => $r['amount'] > 0.009)
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @param  array<int, array{method: string, amount: float, label?: ?string}>  $rows
-     */
-    private function assertValidPaymentSplits(array $rows, float $expectedTotal): void
-    {
-        $filtered = collect($rows)->filter(fn ($r) => $r['amount'] > 0.009)->values();
-
-        if ($filtered->count() < 2) {
-            throw ValidationException::withMessages([
-                'payment_splits' => 'Indica al menos dos lineas de pago con montos mayores a cero.',
-            ]);
-        }
-
-        if (abs(round($filtered->sum('amount'), 2) - round($expectedTotal, 2)) > 0.02) {
-            throw ValidationException::withMessages([
-                'payment_splits' => 'La suma de los pagos debe coincidir con el total de la cuenta.',
-            ]);
-        }
     }
 
     /**
@@ -505,35 +463,5 @@ class OpenTabService
                 'payment_splits' => 'El monto debe coincidir con el total de la cuenta.',
             ]);
         }
-    }
-
-    /**
-     * Crea las filas SalePaymentSplit para $rows y devuelve el payment_method
-     * a guardar en la venta: el metodo unico si solo hay una linea valida, o
-     * 'mixed' si hay dos o mas.
-     *
-     * @param  array<int, array{method: string, amount: float, label?: ?string}>  $rows
-     */
-    private function applyMixedPaymentRows(Business $business, Sale $sale, array $rows): string
-    {
-        $filtered = array_values(array_filter($rows, fn ($r) => $r['amount'] > 0.009));
-
-        if (count($filtered) === 1) {
-            $this->assertValidPaymentMethod($business, $filtered[0]['method']);
-
-            return $filtered[0]['method'];
-        }
-
-        foreach ($filtered as $row) {
-            $this->assertValidPaymentMethod($business, $row['method'], forbidCredit: true);
-            SalePaymentSplit::create([
-                'sale_id' => $sale->id,
-                'payment_method' => $row['method'],
-                'amount' => round($row['amount'], 2),
-                'payer_label' => $row['label'] ?? null,
-            ]);
-        }
-
-        return 'mixed';
     }
 }
