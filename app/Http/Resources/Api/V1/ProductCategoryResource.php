@@ -21,8 +21,8 @@ class ProductCategoryResource extends JsonResource
             'parent_id' => $this->parent_id,
             'name' => $this->name,
             'description' => $this->description,
-            // icon crudo de BD es un nombre de Material Icon (legacy) - ver
-            // CategoryIconResolver para por que no se puede usar tal cual.
+            // Nombre de Material Icon (mismo vocabulario que el legacy) -
+            // CategoryIconResolver solo evita devolverlo vacio.
             'icon' => CategoryIconResolver::resolve($this->icon),
         ];
     }

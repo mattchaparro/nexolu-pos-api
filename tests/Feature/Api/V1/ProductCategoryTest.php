@@ -210,8 +210,6 @@ class ProductCategoryTest extends TestCase
     {
         // Bug real: store() no refrescaba de BD, asi que "icon" (DEFAULT
         // 'inventory_2') llegaba null al cliente si el request no lo mandaba.
-        // Va traducido a PrimeIcons (ver CategoryIconResolverTest) porque
-        // 'inventory_2' es un nombre de Material Icon, no una clase valida.
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
         $user->assignRole('admin');
@@ -219,14 +217,14 @@ class ProductCategoryTest extends TestCase
         $this->actingAs($user, 'sanctum')
             ->postJson('/api/v1/product-categories', ['name' => 'Sin icono explicito'])
             ->assertCreated()
-            ->assertJsonPath('icon', 'pi pi-box');
+            ->assertJsonPath('icon', 'inventory_2');
     }
 
-    public function test_a_legacy_material_icon_value_is_translated_to_primeicons_in_the_response(): void
+    public function test_category_icon_is_returned_as_is_material_icon_name(): void
     {
-        // Simula una categoria migrada del legacy: su columna 'icon' guarda
-        // un nombre de Material Icon (ver docblock de CategoryIconResolver),
-        // no una clase PrimeIcons.
+        // El frontend renderiza el icono de categoria con Material Icons
+        // (mismo vocabulario que el legacy, ver CategoryIconResolver) - la
+        // API no traduce el valor, solo evita devolverlo vacio.
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
         $user->assignRole('admin');
@@ -235,6 +233,6 @@ class ProductCategoryTest extends TestCase
         $this->actingAs($user, 'sanctum')
             ->getJson("/api/v1/product-categories/{$category->id}")
             ->assertOk()
-            ->assertJsonPath('icon', 'pi pi-shop');
+            ->assertJsonPath('icon', 'local_bar');
     }
 }
