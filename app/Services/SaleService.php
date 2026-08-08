@@ -388,18 +388,38 @@ class SaleService
                 ? Discount::resolveActive($business->id, 'item', $item['discount_id'] ?? null, $lineSubtotal)
                 : [null, 0.0];
 
-            SaleItem::create([
-                'sale_id' => $sale->id,
-                'product_id' => $product->id,
-                'quantity' => $quantity,
-                'unit_price' => $unitPrice,
-                'unit_cost_at_sale' => (float) $product->cost_price,
-                'subtotal' => $lineSubtotal,
-                'discount_id' => $discountId,
-                'discount_amount' => $discountAmount,
-                'kitchen_status' => $sale->isOpen() ? 'pending' : null,
-                'kitchen_updated_at' => $sale->isOpen() ? now() : null,
-            ]);
+            // Si la cuenta ya tiene una linea del mismo producto con el mismo
+            // precio y descuento (tipico al "agregar mas" de algo que ya
+            // estaba en la cuenta), se suma la cantidad ahi en vez de crear
+            // una linea nueva - antes cada llamada a addItems generaba una
+            // fila aparte aunque fuera literalmente el mismo producto.
+            $existingLine = $sale->items()
+                ->where('product_id', $product->id)
+                ->where('unit_price', $unitPrice)
+                ->where('discount_id', $discountId)
+                ->first();
+
+            if ($existingLine) {
+                $existingLine->increment('quantity', $quantity);
+                $existingLine->increment('subtotal', $lineSubtotal);
+                $existingLine->increment('discount_amount', $discountAmount);
+                if ($sale->isOpen()) {
+                    $existingLine->update(['kitchen_status' => 'pending', 'kitchen_updated_at' => now()]);
+                }
+            } else {
+                SaleItem::create([
+                    'sale_id' => $sale->id,
+                    'product_id' => $product->id,
+                    'quantity' => $quantity,
+                    'unit_price' => $unitPrice,
+                    'unit_cost_at_sale' => (float) $product->cost_price,
+                    'subtotal' => $lineSubtotal,
+                    'discount_id' => $discountId,
+                    'discount_amount' => $discountAmount,
+                    'kitchen_status' => $sale->isOpen() ? 'pending' : null,
+                    'kitchen_updated_at' => $sale->isOpen() ? now() : null,
+                ]);
+            }
 
             if ($product->track_stock) {
                 $this->stockService->registerSale($user, $product, $quantity, $sale);

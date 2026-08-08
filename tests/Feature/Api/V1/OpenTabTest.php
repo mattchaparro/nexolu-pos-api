@@ -72,6 +72,60 @@ class OpenTabTest extends TestCase
         $this->assertSame(7, $product->fresh()->stock);
     }
 
+    public function test_adding_an_already_existing_product_merges_into_the_same_line_instead_of_a_new_one(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 5000, 'stock' => 10]);
+
+        $tab = $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->json();
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/open-tabs/{$tab['id']}/items", [
+                'items' => [['product_id' => $product->id, 'quantity' => 2]],
+            ])
+            ->assertOk()
+            ->assertJsonCount(1, 'items')
+            ->assertJsonPath('items.0.quantity', 3)
+            ->assertJsonPath('items.0.subtotal', '15000.00');
+
+        // Una tercera vuelta suma sobre la MISMA linea, no crea una tercera.
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/open-tabs/{$tab['id']}/items", [
+                'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            ])
+            ->assertOk()
+            ->assertJsonCount(1, 'items')
+            ->assertJsonPath('items.0.quantity', 4);
+
+        $this->assertSame(6, $product->fresh()->stock);
+    }
+
+    public function test_adding_the_same_product_at_a_different_price_keeps_separate_lines(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create([
+            'business_id' => $business->id,
+            'price' => 5000,
+            'price_varies_at_sale' => true,
+            'stock' => 10,
+        ]);
+
+        $tab = $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'items' => [['product_id' => $product->id, 'quantity' => 1, 'unit_price' => 5000]],
+        ])->json();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/open-tabs/{$tab['id']}/items", [
+                'items' => [['product_id' => $product->id, 'quantity' => 1, 'unit_price' => 7000]],
+            ])
+            ->assertOk()
+            ->assertJsonCount(2, 'items');
+    }
+
     public function test_syncing_items_replaces_the_cart_and_adjusts_stock_by_delta(): void
     {
         $business = Business::factory()->create();
