@@ -60,6 +60,22 @@ class IngredientTest extends TestCase
         $this->assertSame($mine->id, $response->json('data.0.id'));
     }
 
+    public function test_index_and_show_expose_the_products_that_use_the_ingredient(): void
+    {
+        $admin = $this->admin();
+        $bread = Ingredient::factory()->create(['business_id' => $admin->business_id]);
+        $burger = Product::factory()->create(['business_id' => $admin->business_id, 'name' => 'Hamburguesa']);
+        $burger->ingredients()->attach($bread->id, ['quantity' => 2]);
+
+        $this->actingAs($admin, 'sanctum')->getJson('/api/v1/ingredients')
+            ->assertOk()
+            ->assertJsonPath('data.0.products.0.name', 'Hamburguesa');
+
+        $this->actingAs($admin, 'sanctum')->getJson("/api/v1/ingredients/{$bread->id}")
+            ->assertOk()
+            ->assertJsonPath('products.0.name', 'Hamburguesa');
+    }
+
     public function test_update_changes_fields(): void
     {
         $admin = $this->admin();

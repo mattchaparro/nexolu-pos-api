@@ -25,6 +25,12 @@ class IngredientResource extends JsonResource
             // Solo presente cuando este recurso viene de la relacion
             // Product::ingredients() (pivot ingredient_product cargado).
             'quantity' => $this->whenPivotLoaded('ingredient_product', fn () => $this->pivot->quantity),
+            // "Platos que lo usan" (ver IngredientController::index/show) -
+            // solo id+name, es lo unico que pinta el modal del legacy.
+            'products' => $this->whenLoaded('products', fn () => $this->products->map(fn ($p) => [
+                'id' => $p->id,
+                'name' => $p->name,
+            ])),
         ];
     }
 }

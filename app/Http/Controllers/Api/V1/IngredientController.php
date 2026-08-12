@@ -43,7 +43,12 @@ class IngredientController extends Controller
 
     public function index(): AnonymousResourceCollection
     {
-        return IngredientResource::collection(Ingredient::orderBy('name')->paginate());
+        // with('products:id,name'): puerto de "Platos que lo usan" del
+        // legacy (Admin/Inventory/Index.vue) - se trae de una vez para
+        // toda la pagina, no bajo demanda al abrir el modal.
+        return IngredientResource::collection(
+            Ingredient::with('products:id,name')->orderBy('name')->paginate()
+        );
     }
 
     public function store(StoreIngredientRequest $request): IngredientResource
@@ -53,7 +58,7 @@ class IngredientController extends Controller
 
     public function show(Ingredient $ingredient): IngredientResource
     {
-        return new IngredientResource($ingredient);
+        return new IngredientResource($ingredient->load('products:id,name'));
     }
 
     public function update(UpdateIngredientRequest $request, Ingredient $ingredient): IngredientResource
