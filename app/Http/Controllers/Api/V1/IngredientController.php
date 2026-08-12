@@ -41,14 +41,19 @@ class IngredientController extends Controller
         ]);
     }
 
-    public function index(): AnonymousResourceCollection
+    public function index(Request $request): AnonymousResourceCollection
     {
         // with('products:id,name'): puerto de "Platos que lo usan" del
         // legacy (Admin/Inventory/Index.vue) - se trae de una vez para
         // toda la pagina, no bajo demanda al abrir el modal.
-        return IngredientResource::collection(
-            Ingredient::with('products:id,name')->orderBy('name')->paginate()
-        );
+        $query = Ingredient::with('products:id,name')->orderBy('name');
+
+        if ($request->filled('search')) {
+            $term = '%'.trim((string) $request->input('search')).'%';
+            $query->where('name', 'like', $term);
+        }
+
+        return IngredientResource::collection($query->paginate());
     }
 
     public function store(StoreIngredientRequest $request): IngredientResource

@@ -76,6 +76,18 @@ class IngredientTest extends TestCase
             ->assertJsonPath('products.0.name', 'Hamburguesa');
     }
 
+    public function test_index_filters_by_search(): void
+    {
+        $admin = $this->admin();
+        Ingredient::factory()->create(['business_id' => $admin->business_id, 'name' => 'Queso mozzarella']);
+        Ingredient::factory()->create(['business_id' => $admin->business_id, 'name' => 'Pan brioche']);
+
+        $this->actingAs($admin, 'sanctum')->getJson('/api/v1/ingredients?search=queso')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Queso mozzarella');
+    }
+
     public function test_update_changes_fields(): void
     {
         $admin = $this->admin();
