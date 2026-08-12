@@ -221,6 +221,20 @@ class ServiceOrderTest extends TestCase
             ->assertJsonCount(2, 'data');
     }
 
+    /**
+     * 'services' y 'scheduling' son features independientes (ver el mismo
+     * test en AppointmentTest) - Ordenes de servicio depende solo de
+     * 'services', sin importar si el negocio tiene Agenda.
+     */
+    public function test_service_orders_require_the_services_feature_even_when_scheduling_is_enabled(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['services' => false, 'scheduling' => true]]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $this->actingAs($user, 'sanctum')->getJson('/api/v1/service-orders')->assertForbidden();
+    }
+
     private function assignWorkflow(Business $business, ServiceWorkflow $workflow): void
     {
         BusinessServiceWorkflow::create(['business_id' => $business->id, 'workflow_id' => $workflow->id]);

@@ -270,6 +270,13 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::apiResource('layaways', LayawayController::class)->only(['index', 'show', 'store']);
         });
 
+        // 'services' (productos de servicio + ordenes de servicio, sin
+        // calendario) y 'scheduling' (Agenda/citas) son features
+        // independientes en el negocio - un tecnico a domicilio puede tener
+        // el primero sin el segundo, y viceversa un salon con agenda pero
+        // sin catalogo de servicios. Antes compartian un solo flag
+        // ('services') para ambos, asi que un negocio sin agenda igual veia
+        // el modulo habilitado.
         Route::middleware(['feature:services', 'permission:appointments.manage'])->group(function () {
             Route::get('/service-workflow', [BusinessServiceWorkflowController::class, 'show'])->name('service-workflow.show');
 
@@ -283,7 +290,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::apiResource('service-orders', ServiceOrderController::class)
                 ->only(['index', 'show', 'store', 'update'])
                 ->parameters(['service-orders' => 'serviceOrder']);
+        });
 
+        Route::middleware(['feature:scheduling', 'permission:appointments.manage'])->group(function () {
             Route::post('/appointments/{appointment}/reschedule', [AppointmentController::class, 'reschedule'])->name('appointments.reschedule');
             Route::put('/appointments/{appointment}/status', [AppointmentController::class, 'updateStatus'])->name('appointments.status.update');
             Route::apiResource('appointments', AppointmentController::class)->only(['index', 'show', 'store', 'update']);

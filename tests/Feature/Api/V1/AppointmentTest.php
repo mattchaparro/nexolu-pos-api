@@ -289,4 +289,31 @@ class AppointmentTest extends TestCase
             ->assertOk()
             ->assertJsonCount(2, 'data');
     }
+
+    /**
+     * 'services' (productos/ordenes de servicio) y 'scheduling' (Agenda)
+     * son features independientes - un negocio puede vender servicios sin
+     * necesitar calendario (ej. reparaciones a domicilio). Antes compartian
+     * un solo flag 'services' para los dos, asi que un negocio sin agenda
+     * igual podia usarla.
+     */
+    public function test_appointments_require_the_scheduling_feature_even_when_services_is_enabled(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['services' => true, 'scheduling' => false]]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $this->actingAs($user, 'sanctum')->getJson('/api/v1/appointments')->assertForbidden();
+    }
+
+    public function test_appointments_work_when_scheduling_is_enabled_even_if_services_is_disabled(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['services' => false, 'scheduling' => true]]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        Appointment::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')->getJson('/api/v1/appointments')->assertOk();
+    }
 }
