@@ -11,6 +11,7 @@ use App\Models\StockMovement;
 use App\Models\StockMovementReason;
 use App\Models\User;
 use App\Support\WeightedAverageCost;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Único lugar de la app que crea StockMovement (y por lo tanto el único que
@@ -21,8 +22,30 @@ use App\Support\WeightedAverageCost;
  */
 class StockService
 {
+    /**
+     * entry/exit/adjust son las 3 variantes de edicion MANUAL de stock (via
+     * StockMovementController::store, el boton Agregar/Retirar/Ajustar del
+     * Catalogo) - a diferencia de registerSale/reserveForLayaway (que ya
+     * tenian este guard porque desvian a los ingredientes en ese caso), el
+     * legacy nunca bloqueaba esto del lado del backend, solo ocultaba los
+     * botones en el Vue (can_manage_stock) - un producto con receta puede
+     * seguir editandose por API sin este guard. products.stock es una
+     * columna fantasma para esos productos (ver ProductAvailability), asi
+     * que "ajustarla" a mano no cambia nada real y confunde a quien lo mira.
+     */
+    private function assertStockIsManuallyManageable(Product $product): void
+    {
+        if ($product->isStockManagedByIngredientsRecipe()) {
+            throw ValidationException::withMessages([
+                'product' => 'El stock de este producto se calcula desde sus ingredientes y no se puede editar directamente.',
+            ]);
+        }
+    }
+
     public function entry(User $user, Product $product, float $quantity, ?string $notes = null, ?int $reasonId = null, ?float $unitCostCop = null): StockMovement
     {
+        $this->assertStockIsManuallyManageable($product);
+
         return StockMovement::create([
             'product_id' => $product->id,
             'business_id' => $product->business_id,
@@ -37,6 +60,8 @@ class StockService
 
     public function exit(User $user, Product $product, float $quantity, ?string $notes = null, ?int $reasonId = null, ?float $unitCostCop = null): StockMovement
     {
+        $this->assertStockIsManuallyManageable($product);
+
         return StockMovement::create([
             'product_id' => $product->id,
             'business_id' => $product->business_id,
@@ -55,6 +80,8 @@ class StockService
      */
     public function adjust(User $user, Product $product, float $newStock, ?string $notes = null, ?int $reasonId = null): StockMovement
     {
+        $this->assertStockIsManuallyManageable($product);
+
         $diff = $newStock - (float) $product->stock;
 
         return StockMovement::create([

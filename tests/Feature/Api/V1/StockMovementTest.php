@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Models\Business;
+use App\Models\Ingredient;
 use App\Models\Product;
 use App\Models\StockMovement;
 use App\Models\StockMovementReason;
@@ -153,6 +154,31 @@ class StockMovementTest extends TestCase
         $movement = app(StockService::class)->entry($user, $product, 1);
 
         $this->assertContains($movement->type, StockMovement::TYPES);
+    }
+
+    /**
+     * products.stock es una columna calculada para un producto con receta
+     * (ver ProductAvailability) - permitir un movimiento manual sobre el
+     * dejaria la columna desincronizada del stock real de los ingredientes.
+     */
+    public function test_manual_stock_movements_are_rejected_for_recipe_managed_products(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 10]);
+        $ingredient = Ingredient::factory()->create(['business_id' => $business->id, 'stock' => 5]);
+        $product->ingredients()->attach($ingredient->id, ['quantity' => 1]);
+
+        foreach (['entry', 'exit', 'adjustment'] as $type) {
+            $this->actingAs($user, 'sanctum')->postJson('/api/v1/stock-movements', [
+                'product_id' => $product->id,
+                'type' => $type,
+                'quantity' => 2,
+            ])->assertStatus(422)->assertJsonValidationErrors('product');
+        }
+
+        $this->assertSame(10, $product->fresh()->stock);
     }
 
     public function test_system_reasons_are_seeded_and_globally_scoped(): void

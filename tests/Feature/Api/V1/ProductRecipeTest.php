@@ -207,4 +207,42 @@ class ProductRecipeTest extends TestCase
             ->assertJsonPath('has_recipe', true)
             ->assertJsonPath('ingredients.0.quantity', '2.000');
     }
+
+    public function test_stock_for_a_recipe_product_is_computed_from_its_ingredients(): void
+    {
+        [$business, $user] = $this->adminForNewBusiness();
+        $bread = Ingredient::factory()->create(['business_id' => $business->id, 'stock' => 10]);
+        $cheese = Ingredient::factory()->create(['business_id' => $business->id, 'stock' => 3]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'track_stock' => true, 'stock' => 999]);
+        $product->ingredients()->attach($bread->id, ['quantity' => 2]);
+        $product->ingredients()->attach($cheese->id, ['quantity' => 1]);
+
+        // floor(10/2) = 5 panes, floor(3/1) = 3 quesos - el cuello de botella es el queso.
+        $this->actingAs($user, 'sanctum')->getJson("/api/v1/products/{$product->id}")
+            ->assertOk()
+            ->assertJsonPath('stock', 3)
+            ->assertJsonPath('can_manage_stock', false);
+    }
+
+    public function test_can_manage_stock_is_false_for_single_sale_products(): void
+    {
+        [$business, $user] = $this->adminForNewBusiness();
+        $product = Product::factory()->create(['business_id' => $business->id, 'is_single_sale' => true, 'stock' => 1]);
+
+        $this->actingAs($user, 'sanctum')->getJson("/api/v1/products/{$product->id}")
+            ->assertOk()
+            ->assertJsonPath('has_recipe', false)
+            ->assertJsonPath('can_manage_stock', false);
+    }
+
+    public function test_can_manage_stock_is_true_for_a_regular_product(): void
+    {
+        [$business, $user] = $this->adminForNewBusiness();
+        $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 20]);
+
+        $this->actingAs($user, 'sanctum')->getJson("/api/v1/products/{$product->id}")
+            ->assertOk()
+            ->assertJsonPath('stock', 20)
+            ->assertJsonPath('can_manage_stock', true);
+    }
 }

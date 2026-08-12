@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Support\ProductAvailability;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -23,7 +24,7 @@ class ProductResource extends JsonResource
             'how_to_use' => $this->how_to_use,
             'price' => $this->price,
             'cost_price' => $this->cost_price,
-            'stock' => $this->stock,
+            'stock' => $this->displayStock(),
             'low_stock_alert_threshold' => $this->low_stock_alert_threshold,
             'track_stock' => $this->track_stock,
             'is_single_sale' => $this->is_single_sale,
@@ -34,7 +35,39 @@ class ProductResource extends JsonResource
             'image' => $this->image,
             'is_active' => $this->is_active,
             'ingredients' => IngredientResource::collection($this->whenLoaded('ingredients')),
-            'has_recipe' => $this->whenLoaded('ingredients', fn () => $this->ingredients->isNotEmpty()),
+            'has_recipe' => $this->hasRecipe(),
+            // Puerto de Admin\InventoryController::buildIndexProps() del legacy
+            // (can_manage_stock ahi): un producto de venta unica o con receta
+            // no tiene un numero de stock que un humano pueda escribir a mano -
+            // el de venta unica siempre es 1/0, y el de receta sale de sus
+            // ingredientes (ver displayStock()) - el frontend usa esto para
+            // ocultar Agregar/Retirar/Ajustar en vez de duplicar la regla.
+            'can_manage_stock' => ! $this->is_single_sale && ! $this->hasRecipe(),
         ];
+    }
+
+    /**
+     * Igual chequeo que Product::isStockManagedByIngredientsRecipe(), pero
+     * sin su fallback de ir a buscar el negocio a la BD cuando la relacion
+     * no esta cargada - aca `ingredients` solo se carga cuando el feature ya
+     * esta activo (ver ProductController), asi que relationLoaded() alcanza
+     * y evita un N+1 por fila en el listado.
+     */
+    private function hasRecipe(): bool
+    {
+        return $this->relationLoaded('ingredients') && $this->ingredients->isNotEmpty();
+    }
+
+    /**
+     * products.stock es una columna "fantasma" para un producto con receta
+     * (nunca se decrementa, ver ProductAvailability) - lo que se muestra ahi
+     * es cuantas unidades se pueden preparar ahora mismo con el stock actual
+     * de sus ingredientes, no el valor crudo de la columna.
+     */
+    private function displayStock(): int|string
+    {
+        $computed = ProductAvailability::effectiveStock($this->resource, $this->hasRecipe());
+
+        return is_finite($computed) ? (int) $computed : $this->stock;
     }
 }
