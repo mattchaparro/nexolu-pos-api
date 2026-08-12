@@ -31,8 +31,8 @@ class AppointmentService
     {
         return DB::transaction(function () use ($user, $data) {
             $business = $user->business;
-            $startsAt = Carbon::parse($data['starts_at']);
-            $endsAt = Carbon::parse($data['ends_at']);
+            $startsAt = $this->parseUtc($data['starts_at']);
+            $endsAt = $this->parseUtc($data['ends_at']);
 
             $this->assertNoConflict($business, $data['user_id'] ?? null, $startsAt, $endsAt);
 
@@ -86,8 +86,8 @@ class AppointmentService
 
         return DB::transaction(function () use ($appointment, $data) {
             $business = $appointment->business;
-            $startsAt = Carbon::parse($data['starts_at']);
-            $endsAt = Carbon::parse($data['ends_at']);
+            $startsAt = $this->parseUtc($data['starts_at']);
+            $endsAt = $this->parseUtc($data['ends_at']);
 
             $this->assertNoConflict($business, $data['user_id'] ?? null, $startsAt, $endsAt, $appointment->id);
 
@@ -150,6 +150,21 @@ class AppointmentService
 
             return $appointment->fresh()->load('client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments');
         });
+    }
+
+    /**
+     * Carbon::parse() conserva el offset original del string (ej.
+     * "-05:00") en vez de normalizarlo - el cast 'datetime' de Eloquent
+     * guarda la hora tal cual la ve el objeto Carbon en ese momento (sin
+     * convertir), asi que un cliente que mande una hora local con offset
+     * explicito (no UTC) terminaba corriendo el instante real varias horas
+     * sin darse cuenta (ej. "15:00-05:00" quedaba guardado como "15:00
+     * UTC", 5 horas adelantado). Normalizar a UTC aca antes de persistir
+     * evita ese corrimiento sin importar que offset mande el cliente.
+     */
+    public static function parseUtc(string $value): Carbon
+    {
+        return Carbon::parse($value)->utc();
     }
 
     /**

@@ -10,7 +10,6 @@ use App\Http\Requests\Api\V1\UpdateAppointmentStatusRequest;
 use App\Http\Resources\Api\V1\AppointmentResource;
 use App\Models\Appointment;
 use App\Services\AppointmentService;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
@@ -61,8 +60,8 @@ class AppointmentController extends Controller
     {
         $appointment = $this->appointmentService->reschedule(
             $appointment,
-            Carbon::parse($request->validated('starts_at')),
-            Carbon::parse($request->validated('ends_at')),
+            AppointmentService::parseUtc($request->validated('starts_at')),
+            AppointmentService::parseUtc($request->validated('ends_at')),
         );
 
         return new AppointmentResource($appointment);

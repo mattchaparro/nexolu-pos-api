@@ -37,6 +37,34 @@ class AppointmentTest extends TestCase
         $this->assertDatabaseHas('service_orders', ['appointment_id' => $response->json('id'), 'total' => 40000]);
     }
 
+    public function test_a_non_utc_offset_in_starts_at_is_normalized_instead_of_shifting_the_instant(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $service = Product::factory()->service()->create(['business_id' => $business->id]);
+
+        // "15:00 -05:00" es el mismo instante que "20:00 UTC" - antes de la
+        // normalizacion en AppointmentService::parseUtc(), Carbon::parse()
+        // guardaba la hora tal cual (15:00) re-etiquetada como UTC, un
+        // corrimiento silencioso de 5 horas.
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/appointments', [
+            'services' => [['id' => $service->id]],
+            'client_name' => 'Ana Gomez',
+            'starts_at' => '2026-08-13T15:00:00-05:00',
+            'ends_at' => '2026-08-13T15:45:00-05:00',
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('starts_at', '2026-08-13T20:00:00+00:00')
+            ->assertJsonPath('ends_at', '2026-08-13T20:45:00+00:00');
+
+        $this->assertDatabaseHas('appointments', [
+            'id' => $response->json('id'),
+            'starts_at' => '2026-08-13 20:00:00',
+        ]);
+    }
+
     public function test_creating_an_appointment_with_multiple_services_itemizes_the_linked_order(): void
     {
         $business = Business::factory()->create();
