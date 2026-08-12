@@ -18,7 +18,7 @@ class IngredientStockMovementController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = StockMovement::whereNotNull('ingredient_id')->with('reason')->latest();
+        $query = StockMovement::whereNotNull('ingredient_id')->with(['reason', 'user'])->latest();
 
         if ($request->filled('ingredient_id')) {
             $query->where('ingredient_id', $request->integer('ingredient_id'));
@@ -53,6 +53,6 @@ class IngredientStockMovementController extends Controller
             default => throw ValidationException::withMessages(['type' => 'Tipo de movimiento no valido.']),
         };
 
-        return new StockMovementResource($movement->load('reason'));
+        return new StockMovementResource($movement->load(['reason', 'user']));
     }
 }

@@ -40,7 +40,9 @@ class IngredientStockMovementTest extends TestCase
             ->assertJsonPath('type', 'entry')
             ->assertJsonPath('quantity', 5)
             ->assertJsonPath('ingredient_id', $ingredient->id)
-            ->assertJsonPath('reason.code', 'manual_in');
+            ->assertJsonPath('reason.code', 'manual_in')
+            ->assertJsonPath('user.id', $admin->id)
+            ->assertJsonPath('user.name', $admin->name);
 
         $this->assertSame('15.00', (string) $ingredient->fresh()->stock);
     }

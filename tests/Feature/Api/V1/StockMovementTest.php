@@ -32,7 +32,9 @@ class StockMovementTest extends TestCase
         $response->assertCreated()
             ->assertJsonPath('type', 'entry')
             ->assertJsonPath('quantity', 5)
-            ->assertJsonPath('reason.code', 'manual_in');
+            ->assertJsonPath('reason.code', 'manual_in')
+            ->assertJsonPath('user.id', $user->id)
+            ->assertJsonPath('user.name', $user->name);
 
         $this->assertSame(15, $product->fresh()->stock);
     }

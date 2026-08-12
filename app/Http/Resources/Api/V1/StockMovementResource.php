@@ -27,6 +27,10 @@ class StockMovementResource extends JsonResource
                 'label' => $this->reason->label,
             ]),
             'user_id' => $this->user_id,
+            'user' => $this->whenLoaded('user', fn () => $this->user ? [
+                'id' => $this->user->id,
+                'name' => $this->user->name,
+            ] : null),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }
