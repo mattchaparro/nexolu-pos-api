@@ -69,7 +69,7 @@ class AppointmentService
             // inicial pudo haber completado la orden y marcado esta misma
             // cita como 'completed' via un update() aparte - ver la nota en
             // SaleService::createSale sobre por que fresh() rompe el 201).
-            return $appointment->refresh()->load('client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments');
+            return $appointment->refresh()->load('client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments', 'serviceOrder.stage');
         });
     }
 
@@ -116,7 +116,7 @@ class AppointmentService
                 ]);
             }
 
-            return $appointment->fresh()->load('client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments');
+            return $appointment->fresh()->load('client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments', 'serviceOrder.stage');
         });
     }
 
@@ -126,7 +126,7 @@ class AppointmentService
 
         $appointment->update(['starts_at' => $startsAt, 'ends_at' => $endsAt, 'status' => 'pending']);
 
-        return $appointment->fresh()->load('client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments');
+        return $appointment->fresh()->load('client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments', 'serviceOrder.stage');
     }
 
     /**
@@ -148,7 +148,7 @@ class AppointmentService
                 }
             }
 
-            return $appointment->fresh()->load('client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments');
+            return $appointment->fresh()->load('client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments', 'serviceOrder.stage');
         });
     }
 

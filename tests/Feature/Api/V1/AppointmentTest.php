@@ -4,7 +4,10 @@ namespace Tests\Feature\Api\V1;
 
 use App\Models\Appointment;
 use App\Models\Business;
+use App\Models\BusinessServiceWorkflow;
 use App\Models\Product;
+use App\Models\ServiceWorkflow;
+use App\Models\ServiceWorkflowStage;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
@@ -35,6 +38,34 @@ class AppointmentTest extends TestCase
             ->assertJsonPath('service_order.status', 'pending');
 
         $this->assertDatabaseHas('service_orders', ['appointment_id' => $response->json('id'), 'total' => 40000]);
+    }
+
+    public function test_the_linked_order_stage_is_exposed_when_the_business_has_a_workflow_assigned(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $service = Product::factory()->service()->create(['business_id' => $business->id, 'price' => 40000]);
+
+        $workflow = ServiceWorkflow::factory()->create();
+        $initial = ServiceWorkflowStage::factory()->create(['workflow_id' => $workflow->id, 'label' => 'Recibido', 'is_initial' => true]);
+        BusinessServiceWorkflow::create(['business_id' => $business->id, 'workflow_id' => $workflow->id]);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/appointments', [
+            'services' => [['id' => $service->id]],
+            'client_name' => 'Ana Gomez',
+            'starts_at' => now()->addDay()->toIso8601String(),
+            'ends_at' => now()->addDay()->addHour()->toIso8601String(),
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('service_order.stage_id', $initial->id)
+            ->assertJsonPath('service_order.stage.label', 'Recibido');
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/appointments/{$response->json('id')}")
+            ->assertOk()
+            ->assertJsonPath('service_order.stage.id', $initial->id);
     }
 
     public function test_a_non_utc_offset_in_starts_at_is_normalized_instead_of_shifting_the_instant(): void

@@ -19,7 +19,7 @@ class AppointmentController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Appointment::with(['client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments'])->orderBy('starts_at');
+        $query = Appointment::with(['client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments', 'serviceOrder.stage'])->orderBy('starts_at');
 
         if ($request->filled('from')) {
             $query->where('starts_at', '>=', $request->date('from'));
@@ -46,7 +46,7 @@ class AppointmentController extends Controller
 
     public function show(Appointment $appointment): AppointmentResource
     {
-        return new AppointmentResource($appointment->load('client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments'));
+        return new AppointmentResource($appointment->load('client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments', 'serviceOrder.stage'));
     }
 
     public function update(UpdateAppointmentRequest $request, Appointment $appointment): AppointmentResource
