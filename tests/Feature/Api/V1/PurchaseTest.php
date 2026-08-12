@@ -35,6 +35,7 @@ class PurchaseTest extends TestCase
         $response->assertCreated()
             ->assertJsonPath('payment_status', 'paid')
             ->assertJsonPath('total', 20000)
+            ->assertJsonPath('balance', 0)
             ->assertJsonCount(1, 'lines');
 
         // stock 10 @1000 + 10 @2000 -> weighted average 1500

@@ -71,6 +71,15 @@ class Purchase extends Model
 
     public function getBalanceAttribute(): float
     {
+        // Una compra pagada de contado nunca genera un PurchasePayment (ver
+        // PurchaseService::registerPurchase) - getPaidAttribute() se queda en
+        // 0 para ese caso, asi que basarse solo en total-paid dejaria
+        // balance=total con payment_status=paid, una inconsistencia visible
+        // en el frontend (badge "Pagada" junto a un saldo pendiente).
+        if ($this->payment_status === 'paid') {
+            return 0.0;
+        }
+
         return max(0.0, round($this->total - $this->paid, 2));
     }
 }
