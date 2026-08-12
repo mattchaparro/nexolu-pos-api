@@ -3,8 +3,11 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Models\Business;
+use App\Models\BusinessServiceWorkflow;
 use App\Models\Client;
 use App\Models\ServiceOrder;
+use App\Models\ServiceWorkflow;
+use App\Models\ServiceWorkflowStage;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
@@ -216,5 +219,189 @@ class ServiceOrderTest extends TestCase
             ->getJson('/api/v1/service-orders')
             ->assertOk()
             ->assertJsonCount(2, 'data');
+    }
+
+    private function assignWorkflow(Business $business, ServiceWorkflow $workflow): void
+    {
+        BusinessServiceWorkflow::create(['business_id' => $business->id, 'workflow_id' => $workflow->id]);
+    }
+
+    public function test_a_new_order_starts_in_the_workflow_initial_stage_when_the_business_has_one_assigned(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $workflow = ServiceWorkflow::factory()->create();
+        $initial = ServiceWorkflowStage::factory()->create(['workflow_id' => $workflow->id, 'label' => 'Recibido', 'is_initial' => true]);
+        ServiceWorkflowStage::factory()->create(['workflow_id' => $workflow->id, 'label' => 'Listo']);
+        $this->assignWorkflow($business, $workflow);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/service-orders', [
+            'service_name' => 'Reparación de laptop',
+            'total' => 50000,
+        ]);
+
+        $response->assertCreated()->assertJsonPath('stage_id', $initial->id);
+    }
+
+    public function test_a_new_order_has_no_stage_when_the_business_has_no_workflow_assigned(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/service-orders', [
+            'service_name' => 'Reparación de laptop',
+            'total' => 50000,
+        ]);
+
+        $response->assertCreated()->assertJsonPath('stage_id', null);
+    }
+
+    public function test_set_stage_moves_the_order_to_a_valid_stage_of_the_assigned_workflow(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $workflow = ServiceWorkflow::factory()->create();
+        $stage = ServiceWorkflowStage::factory()->create(['workflow_id' => $workflow->id, 'label' => 'En reparación']);
+        $this->assignWorkflow($business, $workflow);
+
+        $order = ServiceOrder::factory()->create(['business_id' => $business->id, 'total' => 40000, 'amount_paid' => 0]);
+
+        $this->actingAs($user, 'sanctum')
+            ->patchJson("/api/v1/service-orders/{$order->id}/stage", ['stage_id' => $stage->id])
+            ->assertOk()
+            ->assertJsonPath('stage_id', $stage->id)
+            ->assertJsonPath('stage.label', 'En reparación');
+    }
+
+    public function test_set_stage_is_rejected_when_the_business_has_no_workflow_assigned(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $order = ServiceOrder::factory()->create(['business_id' => $business->id]);
+
+        $otherWorkflow = ServiceWorkflow::factory()->create();
+        $stage = ServiceWorkflowStage::factory()->create(['workflow_id' => $otherWorkflow->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->patchJson("/api/v1/service-orders/{$order->id}/stage", ['stage_id' => $stage->id])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['stage_id']);
+    }
+
+    public function test_set_stage_is_rejected_for_a_stage_belonging_to_another_business_workflow(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $workflow = ServiceWorkflow::factory()->create();
+        $this->assignWorkflow($business, $workflow);
+        $order = ServiceOrder::factory()->create(['business_id' => $business->id]);
+
+        $otherWorkflow = ServiceWorkflow::factory()->create();
+        $foreignStage = ServiceWorkflowStage::factory()->create(['workflow_id' => $otherWorkflow->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->patchJson("/api/v1/service-orders/{$order->id}/stage", ['stage_id' => $foreignStage->id])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['stage_id']);
+    }
+
+    public function test_set_stage_is_rejected_for_a_cancelled_order(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $workflow = ServiceWorkflow::factory()->create();
+        $stage = ServiceWorkflowStage::factory()->create(['workflow_id' => $workflow->id]);
+        $this->assignWorkflow($business, $workflow);
+        $order = ServiceOrder::factory()->cancelled()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->patchJson("/api/v1/service-orders/{$order->id}/stage", ['stage_id' => $stage->id])
+            ->assertStatus(422);
+    }
+
+    public function test_moving_to_a_stage_with_mark_order_paid_registers_a_payment_for_the_pending_balance(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $workflow = ServiceWorkflow::factory()->create();
+        $stage = ServiceWorkflowStage::factory()->create([
+            'workflow_id' => $workflow->id,
+            'label' => 'Entregado',
+            'actions' => [['type' => 'mark_order_paid']],
+        ]);
+        $this->assignWorkflow($business, $workflow);
+        $order = ServiceOrder::factory()->create(['business_id' => $business->id, 'total' => 40000, 'amount_paid' => 15000, 'status' => 'partial']);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->patchJson("/api/v1/service-orders/{$order->id}/stage", ['stage_id' => $stage->id]);
+
+        $response->assertOk()
+            ->assertJsonPath('status', 'paid')
+            ->assertJsonPath('amount_paid', '40000.00');
+
+        $this->assertDatabaseHas('service_payments', [
+            'service_order_id' => $order->id,
+            'amount' => 25000,
+        ]);
+    }
+
+    public function test_fully_paying_an_order_auto_moves_it_to_the_payment_complete_stage(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $workflow = ServiceWorkflow::factory()->create();
+        ServiceWorkflowStage::factory()->create(['workflow_id' => $workflow->id, 'label' => 'Recibido', 'is_initial' => true]);
+        $paidStage = ServiceWorkflowStage::factory()->create([
+            'workflow_id' => $workflow->id,
+            'label' => 'Pagado',
+            'actions' => [['type' => 'trigger_on_payment_complete']],
+        ]);
+        $this->assignWorkflow($business, $workflow);
+        $order = ServiceOrder::factory()->create(['business_id' => $business->id, 'total' => 20000, 'amount_paid' => 0]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/service-orders/{$order->id}/pay", ['amount' => 20000, 'payment_method' => 'cash']);
+
+        $response->assertOk()
+            ->assertJsonPath('status', 'paid')
+            ->assertJsonPath('stage_id', $paidStage->id);
+    }
+
+    public function test_moving_off_a_mark_order_paid_stage_does_not_bounce_back_on_the_next_payment(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $workflow = ServiceWorkflow::factory()->create();
+        $paidStage = ServiceWorkflowStage::factory()->create([
+            'workflow_id' => $workflow->id,
+            'label' => 'Entregado',
+            'actions' => [['type' => 'mark_order_paid']],
+        ]);
+        $this->assignWorkflow($business, $workflow);
+        $order = ServiceOrder::factory()->create(['business_id' => $business->id, 'total' => 20000, 'amount_paid' => 10000, 'status' => 'partial']);
+
+        $this->actingAs($user, 'sanctum')
+            ->patchJson("/api/v1/service-orders/{$order->id}/stage", ['stage_id' => $paidStage->id])
+            ->assertOk()
+            ->assertJsonPath('status', 'paid')
+            ->assertJsonPath('stage_id', $paidStage->id);
+
+        $this->assertDatabaseHas('service_orders', ['id' => $order->id, 'stage_id' => $paidStage->id]);
     }
 }

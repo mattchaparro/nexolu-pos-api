@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -171,6 +172,25 @@ class Business extends Model
     public function tables(): HasMany
     {
         return $this->hasMany(BusinessTable::class);
+    }
+
+    /**
+     * Workflow de etapas para ordenes de servicio asignado a este negocio -
+     * cuando mucho uno a la vez (business_service_workflows.business_id es
+     * unico). Lo administra un superadmin (ver
+     * Api\V1\SuperAdmin\ServiceWorkflowController::assignBusiness()); este
+     * negocio solo lo consume (ver ServiceOrderService, BusinessServiceWorkflowController).
+     */
+    public function serviceWorkflow(): HasOneThrough
+    {
+        return $this->hasOneThrough(
+            ServiceWorkflow::class,
+            BusinessServiceWorkflow::class,
+            'business_id',
+            'id',
+            'id',
+            'workflow_id',
+        );
     }
 
     public function paymentMethods(): array

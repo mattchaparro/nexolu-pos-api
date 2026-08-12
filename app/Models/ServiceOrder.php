@@ -19,6 +19,7 @@ class ServiceOrder extends Model
         'appointment_id',
         'product_id',
         'user_id',
+        'stage_id',
         'service_name',
         'total',
         'amount_paid',
@@ -75,9 +76,42 @@ class ServiceOrder extends Model
         } else {
             $this->status = 'paid';
             $this->paid_at = $this->paid_at ?? now();
+            $this->applyPaymentCompleteStage();
         }
 
         $this->save();
+    }
+
+    /**
+     * Mueve la orden a la etapa configurada con la accion
+     * trigger_on_payment_complete del workflow asignado al negocio, si
+     * existe uno. No hace nada si el negocio no tiene workflow, o si la
+     * etapa actual ya tiene mark_order_paid (esa combinacion significa que
+     * el cambio de etapa fue lo que disparo el pago, no al reves - mover
+     * la orden de vuelta seria un ciclo sin sentido).
+     */
+    private function applyPaymentCompleteStage(): void
+    {
+        if ($this->stage && $this->stage->hasAction('mark_order_paid')) {
+            return;
+        }
+
+        $workflow = $this->resolveWorkflow();
+        if (! $workflow) {
+            return;
+        }
+
+        $target = $workflow->stageForPaymentComplete();
+        if ($target && $this->stage_id !== $target->id) {
+            $this->stage_id = $target->id;
+        }
+    }
+
+    private function resolveWorkflow(): ?ServiceWorkflow
+    {
+        $business = $this->relationLoaded('business') ? $this->business : Business::find($this->business_id);
+
+        return $business?->serviceWorkflow;
     }
 
     public function client(): BelongsTo
@@ -98,6 +132,11 @@ class ServiceOrder extends Model
     public function staff(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function stage(): BelongsTo
+    {
+        return $this->belongsTo(ServiceWorkflowStage::class, 'stage_id');
     }
 
     public function items(): HasMany

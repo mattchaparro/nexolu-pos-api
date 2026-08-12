@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\PayServiceOrderRequest;
+use App\Http\Requests\Api\V1\SetServiceOrderStageRequest;
 use App\Http\Requests\Api\V1\StoreServiceOrderRequest;
 use App\Http\Requests\Api\V1\UpdateServiceOrderRequest;
 use App\Http\Resources\Api\V1\ServiceOrderResource;
@@ -19,7 +20,7 @@ class ServiceOrderController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = ServiceOrder::with(['client', 'items', 'payments'])
+        $query = ServiceOrder::with(['client', 'items', 'payments', 'stage'])
             ->orderByRaw("FIELD(status, 'partial', 'pending', 'paid', 'cancelled')")
             ->orderByDesc('created_at');
 
@@ -48,7 +49,7 @@ class ServiceOrderController extends Controller
 
     public function show(ServiceOrder $serviceOrder): ServiceOrderResource
     {
-        return new ServiceOrderResource($serviceOrder->load('client', 'items', 'payments'));
+        return new ServiceOrderResource($serviceOrder->load('client', 'items', 'payments', 'stage'));
     }
 
     public function update(UpdateServiceOrderRequest $request, ServiceOrder $serviceOrder): ServiceOrderResource
@@ -76,5 +77,14 @@ class ServiceOrderController extends Controller
         $this->serviceOrderService->cancel($request->user(), $serviceOrder);
 
         return response()->noContent();
+    }
+
+    public function setStage(SetServiceOrderStageRequest $request, ServiceOrder $serviceOrder): ServiceOrderResource
+    {
+        $order = $this->serviceOrderService->setStage(
+            $request->user(), $serviceOrder, (int) $request->validated('stage_id')
+        );
+
+        return new ServiceOrderResource($order);
     }
 }

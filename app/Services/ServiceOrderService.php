@@ -18,11 +18,13 @@ use Illuminate\Validation\ValidationException;
  * legacy la tenia copiada 3 veces: ServiceOrdersController::store,
  * AppointmentsController::store y AppointmentsController::chargeAppointment).
  *
- * El sistema de workflow/etapas (kanban) del legacy (ServiceWorkflow,
- * ServiceWorkflowStage, stage_id) queda deliberadamente fuera de este primer
- * corte: service_orders.stage_id es nullable y el modelo simplemente no lo
- * usa por ahora. Es un modulo aparte (configuracion de etapas por negocio),
- * no bloquea el flujo de cobro que es el corazon de este modulo.
+ * Etapas (workflow/kanban): un negocio puede tener asignado como mucho un
+ * ServiceWorkflow (ver Business::serviceWorkflow(), administrado por
+ * superadmin). Si lo tiene, cada orden nueva arranca en su etapa inicial
+ * (create() de aca abajo) y ServiceOrder::recalculateStatus() la mueve sola
+ * a la etapa de "pago completo" si el workflow tiene una configurada (ver
+ * ServiceOrder::applyPaymentCompleteStage()). Mover una orden de etapa a
+ * mano (incluyendo la accion mark_order_paid) es setStage() aca abajo.
  */
 class ServiceOrderService
 {
@@ -40,12 +42,16 @@ class ServiceOrderService
 
         $initialPayment = min((float) ($data['initial_payment'] ?? 0), $total);
 
+        $business->loadMissing('serviceWorkflow.stages');
+        $initialStage = $business->serviceWorkflow?->initialStage();
+
         $order = ServiceOrder::create([
             'business_id' => $business->id,
             'client_id' => $data['client_id'] ?? null,
             'appointment_id' => $data['appointment_id'] ?? null,
             'product_id' => $data['product_id'] ?? null,
             'user_id' => $user->id,
+            'stage_id' => $initialStage?->id,
             'service_name' => $data['service_name'],
             'total' => $total,
             'amount_paid' => $initialPayment,
@@ -65,7 +71,7 @@ class ServiceOrderService
         // load(), no fresh(): fresh() trae una instancia nueva de la BD y
         // pierde wasRecentlyCreated, con lo que el controller devolveria 200
         // en vez de 201 al crear (mismo cuidado que en SaleService::createSale).
-        return $order->load('items', 'payments', 'client');
+        return $order->load('items', 'payments', 'client', 'stage');
     }
 
     /**
@@ -103,7 +109,7 @@ class ServiceOrderService
 
         $order->recalculateStatus();
 
-        return $order->load('items', 'payments', 'client');
+        return $order->load('items', 'payments', 'client', 'stage');
     }
 
     public function pay(User $user, ServiceOrder $order, float $amount, ?string $paymentMethod, ?string $notes = null): ServiceOrder
@@ -128,7 +134,49 @@ class ServiceOrderService
 
         $this->maybeCompleteLinkedAppointment($order);
 
-        return $order->load('items', 'payments', 'client');
+        return $order->load('items', 'payments', 'client', 'stage');
+    }
+
+    /**
+     * Mueve la orden a una etapa del workflow asignado al negocio. Si la
+     * etapa tiene la accion mark_order_paid y la orden todavia no esta
+     * pagada, registra un ServicePayment por el saldo pendiente (nunca se
+     * marca "pagado" sin una fila que lo respalde - el cierre de caja y el
+     * resumen del dia leen el ingreso desde ahi, no desde amount_paid).
+     */
+    public function setStage(User $user, ServiceOrder $order, int $stageId): ServiceOrder
+    {
+        if ($order->status === 'cancelled') {
+            throw ValidationException::withMessages(['order' => 'La orden esta cancelada.']);
+        }
+
+        $business = $user->business;
+        $business->loadMissing('serviceWorkflow.stages');
+        $workflow = $business->serviceWorkflow;
+
+        if (! $workflow) {
+            throw ValidationException::withMessages(['stage_id' => 'Este negocio no tiene un workflow configurado.']);
+        }
+
+        $stage = $workflow->stages->firstWhere('id', $stageId);
+        if (! $stage) {
+            throw ValidationException::withMessages(['stage_id' => 'Etapa no válida para este negocio.']);
+        }
+
+        $order->stage_id = $stage->id;
+
+        if ($stage->hasAction('mark_order_paid') && $order->status !== 'paid') {
+            $pending = round((float) $order->total - (float) $order->amount_paid, 2);
+            if ($pending > 0.009) {
+                $this->createPayment($user, $order, $pending, null, 'Registrado automáticamente al mover a esta etapa');
+                $order->amount_paid = (float) $order->amount_paid + $pending;
+            }
+            $order->recalculateStatus();
+        } else {
+            $order->save();
+        }
+
+        return $order->load('items', 'payments', 'client', 'stage');
     }
 
     /**

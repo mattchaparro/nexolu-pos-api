@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BulkStockUpdateController;
 use App\Http\Controllers\Api\V1\BusinessController;
+use App\Http\Controllers\Api\V1\BusinessServiceWorkflowController;
 use App\Http\Controllers\Api\V1\BusinessTableController;
 use App\Http\Controllers\Api\V1\CashClosingController;
 use App\Http\Controllers\Api\V1\CashShiftController;
@@ -270,8 +271,11 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         });
 
         Route::middleware(['feature:services', 'permission:appointments.manage'])->group(function () {
+            Route::get('/service-workflow', [BusinessServiceWorkflowController::class, 'show'])->name('service-workflow.show');
+
             Route::post('/service-orders/{serviceOrder}/pay', [ServiceOrderController::class, 'pay'])->name('service-orders.pay');
             Route::post('/service-orders/{serviceOrder}/cancel', [ServiceOrderController::class, 'cancel'])->name('service-orders.cancel');
+            Route::patch('/service-orders/{serviceOrder}/stage', [ServiceOrderController::class, 'setStage'])->name('service-orders.stage.update');
             // parameters(): el nombre que apiResource() deriva de 'service-orders'
             // (service_order) no coincide con el ServiceOrder $serviceOrder de los
             // metodos del controller - mismo bug ya encontrado en

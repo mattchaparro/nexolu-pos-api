@@ -19,6 +19,7 @@ class ServiceOrderResource extends JsonResource
             'appointment_id' => $this->appointment_id,
             'product_id' => $this->product_id,
             'user_id' => $this->user_id,
+            'stage_id' => $this->stage_id,
             'service_name' => $this->service_name,
             'total' => $this->total,
             'amount_paid' => $this->amount_paid,
@@ -30,6 +31,7 @@ class ServiceOrderResource extends JsonResource
             'items' => ServiceOrderItemResource::collection($this->whenLoaded('items')),
             'payments' => ServicePaymentResource::collection($this->whenLoaded('payments')),
             'client' => new ClientResource($this->whenLoaded('client')),
+            'stage' => new ServiceWorkflowStageResource($this->whenLoaded('stage')),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

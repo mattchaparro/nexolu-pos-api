@@ -24,4 +24,9 @@ class ServiceWorkflowStage extends Model
     {
         return $this->belongsTo(ServiceWorkflow::class, 'workflow_id');
     }
+
+    public function hasAction(string $type): bool
+    {
+        return collect($this->actions ?? [])->contains('type', $type);
+    }
 }
