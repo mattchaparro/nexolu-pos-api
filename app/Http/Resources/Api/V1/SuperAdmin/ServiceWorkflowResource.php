@@ -19,6 +19,10 @@ class ServiceWorkflowResource extends JsonResource
             'stages_count' => $this->whenCounted('stages'),
             'businesses_count' => $this->whenCounted('businesses'),
             'stages' => ServiceWorkflowStageResource::collection($this->whenLoaded('stages')),
+            'businesses' => $this->whenLoaded('businesses', fn () => $this->businesses->map(fn ($business) => [
+                'id' => $business->id,
+                'name' => $business->name,
+            ])),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

@@ -30,7 +30,9 @@ class ServiceWorkflowController extends Controller
 
     public function show(ServiceWorkflow $serviceWorkflow): ServiceWorkflowResource
     {
-        return new ServiceWorkflowResource($serviceWorkflow->load('stages')->loadCount('businesses'));
+        return new ServiceWorkflowResource(
+            $serviceWorkflow->load('stages', 'businesses:id,name')->loadCount('businesses')
+        );
     }
 
     public function update(StoreServiceWorkflowRequest $request, ServiceWorkflow $serviceWorkflow): ServiceWorkflowResource
