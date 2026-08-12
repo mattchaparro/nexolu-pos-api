@@ -113,6 +113,25 @@ class WhatsAppCloudClient implements MessagingChannel
     }
 
     /**
+     * Documento por link (Meta descarga la URL, no se le mandan bytes). Solo
+     * entrega dentro de la ventana de 24h - ver MessagingChannel::sendDocument().
+     */
+    public function sendDocument(string $to, string $documentUrl, string $filename, string $caption = ''): bool
+    {
+        $document = ['link' => $documentUrl, 'filename' => $filename];
+        if ($caption !== '') {
+            $document['caption'] = $caption;
+        }
+
+        return $this->post($to, [
+            'messaging_product' => 'whatsapp',
+            'to' => $to,
+            'type' => 'document',
+            'document' => $document,
+        ]);
+    }
+
+    /**
      * Marca leido + activa el indicador de "escribiendo...". Mismo endpoint
      * de mensajes, con status:read + typing_indicator - no un endpoint aparte.
      */

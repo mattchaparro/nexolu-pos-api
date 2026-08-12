@@ -63,6 +63,24 @@ class NexoluCommsChannelTest extends TestCase
             && $request['whatsapp_template']['language'] === 'es_CO');
     }
 
+    public function test_send_document_posts_the_document_payload(): void
+    {
+        Http::fake(['comms.nexolu.test/*' => Http::response([
+            'reference' => null, 'business_id' => 'pos',
+            'results' => [['channel' => 'whatsapp', 'status' => 'sent', 'provider_message_id' => 'wamid.789', 'cost_micros' => null, 'error' => null]],
+        ], 200)]);
+
+        $sent = app(NexoluCommsChannel::class)->sendDocument(
+            '573001234567', 'https://pos.nexolu.co/api/public/receipts/sale/1?signature=abc', 'recibo-1.pdf', 'Tu recibo',
+        );
+
+        $this->assertTrue($sent);
+
+        Http::assertSent(fn ($request) => $request['document']['url'] === 'https://pos.nexolu.co/api/public/receipts/sale/1?signature=abc'
+            && $request['document']['filename'] === 'recibo-1.pdf'
+            && $request['document']['caption'] === 'Tu recibo');
+    }
+
     public function test_send_flow_posts_the_whatsapp_flow_payload(): void
     {
         Http::fake(['comms.nexolu.test/*' => Http::response([

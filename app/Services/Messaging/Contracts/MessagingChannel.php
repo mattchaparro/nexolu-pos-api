@@ -37,6 +37,21 @@ interface MessagingChannel
     public function sendTemplate(string $to, string $name, string $languageCode, array $components = []): bool;
 
     /**
+     * Documento adjunto (hoy: comprobantes de venta/orden de servicio/
+     * apartado, ver App\Jobs\SendReceiptJob). $documentUrl debe ser
+     * publicamente alcanzable - quien reciba esto (Meta o Nexolu
+     * Communications) lo descarga por su cuenta, no se le mandan los bytes.
+     *
+     * Igual que sendText(), esto solo entrega dentro de la ventana de 24h
+     * desde el ultimo mensaje del destinatario. Para enviar un comprobante a
+     * alguien que no le escribio antes al negocio hace falta una plantilla
+     * aprobada con encabezado de tipo documento - todavia no existe una, se
+     * agrega mas adelante sin tener que tocar este metodo (el nombre de la
+     * plantilla se resolveria en la implementacion, no en el llamante).
+     */
+    public function sendDocument(string $to, string $documentUrl, string $filename, string $caption = ''): bool;
+
+    /**
      * Formulario nativo con datos prellenados, para confirmar un borrador de
      * escritura sin salir del canal de mensajeria.
      *

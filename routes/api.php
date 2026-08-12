@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AiToolInvokeController;
 use App\Http\Controllers\Api\NexoluCommsWebhookController;
 use App\Http\Controllers\Api\NotificationSnoozeController;
 use App\Http\Controllers\Api\PaymentsCoreWebhookController;
+use App\Http\Controllers\Api\PublicReceiptController;
 use App\Http\Controllers\Api\V1\AccountingController;
 use App\Http\Controllers\Api\V1\AiChannelLinkController;
 use App\Http\Controllers\Api\V1\AiChatController;
@@ -45,6 +46,7 @@ use App\Http\Controllers\Api\V1\SubscriptionController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\SupportTicketController;
 use App\Http\Controllers\Api\WhatsappWebhookController;
+use App\Services\ReceiptPdfService;
 use Illuminate\Support\Facades\Route;
 
 // Fuera del prefijo v1 a proposito: el contrato con Nexolu IA Core (repo
@@ -82,6 +84,16 @@ Route::post('/webhooks/nexolu-comms/whatsapp', [NexoluCommsWebhookController::cl
 Route::get('/notifications/low-stock/{business}/snooze', [NotificationSnoozeController::class, 'snooze'])
     ->middleware('signed')
     ->name('notifications.low-stock.snooze');
+
+// Publico, sin auth: lo descarga el proveedor de WhatsApp al enviar un
+// comprobante (ver App\Jobs\SendReceiptJob), no el usuario del negocio - la
+// firma de la URL (middleware `signed`, vence a las 24h) es la unica
+// autenticacion, mismo patron que notifications.low-stock.snooze arriba.
+Route::get('/public/receipts/{type}/{id}', [PublicReceiptController::class, 'show'])
+    ->where('type', implode('|', ReceiptPdfService::TYPES))
+    ->whereNumber('id')
+    ->middleware('signed')
+    ->name('receipts.public.show');
 
 Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::post('/register', [AuthController::class, 'register'])->name('register');
@@ -224,6 +236,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         });
 
         Route::post('/sales/{sale}/reverse', [SaleController::class, 'reverse'])->name('sales.reverse');
+        Route::get('/sales/{sale}/receipt', [SaleController::class, 'receipt'])->name('sales.receipt');
+        Route::post('/sales/{sale}/receipt/send', [SaleController::class, 'sendReceipt'])->name('sales.receipt.send');
         Route::apiResource('sales', SaleController::class)->only(['index', 'show', 'store']);
 
         Route::middleware('feature:open_tabs')->group(function () {
@@ -267,6 +281,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::put('/layaways/{layaway}/items', [LayawayController::class, 'updateItems'])->name('layaways.items.update');
             Route::post('/layaways/{layaway}/complete', [LayawayController::class, 'complete'])->name('layaways.complete');
             Route::post('/layaways/{layaway}/cancel', [LayawayController::class, 'cancel'])->name('layaways.cancel');
+            Route::get('/layaways/{layaway}/receipt', [LayawayController::class, 'receipt'])->name('layaways.receipt');
+            Route::post('/layaways/{layaway}/receipt/send', [LayawayController::class, 'sendReceipt'])->name('layaways.receipt.send');
             Route::apiResource('layaways', LayawayController::class)->only(['index', 'show', 'store']);
         });
 
@@ -283,6 +299,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::post('/service-orders/{serviceOrder}/pay', [ServiceOrderController::class, 'pay'])->name('service-orders.pay');
             Route::post('/service-orders/{serviceOrder}/cancel', [ServiceOrderController::class, 'cancel'])->name('service-orders.cancel');
             Route::patch('/service-orders/{serviceOrder}/stage', [ServiceOrderController::class, 'setStage'])->name('service-orders.stage.update');
+            Route::get('/service-orders/{serviceOrder}/receipt', [ServiceOrderController::class, 'receipt'])->name('service-orders.receipt');
+            Route::post('/service-orders/{serviceOrder}/receipt/send', [ServiceOrderController::class, 'sendReceipt'])->name('service-orders.receipt.send');
             // parameters(): el nombre que apiResource() deriva de 'service-orders'
             // (service_order) no coincide con el ServiceOrder $serviceOrder de los
             // metodos del controller - mismo bug ya encontrado en

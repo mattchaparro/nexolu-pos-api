@@ -2,17 +2,22 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\Controllers\Concerns\SendsReceipts;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\StoreSaleRequest;
 use App\Http\Resources\Api\V1\SaleResource;
 use App\Models\Sale;
+use App\Services\ReceiptPdfService;
 use App\Services\SaleService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 
 class SaleController extends Controller
 {
+    use SendsReceipts;
+
     public function __construct(private SaleService $saleService) {}
 
     public function index(Request $request): AnonymousResourceCollection
@@ -43,5 +48,15 @@ class SaleController extends Controller
         $this->saleService->reverseSale($request->user(), $sale);
 
         return response()->noContent();
+    }
+
+    public function receipt(Sale $sale): Response
+    {
+        return $this->receiptDownloadResponse(app(ReceiptPdfService::class)->forSale($sale));
+    }
+
+    public function sendReceipt(Request $request, Sale $sale): JsonResponse
+    {
+        return $this->receiptSendResponse($request, 'sale', $sale->id, 'Recibo de venta');
     }
 }

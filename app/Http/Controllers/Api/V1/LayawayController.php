@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\Controllers\Concerns\SendsReceipts;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\StoreLayawayPaymentRequest;
 use App\Http\Requests\Api\V1\StoreLayawayRequest;
@@ -9,12 +10,16 @@ use App\Http\Requests\Api\V1\UpdateLayawayItemsRequest;
 use App\Http\Resources\Api\V1\LayawayResource;
 use App\Models\Layaway;
 use App\Services\LayawayService;
+use App\Services\ReceiptPdfService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 
 class LayawayController extends Controller
 {
+    use SendsReceipts;
+
     public function __construct(private LayawayService $layawayService) {}
 
     public function index(Request $request): AnonymousResourceCollection
@@ -74,5 +79,15 @@ class LayawayController extends Controller
         $this->layawayService->cancel($request->user(), $layaway);
 
         return response()->noContent();
+    }
+
+    public function receipt(Layaway $layaway): Response
+    {
+        return $this->receiptDownloadResponse(app(ReceiptPdfService::class)->forLayaway($layaway));
+    }
+
+    public function sendReceipt(Request $request, Layaway $layaway): JsonResponse
+    {
+        return $this->receiptSendResponse($request, 'layaway', $layaway->id, 'Comprobante de apartado');
     }
 }

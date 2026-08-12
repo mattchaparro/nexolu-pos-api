@@ -49,6 +49,24 @@ class NexoluCommsChannel implements MessagingChannel
     }
 
     /**
+     * Documento por link - misma limitacion de ventana de 24h que
+     * sendText(), ver MessagingChannel::sendDocument(). Payload asumido
+     * (`document: {url, filename, caption}`) siguiendo el mismo patron que
+     * `text`/`whatsapp_template`/`whatsapp_flow` de arriba - ajustar si
+     * Nexolu Communications (repo aparte) termina exponiendolo distinto.
+     */
+    public function sendDocument(string $to, string $documentUrl, string $filename, string $caption = ''): bool
+    {
+        return $this->send($to, [
+            'document' => [
+                'url' => $documentUrl,
+                'filename' => $filename,
+                'caption' => $caption,
+            ],
+        ]);
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
     public function sendFlow(

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\Controllers\Concerns\SendsReceipts;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\PayServiceOrderRequest;
 use App\Http\Requests\Api\V1\SetServiceOrderStageRequest;
@@ -9,13 +10,17 @@ use App\Http\Requests\Api\V1\StoreServiceOrderRequest;
 use App\Http\Requests\Api\V1\UpdateServiceOrderRequest;
 use App\Http\Resources\Api\V1\ServiceOrderResource;
 use App\Models\ServiceOrder;
+use App\Services\ReceiptPdfService;
 use App\Services\ServiceOrderService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 
 class ServiceOrderController extends Controller
 {
+    use SendsReceipts;
+
     public function __construct(private ServiceOrderService $serviceOrderService) {}
 
     public function index(Request $request): AnonymousResourceCollection
@@ -86,5 +91,15 @@ class ServiceOrderController extends Controller
         );
 
         return new ServiceOrderResource($order);
+    }
+
+    public function receipt(ServiceOrder $serviceOrder): Response
+    {
+        return $this->receiptDownloadResponse(app(ReceiptPdfService::class)->forServiceOrder($serviceOrder));
+    }
+
+    public function sendReceipt(Request $request, ServiceOrder $serviceOrder): JsonResponse
+    {
+        return $this->receiptSendResponse($request, 'service-order', $serviceOrder->id, 'Comprobante de orden de servicio');
     }
 }

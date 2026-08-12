@@ -63,6 +63,22 @@ class WhatsAppCloudClientTest extends TestCase
             && $request['template']['language']['code'] === 'es_CO');
     }
 
+    public function test_send_document_posts_the_document_payload(): void
+    {
+        Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.789']]], 200)]);
+
+        $sent = app(WhatsAppCloudClient::class)->sendDocument(
+            '573001234567', 'https://pos.nexolu.co/api/public/receipts/sale/1?signature=abc', 'recibo-1.pdf', 'Tu recibo',
+        );
+
+        $this->assertTrue($sent);
+
+        Http::assertSent(fn ($request) => $request['type'] === 'document'
+            && $request['document']['link'] === 'https://pos.nexolu.co/api/public/receipts/sale/1?signature=abc'
+            && $request['document']['filename'] === 'recibo-1.pdf'
+            && $request['document']['caption'] === 'Tu recibo');
+    }
+
     public function test_returns_false_and_does_not_record_usage_when_meta_rejects_the_message(): void
     {
         Http::fake(['graph.facebook.com/*' => Http::response(['error' => 'invalid'], 400)]);
