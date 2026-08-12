@@ -156,4 +156,24 @@ class SupplierTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.has_pending_visit_reminder', true);
     }
+
+    public function test_index_exposes_the_nearest_pending_reminder_due_date(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $supplier = Supplier::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')->postJson("/api/v1/suppliers/{$supplier->id}/remind-visit", [
+            'due_date' => now()->addDays(5)->toDateString(),
+        ])->assertCreated();
+        $this->actingAs($user, 'sanctum')->postJson("/api/v1/suppliers/{$supplier->id}/remind-visit", [
+            'due_date' => now()->addDay()->toDateString(),
+        ])->assertCreated();
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/suppliers')
+            ->assertOk()
+            ->assertJsonPath('data.0.next_visit_reminder_due_date', now()->addDay()->toDateString());
+    }
 }

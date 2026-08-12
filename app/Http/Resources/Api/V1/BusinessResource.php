@@ -39,6 +39,12 @@ class BusinessResource extends JsonResource
             'low_stock_email_enabled' => $this->low_stock_email_enabled,
             'low_stock_email' => $this->low_stock_email,
             'feature_flags' => $this->feature_flags,
+            // Computado en el modelo (ver Business::hasFeature()) en vez de
+            // que el frontend replique la logica de flags/plan por su
+            // cuenta - un negocio con feature_flags=null habilita todo por
+            // retrocompatibilidad, algo que el frontend no puede saber solo
+            // mirando el JSON de feature_flags.
+            'can_access_purchases' => $this->canAccessPurchases(),
             'subscription_plan' => $this->subscription_plan,
             'subscription_status' => $this->subscriptionStatus(),
             'active' => $this->active,

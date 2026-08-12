@@ -27,6 +27,17 @@ class SupplierResource extends JsonResource
                 'reminders',
                 fn () => $this->reminders->contains(fn (Reminder $r) => $r->status === Reminder::STATUS_PENDING)
             ),
+            // Fecha de la proxima visita pendiente (la mas cercana), para el
+            // badge de la lista - ver Suppliers/Index.vue del legacy, que
+            // muestra la fecha, no solo un booleano.
+            'next_visit_reminder_due_date' => $this->whenLoaded(
+                'reminders',
+                fn () => $this->reminders
+                    ->filter(fn (Reminder $r) => $r->status === Reminder::STATUS_PENDING)
+                    ->sortBy('due_date')
+                    ->first()
+                    ?->due_date?->toDateString()
+            ),
         ];
     }
 }
