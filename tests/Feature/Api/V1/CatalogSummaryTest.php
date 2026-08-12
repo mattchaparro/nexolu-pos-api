@@ -36,6 +36,9 @@ class CatalogSummaryTest extends TestCase
         Product::factory()->create([
             'business_id' => $admin->business_id, 'is_single_sale' => true, 'stock' => 1, 'is_service' => false,
         ]);
+        Product::factory()->create([
+            'business_id' => $admin->business_id, 'is_active' => false, 'stock' => 20, 'is_service' => false,
+        ]);
         // Un servicio no cuenta para ninguno de los totales de inventario.
         Product::factory()->create(['business_id' => $admin->business_id, 'is_service' => true, 'stock' => 0]);
 
@@ -46,6 +49,7 @@ class CatalogSummaryTest extends TestCase
             'out_of_stock_count' => 1,
             'single_sale_count' => 1,
             'with_recipe_count' => 0,
+            'inactive_count' => 1,
             'show_inventory_value_card' => true,
         ]);
         $this->assertIsNumeric($response->json('inventory_value_cop'));

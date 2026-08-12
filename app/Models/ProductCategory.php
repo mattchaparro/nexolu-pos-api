@@ -39,4 +39,21 @@ class ProductCategory extends Model
     {
         return $this->parent_id !== null;
     }
+
+    /**
+     * Para `whereIn('category_id', ProductCategory::idsIncludingChildren($id))`
+     * en cualquier filtro por categoria: filtrar por una categoria raiz debe
+     * incluir tambien los productos de sus subcategorias. Si $categoryId ya
+     * es una subcategoria, devuelve solo [$categoryId] - una subcategoria
+     * nunca tiene hijas propias, no hace falta comprobarlo.
+     *
+     * @return list<int>
+     */
+    public static function idsIncludingChildren(int $categoryId): array
+    {
+        return array_merge(
+            [$categoryId],
+            static::where('parent_id', $categoryId)->pluck('id')->all(),
+        );
+    }
 }

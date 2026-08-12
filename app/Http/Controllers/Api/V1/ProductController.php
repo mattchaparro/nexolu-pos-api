@@ -7,6 +7,7 @@ use App\Http\Requests\Api\V1\StoreProductRequest;
 use App\Http\Requests\Api\V1\UpdateProductRequest;
 use App\Http\Resources\Api\V1\ProductResource;
 use App\Models\Product;
+use App\Models\ProductCategory;
 use App\Services\ProductService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,7 +33,7 @@ class ProductController extends Controller
 
         $products = Product::where('is_service', false)
             ->when($ingredientsEnabled, fn ($q) => $q->with('ingredients:id'))
-            ->get(['id', 'stock', 'is_single_sale', 'low_stock_alert_threshold']);
+            ->get(['id', 'stock', 'is_single_sale', 'is_active', 'low_stock_alert_threshold']);
 
         $lowStockCount = $products->filter(function (Product $p) use ($lowStockThreshold) {
             $threshold = $p->low_stock_alert_threshold !== null ? (float) $p->low_stock_alert_threshold : $lowStockThreshold;
@@ -51,6 +52,7 @@ class ProductController extends Controller
             'out_of_stock_count' => $products->filter(fn (Product $p) => (float) $p->stock <= 0)->count(),
             'single_sale_count' => $products->where('is_single_sale', true)->count(),
             'with_recipe_count' => $withRecipeCount,
+            'inactive_count' => $products->where('is_active', false)->count(),
             'show_inventory_value_card' => $showInventoryValueCard,
             'inventory_value_cop' => $showInventoryValueCard ? round(Product::sumInventoryRetailValueCop()) : null,
         ]);
@@ -74,9 +76,13 @@ class ProductController extends Controller
         ]);
     }
 
+    /** @var list<string> */
+    private const STOCK_FILTERS = ['out_of_stock', 'low_stock', 'inactive', 'single_sale', 'recipe'];
+
     public function index(Request $request): AnonymousResourceCollection
     {
-        $ingredientsEnabled = (bool) $request->user()?->business?->hasFeature('ingredients');
+        $business = $request->user()?->business;
+        $ingredientsEnabled = (bool) $business?->hasFeature('ingredients');
 
         $query = Product::with('category')
             ->when($ingredientsEnabled, fn ($q) => $q->with('ingredients'))
@@ -96,6 +102,29 @@ class ProductController extends Controller
             $query->where(function ($sub) use ($term) {
                 $sub->where('name', 'like', $term)->orWhere('sku', 'like', $term);
             });
+        }
+
+        // category_id: igual que Admin\InventoryController del legacy,
+        // filtrar por una categoria raiz incluye tambien sus subcategorias.
+        if ($request->filled('category_id')) {
+            $query->whereIn('category_id', ProductCategory::idsIncludingChildren((int) $request->integer('category_id')));
+        }
+
+        // filter: a diferencia de category_id/search (puerto directo de
+        // legacy), esto es nuevo - legacy solo muestra estos estados como
+        // cards de resumen de solo lectura (ver summary()), nunca como
+        // filtros reales del listado.
+        if ($request->filled('filter') && in_array($request->input('filter'), self::STOCK_FILTERS, true)) {
+            $lowStockThreshold = (float) ($business?->low_stock_alert_threshold ?? 5);
+
+            match ($request->input('filter')) {
+                'out_of_stock' => $query->where('stock', '<=', 0),
+                'low_stock' => $query->whereRaw('stock <= COALESCE(low_stock_alert_threshold, ?)', [$lowStockThreshold]),
+                'inactive' => $query->where('is_active', false),
+                'single_sale' => $query->where('is_single_sale', true),
+                'recipe' => $query->whereHas('ingredients'),
+                default => null,
+            };
         }
 
         // El POS (Vender) necesita el catalogo casi completo de una sola vez

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Models\Business;
+use App\Models\Ingredient;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\User;
@@ -77,6 +78,91 @@ class ProductTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.name', 'Papas fritas');
+    }
+
+    public function test_products_can_be_filtered_by_category_including_subcategories(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $drinks = ProductCategory::factory()->create(['business_id' => $business->id]);
+        $sodas = ProductCategory::factory()->create(['business_id' => $business->id, 'parent_id' => $drinks->id]);
+        $snacks = ProductCategory::factory()->create(['business_id' => $business->id]);
+
+        Product::factory()->create(['business_id' => $business->id, 'category_id' => $drinks->id, 'name' => 'Agua']);
+        Product::factory()->create(['business_id' => $business->id, 'category_id' => $sodas->id, 'name' => 'Gaseosa']);
+        Product::factory()->create(['business_id' => $business->id, 'category_id' => $snacks->id, 'name' => 'Papas']);
+
+        // Filtrar por la categoria raiz "Bebidas" trae tambien la
+        // subcategoria "Gaseosas" - igual que Admin\InventoryController del
+        // legacy (ProductCategory::idsIncludingChildren()).
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/products?category_id={$drinks->id}")
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        $names = collect($response->json('data'))->pluck('name');
+        $this->assertTrue($names->contains('Agua'));
+        $this->assertTrue($names->contains('Gaseosa'));
+        $this->assertFalse($names->contains('Papas'));
+    }
+
+    public function test_products_can_be_filtered_by_stock_state(): void
+    {
+        $business = Business::factory()->create(['low_stock_alert_threshold' => 5]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        // stock explicito en todos (no solo en los casos que le importan a
+        // cada aserto) - el factory por defecto lo randomiza entre 0-100, lo
+        // que haria flakys los assertJsonCount(1) de out_of_stock/low_stock
+        // si otro producto cae ahi por azar.
+        $outOfStock = Product::factory()->create(['business_id' => $business->id, 'stock' => 0]);
+        $lowStock = Product::factory()->create(['business_id' => $business->id, 'stock' => 3, 'low_stock_alert_threshold' => null]);
+        $wellStocked = Product::factory()->create(['business_id' => $business->id, 'stock' => 50, 'low_stock_alert_threshold' => null]);
+        $inactive = Product::factory()->create(['business_id' => $business->id, 'stock' => 50, 'is_active' => false]);
+        $singleSale = Product::factory()->create(['business_id' => $business->id, 'stock' => 50, 'is_single_sale' => true]);
+        $withRecipe = Product::factory()->create(['business_id' => $business->id, 'stock' => 50]);
+        $ingredient = Ingredient::factory()->create(['business_id' => $business->id]);
+        $withRecipe->ingredients()->attach($ingredient->id, ['quantity' => 1]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?filter=out_of_stock')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $outOfStock->id)
+            ->assertJsonCount(1, 'data');
+
+        // low_stock incluye tambien al que ya esta en 0 (stock <= umbral,
+        // sin excluir 0) - igual que las cards de resumen de summary(), que
+        // tampoco son mutuamente excluyentes entre si.
+        $lowStockResponse = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?filter=low_stock')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+        $lowStockIds = collect($lowStockResponse->json('data'))->pluck('id');
+        $this->assertTrue($lowStockIds->contains($outOfStock->id));
+        $this->assertTrue($lowStockIds->contains($lowStock->id));
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?filter=inactive')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $inactive->id)
+            ->assertJsonCount(1, 'data');
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?filter=single_sale')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $singleSale->id)
+            ->assertJsonCount(1, 'data');
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?filter=recipe')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $withRecipe->id)
+            ->assertJsonCount(1, 'data');
+
+        $this->assertNotNull($wellStocked);
     }
 
     public function test_is_service_filters_goods_and_services_apart(): void
