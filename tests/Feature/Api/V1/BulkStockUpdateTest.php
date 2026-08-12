@@ -147,4 +147,28 @@ class BulkStockUpdateTest extends TestCase
         $this->assertSame('Harina de trigo', $ingredient->name);
         $this->assertSame('8.00', $ingredient->stock);
     }
+
+    public function test_bulk_update_applies_ingredient_cost_change_and_syncs_linked_product_recipe_cost(): void
+    {
+        $admin = $this->admin();
+        $ingredient = Ingredient::factory()->create([
+            'business_id' => $admin->business_id,
+            'cost_price' => 500,
+        ]);
+        $product = Product::factory()->create(['business_id' => $admin->business_id]);
+        $product->ingredients()->attach($ingredient->id, ['quantity' => 2]);
+        $product->syncRecipeCost();
+
+        $response = $this->actingAs($admin, 'sanctum')->postJson('/api/v1/ingredients/bulk-update', [
+            'items' => [
+                ['ingredient_id' => $ingredient->id, 'new_cost' => 750],
+            ],
+        ]);
+
+        $response->assertOk()->assertJson(['cost_count' => 1]);
+
+        $ingredient->refresh();
+        $this->assertSame('750.0000', $ingredient->cost_price);
+        $this->assertSame('1500.00', $product->fresh()->cost_price);
+    }
 }

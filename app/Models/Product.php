@@ -76,6 +76,23 @@ class Product extends Model
         return $prefix.$suffix;
     }
 
+    /**
+     * Σ(stock × precio) de productos con control de inventario - usado por
+     * el resumen del Catalogo para el card "Valor inventario" (solo se
+     * muestra si el negocio no tiene la feature "ingredients": con receta
+     * activa, el valor de venta de un producto ya no depende de su propio
+     * stock, ver isStockManagedByIngredientsRecipe()).
+     */
+    public static function sumInventoryRetailValueCop(): float
+    {
+        return (float) static::query()
+            ->where('is_service', false)
+            ->where('track_stock', true)
+            ->toBase()
+            ->selectRaw('COALESCE(SUM(stock * price), 0) as inventory_value')
+            ->value('inventory_value');
+    }
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(ProductCategory::class, 'category_id');

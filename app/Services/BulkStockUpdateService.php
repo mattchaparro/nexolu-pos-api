@@ -89,14 +89,14 @@ class BulkStockUpdateService
     }
 
     /**
-     * @param  list<array{ingredient_id:int, new_name?:string|null, new_stock?:float|null}>  $items
-     * @return array{name_count:int, stock_count:int}
+     * @param  list<array{ingredient_id:int, new_name?:string|null, new_stock?:float|null, new_cost?:float|null}>  $items
+     * @return array{name_count:int, stock_count:int, cost_count:int}
      */
     public function updateIngredients(User $user, array $items, ?string $notes): array
     {
         $notes = $notes ?: 'Ajuste manual';
         $adjustmentReasonId = StockMovementReason::systemIdForCode(StockMovementReason::CODE_ADJUSTMENT);
-        $counts = ['name_count' => 0, 'stock_count' => 0];
+        $counts = ['name_count' => 0, 'stock_count' => 0, 'cost_count' => 0];
 
         DB::transaction(function () use ($items, $notes, $adjustmentReasonId, $user, &$counts) {
             foreach ($items as $row) {
@@ -115,6 +115,15 @@ class BulkStockUpdateService
                     if (abs($target - (float) $ingredient->stock) >= 0.0001) {
                         $this->stockService->ingredientAdjust($user, $ingredient, $target, $notes, $adjustmentReasonId);
                         $counts['stock_count']++;
+                    }
+                }
+
+                if (($row['new_cost'] ?? null) !== null) {
+                    $newCost = round((float) $row['new_cost'], 4);
+                    if (abs((float) $ingredient->cost_price - $newCost) >= 0.00001) {
+                        $ingredient->update(['cost_price' => $newCost]);
+                        $ingredient->syncLinkedProductCosts();
+                        $counts['cost_count']++;
                     }
                 }
             }

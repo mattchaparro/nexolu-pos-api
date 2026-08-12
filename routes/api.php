@@ -131,6 +131,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // de un middleware de permiso diferente.
         Route::middleware('permission:inventory.view')->group(function () {
             Route::apiResource('product-categories', ProductCategoryController::class)->only(['index', 'show']);
+            // Antes del apiResource: /products/summary no debe caer en la
+            // ruta show (/products/{product}) del resource de abajo.
+            Route::get('/products/summary', [ProductController::class, 'summary'])->name('products.summary');
             Route::apiResource('products', ProductController::class)->only(['index', 'show']);
             // Motivos de movimiento de stock (entrada/salida/ajuste) - lectura
             // compartida por el formulario de "Ajustar stock" de productos e
@@ -153,6 +156,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::middleware('feature:ingredients')->group(function () {
             Route::middleware('permission:inventory.view')->group(function () {
+                // Antes del apiResource, mismo motivo que /products/summary.
+                Route::get('/ingredients/summary', [IngredientController::class, 'summary'])->name('ingredients.summary');
                 Route::apiResource('ingredients', IngredientController::class)->only(['index', 'show']);
                 Route::get('/ingredient-stock-movements', [IngredientStockMovementController::class, 'index'])->name('ingredient-stock-movements.index');
             });

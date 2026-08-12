@@ -30,6 +30,7 @@ class BulkUpdateIngredientsRequest extends FormRequest
             'items.*.ingredient_id' => ['required', 'distinct', BusinessScopedExists::for('ingredients', $businessId)],
             'items.*.new_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'items.*.new_stock' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'items.*.new_cost' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:500'],
         ];
     }
