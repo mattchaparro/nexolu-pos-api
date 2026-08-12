@@ -489,9 +489,11 @@ falta migración, solo el código.
 **Revisado y confirmado que NO son gaps** (ya cubiertos por otro lado o
 código muerto):
 
-- `Admin/InvoiceController`/`LayawayInvoiceController`/`ServiceOrderInvoiceController`:
-  solo renderizan una vista imprimible sobre datos que ya existen - trabajo
-  del futuro frontend, no de la API.
+- ~~`Admin/InvoiceController`/`LayawayInvoiceController`/`ServiceOrderInvoiceController`~~
+  ✅ Migrado: `ReceiptPdfService` + `SendsReceipts` (Sale/ServiceOrder/Layaway
+  reciben `GET .../receipt` y `POST .../receipt/send`), con
+  `ReceiptActionsModal.vue` en el frontend. Ver la sección "Paridad de
+  módulos ya migrados" más abajo para el detalle completo de qué se cubrió.
 - `Payment`/`PaymentLink`/`PaymentMethod`/`PaymentProvider`/`WompiWebhookController`:
   reemplazados por Nexolu Payments Core (ya migrado).
 - `AiConversation`/`AiDraft`/`AiMessage`/`AiUsageDaily`: viven en Nexolu IA
@@ -523,3 +525,132 @@ código muerto):
   De paso, `StoreExpenseRequest.linkable_type` ahora admite `Ingredient::class`
   además de `Product::class` (el docblock decía "Ingredient no soportado
   aún", ya no es cierto desde que el módulo de Ingredientes se migró).
+
+## Paridad de módulos ya migrados — auditoría de frontend (2026-08-12)
+
+A diferencia del resto de este documento (módulos/jobs enteros sin
+empezar), esto es una auditoría de **funcionalidad faltante dentro de
+módulos que ya están migrados y en uso** - comparación módulo por módulo
+contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
+(`nexolu-pos-api` backend, `nexolu-pos-front` frontend, o ambos).
+
+**Ya resueltos en esta ronda** (ambos eran los gaps más grandes encontrados):
+
+- ~~**Recibos/comprobantes en Vender, Cuentas abiertas, Órdenes de
+  servicio, Apartados**~~ ✅ Ninguno de los 4 flujos de venta tenía forma de
+  entregarle un comprobante al cliente. Ver `ReceiptPdfService`,
+  `SendReceiptJob`, `SendsReceipts`, `ReceiptActionsModal.vue` - imprimir
+  (PDF con dompdf, respeta `ticket_paper_width`) + enviar por WhatsApp
+  (`MessagingChannel::sendDocument()`, nuevo) o correo (`ReceiptMail`).
+- ~~**Pantalla de gestión de Clientes**~~ ✅ El backend (`ClientController`)
+  ya tenía el CRUD completo; solo faltaba `ClientsView.vue`/
+  `ClientFormModal.vue` en el frontend, más un item real en el menú
+  (legacy nunca tuvo uno tampoco - el módulo era inalcanzable ahí también).
+
+**Pendientes, por módulo** (repo entre paréntesis):
+
+### Vender (front)
+- Dictado de pedido por voz (`Components/POS/DictadoPedido.vue` en
+  legacy, 276 líneas) - explícitamente fuera de alcance hasta ahora
+  (ver comentario en `SellView.vue`). Prioridad baja.
+
+### Catálogo (api + front)
+- **Duplicar producto**: `Admin\ProductsController::duplicate()` en legacy
+  (`routes/admin.php:94`) no tiene equivalente en `ProductController`.
+- **Exportar catálogo a PDF**: `ProductsController::catalogPdf()` en legacy
+  (`routes/admin.php:69`). Con dompdf ya instalado (ver receipts arriba),
+  esto es mucho más chico de lo que hubiera sido antes.
+
+### Órdenes de servicio (api + front)
+- **Eliminar orden**: `ServiceOrdersController::destroy()` en legacy
+  (`routes/admin.php:90`) no existe en `ServiceOrderController`; el show
+  nuevo solo ofrece Abonar/Editar/Cancelar.
+- **Filtro por etapa del workflow en el listado**: legacy filtra por
+  `stage_id` y devuelve `workflowStages` para los chips
+  (`ServiceOrdersController.php:31-32,57`); el índice nuevo solo acepta
+  `status`/`search`.
+- **Card de saldo pendiente agregado**: legacy suma el saldo de todas las
+  órdenes pendientes/parciales (`ServiceOrdersController.php:51-53`); el
+  listado nuevo solo muestra el saldo por fila. Menor.
+
+### Agenda (api + front)
+- **Vista por día**: legacy tiene toggle Día/Semana
+  (`Pages/Admin/Appointments/Index.vue:582-603`); `AgendaView.vue` solo
+  maneja semana. En agendas densas la vista semanal no alcanza.
+- **Eliminar cita**: `AppointmentsController::destroy()` en legacy
+  (`:306`) no existe en `AppointmentController` ni en
+  `useAppointmentMutations.ts`.
+- **"Cobrar cita" sin orden previa**: legacy puede crear la orden de
+  servicio + el abono inicial en un solo paso desde el modal de cobro de
+  una cita (`chargeAppointment()`, `AppointmentsController.php:313-360`).
+  El front nuevo solo ofrece "Abonar" sobre una orden ya existente
+  (`AppointmentDetailModal.vue:142`) - falta el camino "cita sin orden →
+  cobrar". El más grande de este módulo.
+- Verificar que el modal de pago de la agenda excluya fiado/crédito de
+  los medios de pago ofrecidos, como hace legacy
+  (`AppointmentsController.php:48-52`). Menor, sin confirmar si ya aplica.
+
+### Apartados (api)
+- **`layaway_allowed_category_ids` no se aplica**: legacy restringe qué
+  productos se pueden apartar a las categorías configuradas por el
+  negocio, excluyendo inactivos/sin stock
+  (`LayawaysController.php:41-55,97-108`). El campo existe en el modelo
+  `Business` pero `useLayawayProductOptions.ts` trae todos los productos
+  sin filtrar - un negocio que solo permite apartar electrodomésticos hoy
+  puede apartar cualquier cosa. Es una regla de negocio real, no solo un
+  detalle de UI - vale la pena priorizarlo.
+
+### Dashboard (api + front)
+- **Desglose efectivo/transferencia del día**: legacy calcula
+  `today_cash`/`today_transfer` repartiendo por medio de pago, incluyendo
+  fiados cobrados (`DashboardController.php:44-56,71-72`);
+  `DashboardService` nuevo no los devuelve.
+- **Atajos configurables por usuario**: `userShortcuts` +
+  `DashboardController::updateShortcuts()` (`:88,152`) no están portados
+  (`DashboardView.vue` solo tiene 5 stat cards + consejo del día).
+  Prioridad baja.
+- **Card de onboarding de WhatsApp**: `whatsappOnboarding()` +
+  `dismissWhatsappOnboarding()` (`:107-152`) - sin ella, nadie descubre
+  desde el dashboard que debe vincular el canal de WhatsApp.
+
+### SuperAdmin (api + front)
+- **Salir de impersonación del lado del servidor**: legacy tiene
+  `ImpersonateController::stop()`/`switchUser()` (`:42,70`); el nuevo solo
+  expone `start()`. El front hoy resuelve esto solo con el token guardado
+  en el store, sin un endpoint de cierre limpio.
+- **Acciones de suscripción en la UI**: el backend ya tiene `activate`/
+  `extendTrial`/`setCustomPrice`/`changePlan` (`BusinessesController.php:225-262`),
+  pero `SuperAdminBusinessesView.vue` los omite a propósito (ver comentario
+  en el archivo) - hoy no se puede activar un pago ni extender un trial
+  desde el panel nuevo. Solo falta el front.
+- **Comunicaciones por negocio**: `communications()`/`previewEmail()`/
+  `sendEmail()` de legacy (`BusinessesController.php:606,648,688`) sin
+  equivalente - el `EmailController` nuevo solo hace logs/plantillas
+  globales, no envío dirigido por negocio.
+- **Limpiar caché del negocio / addon de IA**: `flushCache()` (`:357`) y
+  `setAiAddon()` (`:541`) sin portar (`toggleAiChatBlock` es otra cosa).
+- **Filtros de estado del listado de negocios**: legacy filtra por
+  `trial|paid|inactive|expired|winback` (`:37-54`);
+  `SuperAdminBusinessesView.vue` solo tiene buscador de texto.
+- **Gestión de equipo desde SuperAdmin**: el backend ya tiene
+  `SuperAdmin\UserController::store/toggle/resetPassword`, pero la
+  pestaña "Equipo" de `SuperAdminBusinessShowView.vue` es solo lectura +
+  impersonar - falta conectar lo que ya existe del lado API.
+
+### Auth (api + front)
+- **Recuperar contraseña / verificación de email**: `routes/api.php` solo
+  registra `register`/`login` - no hay `forgot-password`/`reset-password`/
+  `verify-email`. Un usuario que olvide la clave queda bloqueado sin
+  salida. El de mayor prioridad de esta lista (afecta a cualquier usuario,
+  no solo a un flujo administrativo).
+- **Pantalla de registro de negocios**: el backend ya soporta `register`
+  vía `BusinessRegistrationService`, pero no existe ninguna vista que lo
+  consuma - hoy el alta de negocios depende exclusivamente de SuperAdmin.
+- **Login con Google**: `SocialController::googleRedirect/googleCallback`
+  de legacy (`routes/web.php:44-45`) sin portar. Prioridad baja/opcional.
+
+**Confirmado que NO es un gap** (aparecía como incierto en la auditoría
+inicial, ya verificado): el límite de clientes por plan
+(`Client::LIMIT_PER_BUSINESS`) sí se aplica - `ClientService::create()`
+lo valida antes de crear, igual que `ClientsController::store()` en
+legacy.
