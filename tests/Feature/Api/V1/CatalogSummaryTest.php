@@ -79,4 +79,38 @@ class CatalogSummaryTest extends TestCase
 
         $response->assertOk()->assertJson(['active_count' => 2, 'low_stock_count' => 1]);
     }
+
+    public function test_services_summary_counts_total_and_variable_vs_fixed_price(): void
+    {
+        $admin = $this->admin(['feature_flags' => ['services' => true]]);
+
+        Product::factory()->create([
+            'business_id' => $admin->business_id, 'is_service' => true, 'track_stock' => false, 'price_varies_at_sale' => true,
+        ]);
+        Product::factory()->create([
+            'business_id' => $admin->business_id, 'is_service' => true, 'track_stock' => false, 'price_varies_at_sale' => false,
+        ]);
+        Product::factory()->create([
+            'business_id' => $admin->business_id, 'is_service' => true, 'track_stock' => false, 'price_varies_at_sale' => false,
+        ]);
+        // No es servicio: no debe contar.
+        Product::factory()->create(['business_id' => $admin->business_id, 'is_service' => false]);
+
+        $response = $this->actingAs($admin, 'sanctum')->getJson('/api/v1/products/services-summary');
+
+        $response->assertOk()->assertJson([
+            'total_count' => 3,
+            'variable_price_count' => 1,
+            'fixed_price_count' => 2,
+        ]);
+    }
+
+    public function test_services_summary_requires_the_services_feature(): void
+    {
+        $admin = $this->admin(['feature_flags' => ['services' => false]]);
+
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/products/services-summary')
+            ->assertForbidden();
+    }
 }

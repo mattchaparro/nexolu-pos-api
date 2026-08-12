@@ -45,6 +45,11 @@ class BusinessResource extends JsonResource
             // retrocompatibilidad, algo que el frontend no puede saber solo
             // mirando el JSON de feature_flags.
             'can_access_purchases' => $this->canAccessPurchases(),
+            // Mismo motivo que can_access_purchases: la pestaña "Servicios"
+            // del hub de Catalogo (productos con is_service=true) depende
+            // directo del feature flag 'services', sin permiso adicional -
+            // se administran con los mismos permisos inventory.* que Productos.
+            'can_access_services' => $this->hasFeature('services'),
             'subscription_plan' => $this->subscription_plan,
             'subscription_status' => $this->subscriptionStatus(),
             'active' => $this->active,

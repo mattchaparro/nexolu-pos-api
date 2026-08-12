@@ -134,6 +134,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             // Antes del apiResource: /products/summary no debe caer en la
             // ruta show (/products/{product}) del resource de abajo.
             Route::get('/products/summary', [ProductController::class, 'summary'])->name('products.summary');
+            Route::middleware('feature:services')->group(function () {
+                Route::get('/products/services-summary', [ProductController::class, 'servicesSummary'])->name('products.services-summary');
+            });
             Route::apiResource('products', ProductController::class)->only(['index', 'show']);
             // Motivos de movimiento de stock (entrada/salida/ajuste) - lectura
             // compartida por el formulario de "Ajustar stock" de productos e

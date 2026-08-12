@@ -133,6 +133,9 @@ class PurchaseService
         if ($product->is_single_sale) {
             throw ValidationException::withMessages(["lines.{$i}.product_id" => 'No se compra stock de artículos de venta única: «'.$product->name.'».']);
         }
+        if ($product->is_service) {
+            throw ValidationException::withMessages(["lines.{$i}.product_id" => 'Un servicio no se compra como inventario: «'.$product->name.'».']);
+        }
         if ($product->track_stock && ! $product->is_service && $product->ingredients->isNotEmpty()) {
             throw ValidationException::withMessages(["lines.{$i}.product_id" => 'Este producto usa inventario por receta (insumos): compra los ingredientes, no «'.$product->name.'».']);
         }

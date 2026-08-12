@@ -21,6 +21,7 @@ class ProductService
     public function create(Business $business, array $data): Product
     {
         $ingredients = $this->extractIngredients($business, $data);
+        $data = $this->normalizeTypeFlags($data);
 
         $product = Product::create([
             'stock' => 0,
@@ -42,6 +43,7 @@ class ProductService
     public function update(Business $business, Product $product, array $data): Product
     {
         $ingredients = $this->extractIngredients($business, $data, $product);
+        $data = $this->normalizeTypeFlags($data, $product);
 
         $product->update($data);
 
@@ -89,6 +91,29 @@ class ProductService
         }
 
         return $ingredients;
+    }
+
+    /**
+     * Un servicio nunca controla inventario, nunca es "venta unica" (esa
+     * distincion es propia de bienes) y no usa alerta de stock bajo - igual
+     * que Admin\ProductsController::store() del legacy. Se normaliza aca (no
+     * solo confiar en que el cliente mande los valores correctos) porque
+     * ProductService es el unico punto de creacion/edicion de productos,
+     * tambien usado por App\Capabilities\Products\CreateProductCapability.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function normalizeTypeFlags(array $data, ?Product $product = null): array
+    {
+        $isService = (bool) ($data['is_service'] ?? $product?->is_service ?? false);
+        if ($isService) {
+            $data['track_stock'] = false;
+            $data['is_single_sale'] = false;
+            $data['low_stock_alert_threshold'] = null;
+        }
+
+        return $data;
     }
 
     /**

@@ -44,6 +44,25 @@ class BusinessTest extends TestCase
             ->assertJsonPath('can_access_purchases', false);
     }
 
+    public function test_business_resource_exposes_computed_can_access_services(): void
+    {
+        $enabled = Business::factory()->create(['feature_flags' => ['services' => true]]);
+        $ownerEnabled = User::factory()->create(['business_id' => $enabled->id, 'is_business_owner' => true]);
+
+        $this->actingAs($ownerEnabled, 'sanctum')
+            ->getJson('/api/v1/business')
+            ->assertOk()
+            ->assertJsonPath('can_access_services', true);
+
+        $disabled = Business::factory()->create(['feature_flags' => ['services' => false]]);
+        $ownerDisabled = User::factory()->create(['business_id' => $disabled->id, 'is_business_owner' => true]);
+
+        $this->actingAs($ownerDisabled, 'sanctum')
+            ->getJson('/api/v1/business')
+            ->assertOk()
+            ->assertJsonPath('can_access_services', false);
+    }
+
     public function test_owner_can_update_their_business(): void
     {
         $business = Business::factory()->create();

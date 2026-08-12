@@ -79,6 +79,59 @@ class ProductTest extends TestCase
             ->assertJsonPath('data.0.name', 'Papas fritas');
     }
 
+    public function test_is_service_filters_goods_and_services_apart(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        Product::factory()->create(['business_id' => $business->id, 'is_service' => false]);
+        Product::factory()->create(['business_id' => $business->id, 'is_service' => true, 'track_stock' => false]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?is_service=0')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.is_service', false);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?is_service=1')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.is_service', true);
+
+        // Sin el parametro, Vender necesita ver ambos en la misma consulta.
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+    }
+
+    public function test_creating_a_service_forces_no_stock_tracking_regardless_of_what_the_client_sends(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $category = ProductCategory::factory()->create(['business_id' => $business->id]);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/products', [
+            'name' => 'Corte de cabello',
+            'category_id' => $category->id,
+            'price' => 25000,
+            'is_service' => true,
+            // Un cliente descuidado (o la API de IA) podria mandar esto -
+            // ProductService debe normalizarlo, no confiar en el request.
+            'track_stock' => true,
+            'is_single_sale' => true,
+            'low_stock_alert_threshold' => 5,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('track_stock', false)
+            ->assertJsonPath('is_single_sale', false)
+            ->assertJsonPath('low_stock_alert_threshold', null);
+    }
+
     public function test_creating_a_product_without_an_explicit_sku_generates_one(): void
     {
         $business = Business::factory()->create();

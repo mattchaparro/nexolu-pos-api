@@ -56,6 +56,24 @@ class ProductController extends Controller
         ]);
     }
 
+    /**
+     * Cards de resumen de la pestaña Servicios (productos con
+     * is_service=true): total, precio variable vs. fijo - equivalente de
+     * summary() para el otro catalogo, sin las metricas de stock que no
+     * aplican a un servicio. Puerto de las props extra que
+     * ProductsController::servicesIndex() del legacy le pasa a Index.vue.
+     */
+    public function servicesSummary(Request $request): JsonResponse
+    {
+        $services = Product::where('is_service', true)->get(['id', 'price_varies_at_sale']);
+
+        return response()->json([
+            'total_count' => $services->count(),
+            'variable_price_count' => $services->where('price_varies_at_sale', true)->count(),
+            'fixed_price_count' => $services->where('price_varies_at_sale', false)->count(),
+        ]);
+    }
+
     public function index(Request $request): AnonymousResourceCollection
     {
         $ingredientsEnabled = (bool) $request->user()?->business?->hasFeature('ingredients');
@@ -63,6 +81,15 @@ class ProductController extends Controller
         $query = Product::with('category')
             ->when($ingredientsEnabled, fn ($q) => $q->with('ingredients'))
             ->orderBy('name');
+
+        // Sin el parametro, se listan ambos (lo necesita Vender, que vende
+        // productos y servicios desde la misma grilla) - Catalogo, Compras y
+        // edicion masiva pasan is_service explicito para separar uno del
+        // otro, igual que Admin\InventoryController/PurchasesController/
+        // StockController del legacy.
+        if ($request->has('is_service')) {
+            $query->where('is_service', $request->boolean('is_service'));
+        }
 
         if ($request->filled('search')) {
             $term = '%'.trim((string) $request->input('search')).'%';

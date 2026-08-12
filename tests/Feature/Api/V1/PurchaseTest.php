@@ -90,6 +90,19 @@ class PurchaseTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_services_cannot_be_purchased(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $service = Product::factory()->create(['business_id' => $business->id, 'is_service' => true, 'track_stock' => false]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/purchases', [
+            'purchased_at' => now()->toDateString(),
+            'lines' => [['product_id' => $service->id, 'quantity' => 1, 'line_total_cop' => 1000]],
+        ])->assertStatus(422);
+    }
+
     public function test_credit_purchase_stays_pending_with_a_balance(): void
     {
         $business = Business::factory()->create();
