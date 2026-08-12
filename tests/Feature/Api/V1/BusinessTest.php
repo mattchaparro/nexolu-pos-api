@@ -107,6 +107,28 @@ class BusinessTest extends TestCase
         $this->assertSame('Original', $business->fresh()->name);
     }
 
+    public function test_owner_can_update_service_orders_settings(): void
+    {
+        $business = Business::factory()->create([
+            'service_orders_show_catalog' => true,
+            'service_orders_default_service_name' => null,
+        ]);
+        $owner = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+
+        $this->actingAs($owner, 'sanctum')
+            ->putJson('/api/v1/business', [
+                'service_orders_show_catalog' => false,
+                'service_orders_default_service_name' => 'Servicio Tecnico',
+            ])
+            ->assertOk()
+            ->assertJsonPath('service_orders_show_catalog', false)
+            ->assertJsonPath('service_orders_default_service_name', 'Servicio Tecnico');
+
+        $business->refresh();
+        $this->assertFalse($business->service_orders_show_catalog);
+        $this->assertSame('Servicio Tecnico', $business->service_orders_default_service_name);
+    }
+
     public function test_user_without_a_business_gets_not_found(): void
     {
         $user = User::factory()->create(['business_id' => null]);

@@ -48,6 +48,8 @@ class UpdateBusinessRequest extends FormRequest
             'low_stock_alert_threshold' => ['sometimes', 'integer', 'min:0'],
             'low_stock_email_enabled' => ['sometimes', 'boolean'],
             'low_stock_email' => ['sometimes', 'nullable', 'email'],
+            'service_orders_show_catalog' => ['sometimes', 'boolean'],
+            'service_orders_default_service_name' => ['sometimes', 'nullable', 'string', 'max:100'],
         ];
     }
 }

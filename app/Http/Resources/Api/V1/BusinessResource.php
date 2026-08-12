@@ -38,6 +38,12 @@ class BusinessResource extends JsonResource
             'low_stock_alert_threshold' => $this->low_stock_alert_threshold,
             'low_stock_email_enabled' => $this->low_stock_email_enabled,
             'low_stock_email' => $this->low_stock_email,
+            // Configuracion del formulario de "Nueva orden de servicio" (ver
+            // ServiceOrderFormView.vue en el frontend) - si el negocio quiere
+            // que se pueda elegir un servicio del catalogo, y con que nombre
+            // pre-llenar el campo al crear una orden nueva.
+            'service_orders_show_catalog' => $this->service_orders_show_catalog,
+            'service_orders_default_service_name' => $this->service_orders_default_service_name,
             'feature_flags' => $this->feature_flags,
             // Computado en el modelo (ver Business::hasFeature()) en vez de
             // que el frontend replique la logica de flags/plan por su
