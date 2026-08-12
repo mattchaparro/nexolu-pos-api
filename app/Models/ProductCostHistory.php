@@ -17,6 +17,8 @@ class ProductCostHistory extends Model
 
     const SOURCE_PURCHASE = 'purchase';
 
+    const SOURCE_MANUAL_ADJUSTMENT = 'manual_adjustment';
+
     protected $fillable = [
         'business_id',
         'product_id',

@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\AiDraftController;
 use App\Http\Controllers\Api\V1\AiInsightController;
 use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\BulkStockUpdateController;
 use App\Http\Controllers\Api\V1\BusinessController;
 use App\Http\Controllers\Api\V1\BusinessTableController;
 use App\Http\Controllers\Api\V1\CashClosingController;
@@ -23,6 +24,7 @@ use App\Http\Controllers\Api\V1\EmployeeController;
 use App\Http\Controllers\Api\V1\ExpenseController;
 use App\Http\Controllers\Api\V1\ExpenseTypeController;
 use App\Http\Controllers\Api\V1\FixedExpenseTemplateController;
+use App\Http\Controllers\Api\V1\IngredientBulkStockUpdateController;
 use App\Http\Controllers\Api\V1\IngredientController;
 use App\Http\Controllers\Api\V1\IngredientStockMovementController;
 use App\Http\Controllers\Api\V1\KitchenBoardController;
@@ -140,6 +142,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::apiResource('product-categories', ProductCategoryController::class)->only(['store', 'update', 'destroy']);
             Route::apiResource('products', ProductController::class)->only(['store', 'update', 'destroy']);
         });
+        Route::middleware('permission:inventory.adjust')->group(function () {
+            Route::post('/products/bulk-update', [BulkStockUpdateController::class, 'store'])->name('products.bulk-update');
+        });
 
         Route::middleware(['feature:clients', 'permission:clients.manage'])->group(function () {
             Route::get('/clients/search', [ClientController::class, 'search'])->name('clients.search');
@@ -156,6 +161,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             });
             Route::middleware('permission:inventory.adjust')->group(function () {
                 Route::post('/ingredient-stock-movements', [IngredientStockMovementController::class, 'store'])->name('ingredient-stock-movements.store');
+                Route::post('/ingredients/bulk-update', [IngredientBulkStockUpdateController::class, 'store'])->name('ingredients.bulk-update');
             });
         });
 
