@@ -37,6 +37,7 @@ use App\Http\Controllers\Api\V1\SaleController;
 use App\Http\Controllers\Api\V1\ServiceOrderController;
 use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\StockMovementController;
+use App\Http\Controllers\Api\V1\StockMovementReasonController;
 use App\Http\Controllers\Api\V1\SubscriptionController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\SupportTicketController;
@@ -129,6 +130,11 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::middleware('permission:inventory.view')->group(function () {
             Route::apiResource('product-categories', ProductCategoryController::class)->only(['index', 'show']);
             Route::apiResource('products', ProductController::class)->only(['index', 'show']);
+            // Motivos de movimiento de stock (entrada/salida/ajuste) - lectura
+            // compartida por el formulario de "Ajustar stock" de productos e
+            // insumos, no atada a la feature "ingredients" (los productos
+            // ajustan stock sin necesitarla).
+            Route::get('/stock-movement-reasons', [StockMovementReasonController::class, 'index'])->name('stock-movement-reasons.index');
         });
         Route::middleware('permission:inventory.add')->group(function () {
             Route::apiResource('product-categories', ProductCategoryController::class)->only(['store', 'update', 'destroy']);
