@@ -49,7 +49,12 @@ class BusinessResource extends JsonResource
             // del hub de Catalogo (productos con is_service=true) depende
             // directo del feature flag 'services', sin permiso adicional -
             // se administran con los mismos permisos inventory.* que Productos.
+            // Este mismo flag tambien gatea el modulo de Ordenes de servicio
+            // (feature:services + permission:appointments.manage en
+            // routes/api.php) - un solo flag para las dos superficies.
             'can_access_services' => $this->hasFeature('services'),
+            // Modulo de Apartados (feature:layaway + permission:layaways.manage).
+            'can_access_layaways' => $this->hasFeature('layaway'),
             'subscription_plan' => $this->subscription_plan,
             'subscription_status' => $this->subscriptionStatus(),
             'active' => $this->active,
