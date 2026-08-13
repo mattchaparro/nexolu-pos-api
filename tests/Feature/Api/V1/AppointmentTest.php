@@ -274,6 +274,31 @@ class AppointmentTest extends TestCase
         ]);
     }
 
+    public function test_per_page_can_be_raised_above_the_default_for_the_month_view(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        Appointment::factory()->count(60)->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/appointments?per_page=100')
+            ->assertOk()
+            ->assertJsonCount(60, 'data');
+    }
+
+    public function test_per_page_above_the_cap_is_clamped_to_200(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/appointments?per_page=9999')
+            ->assertOk()
+            ->assertJsonPath('meta.per_page', 200);
+    }
+
     public function test_user_can_delete_an_appointment(): void
     {
         $business = Business::factory()->create();

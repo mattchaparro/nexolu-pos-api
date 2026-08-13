@@ -35,7 +35,14 @@ class AppointmentController extends Controller
             $query->where('user_id', $request->integer('user_id'));
         }
 
-        return AppointmentResource::collection($query->paginate(50)->withQueryString());
+        // La vista de mes de la Agenda pide un rango de hasta ~31 dias de
+        // una sola vez - el tope fijo de 50 (heredado de cuando la Agenda
+        // solo tenia vista semana/dia) se queda corto para un negocio con
+        // varias citas diarias. Mismo patron de clamp que ProductController
+        // (POS necesita el catalogo casi completo de una vez).
+        $perPage = max(1, min((int) $request->integer('per_page', 50), 200));
+
+        return AppointmentResource::collection($query->paginate($perPage)->withQueryString());
     }
 
     public function store(StoreAppointmentRequest $request): AppointmentResource
