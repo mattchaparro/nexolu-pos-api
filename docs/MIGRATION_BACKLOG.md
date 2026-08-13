@@ -343,13 +343,78 @@ módulo por módulo desde los jobs programados, no desde un inventario completo)
 Todos tienen datos ya presentes en `schema.sql` (compartido), así que no hace
 falta migración, solo el código.
 
-- **Clientes frecuentes (`customers`)**: tabla `customers` (`visits_count`,
-  `total_spent`, `last_sale_at`) ya existe en el schema, distinta de `clients`
-  (el directorio CRM que sí se migró). En legacy, `SaleService::syncCustomerProfile()`
-  la alimenta automáticamente desde `sale.customer_name/phone/identification`
-  cada vez que una venta cierra - acá esos 3 campos ya se guardan en `sales`
-  (`app/Models/Sale.php`), pero nunca se agregan a un perfil de cliente
-  recurrente. No hay modelo `Customer`, ni hook en `SaleService`, ni endpoint.
+- **Clientes frecuentes (`customers`)** - análisis arquitectónico
+  (2026-08-13, a pedido del usuario: "¿`clients` y `customers` no deberían
+  ser lo mismo?"):
+
+  **Por qué son dos tablas separadas, sin FK entre sí, y así hay que
+  dejarlas.** Confirmado en el schema compartido (`schema.sql:586-599` y
+  `:629-646`): `clients` no tiene ninguna columna `customer_id`, `customers`
+  no tiene ninguna columna `client_id`, y ninguna clase en legacy importa
+  ambos modelos a la vez - no es un vínculo que se nos haya pasado al migrar,
+  legacy mismo nunca lo tuvo. Es una decisión deliberada de legacy, no un
+  descuido: el propio código lo explica
+  (`app/Services/Ai/Insights/ClientesResumenInsight.php:14-18`, comentario
+  original) - *"Son dos tablas sin relación directa entre sí -- se cruzan por
+  teléfono (más confiable que el nombre) solo cuando ambos lo tienen, nunca
+  por coincidencia de nombre, para no inventar un vínculo que no existe."*
+
+  Son conceptos distintos aunque puedan describir a la misma persona:
+  - **`clients`**: directorio curado. Una fila se crea *a propósito* -
+    alguien del negocio decide "este es un cliente" y lo registra a mano
+    (nombre, teléfono, correo, notas). Es lo único que otras tablas
+    referencian por FK real: `appointments.client_id` y
+    `service_orders.client_id` (`schema.sql:320-340,1717-1740`) - agendar
+    una cita o abrir una orden de servicio **requiere** (opcionalmente)
+    señalar un `Client` real.
+  - **`customers`**: ficha automática, sin curaduría. Se alimenta sola
+    desde datos sueltos de texto libre que ya vive en otras tablas -
+    `sales.customer_name/customer_phone/customer_identification`
+    (`SaleService::syncCustomerProfile()`, ver detalle abajo) - cada vez
+    que una venta de mostrador (Vender) se cierra con esos campos
+    diligenciados, exista o no un `Client` detrás. `layaways` y
+    `receivables` tienen las mismas 2-3 columnas de texto libre
+    (`schema.sql:965-966,1401-1402`) pero **no** están conectadas a
+    `customers` en legacy (solo `sales` lo está) - si se construye esto
+    acá, hay que decidir si se amplía esa cobertura o se porta 1:1 solo
+    para Sale.
+
+  **Por qué NO conviene fusionarlas en una tabla** (aunque conceptualmente
+  describan a la misma persona): las restricciones de unicidad son
+  incompatibles a propósito. `customers` tiene
+  `UNIQUE(business_id, phone)` y `UNIQUE(business_id, identification)`
+  (dedup automático, tiene sentido para una ficha que se autogenera).
+  `clients` no tiene ninguna restricción de unicidad sobre teléfono/correo -
+  un negocio puede tener a propósito dos `Client` con el mismo teléfono
+  (ej. una familia que comparte número). Fusionar rompería esa libertad del
+  directorio curado, y forzaría que cada venta anónima de mostrador con
+  teléfono repetido cree/edite un "cliente" real sin que nadie lo haya
+  pedido.
+
+  **Cómo legacy los cruza, solo para lectura** (no para escritura, nunca
+  agrega una FK): `ClientesResumenInsight::ultimaActividad()` calcula la
+  última actividad de un `Client` como el máximo entre su última cita
+  completada (`appointments.client_id`) y, **si el `Client` tiene
+  teléfono**, la última venta del `Customer` con ese mismo teléfono
+  (`customers.phone`) - un join en memoria por teléfono, hecho en el
+  momento de leer, nunca guardado. Si algún día se construye esto acá,
+  el mismo patrón (bridge de solo-lectura por teléfono, sin FK) es el que
+  hay que portar - no una fusión de tablas.
+
+  **Recomendación para cuando se construya**: portar `Customer` como su
+  propio modelo/tabla (ya existe en el schema, sin tocar), alimentado
+  igual que legacy desde `SaleService`/`SaleService`-equivalente
+  (`syncCustomerProfile()`) al cerrar una venta. En el frontend, la lista
+  de "clientes frecuentes" puede señalar (sin persistirlo) cuáles ya
+  coinciden por teléfono con un `Client` existente, y ofrecer una acción
+  explícita tipo "Registrar como cliente" que **cree** un `Client` nuevo
+  copiando nombre/teléfono - una promoción manual y deliberada, igual que
+  el resto del directorio, nunca un vínculo automático ni una fila
+  compartida.
+
+  **Estado**: sigue sin construirse (no hay modelo `Customer`, hook en
+  `SaleService`, ni endpoint en esta API todavía) - lo de arriba es la
+  guía de diseño para cuando se priorice.
 - ~~**Kitchen Board (comandas de cocina)**~~ ✅ Migrado. `SaleItem` ganó
   `kitchen_status`/`kitchen_updated_at` en fillable/casts (ya existían en
   `Sale`, sin usar - el propio docblock del modelo decía "modulo aparte que
