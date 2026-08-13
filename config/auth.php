@@ -99,7 +99,12 @@ return [
     'passwords' => [
         'users' => [
             'provider' => 'users',
-            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            // 'password_resets': nombre de la tabla en el schema compartido
+            // (legacy tambien la usa, con esa migracion vieja de Laravel -
+            // ver database/legacy-schema/schema.sql) - no el
+            // 'password_reset_tokens' del skeleton default de Laravel 13,
+            // que no existe ahi.
+            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_resets'),
             'expire' => 60,
             'throttle' => 60,
         ],

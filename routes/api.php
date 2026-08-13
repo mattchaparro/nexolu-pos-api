@@ -98,6 +98,8 @@ Route::get('/public/receipts/{type}/{id}', [PublicReceiptController::class, 'sho
 Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::post('/register', [AuthController::class, 'register'])->name('register');
     Route::post('/login', [AuthController::class, 'login'])->name('login');
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->name('password.forgot');
+    Route::post('/reset-password', [AuthController::class, 'resetPassword'])->name('password.reset');
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout'])->name('logout');

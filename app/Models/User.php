@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Mail\ResetPasswordMail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -114,5 +116,19 @@ class User extends Authenticatable
         $lastUsedAt = $this->tokens()->max('last_used_at');
 
         return $lastUsedAt ? Carbon::parse($lastUsedAt) : null;
+    }
+
+    /**
+     * Override del comportamiento por defecto de Laravel (dispararia una
+     * Notification via el canal 'mail' generico) - esta API ya tiene su
+     * propio patron de Mailable + Mail::send() para todo lo demas (ver
+     * WelcomeMail, NewUserCredentialsMail), con logging automatico via
+     * App\Listeners\LogSentEmail. Password::sendResetLink() sigue llamando
+     * este metodo tal cual (es parte del contrato CanResetPassword), solo
+     * cambia que hace con el token.
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        Mail::to($this->email)->send(new ResetPasswordMail($this, $token));
     }
 }

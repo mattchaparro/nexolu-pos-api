@@ -54,6 +54,12 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // URL de nexolu-pos-front (SPA separada, no Blade/Inertia como el
+    // legacy) - usado para armar links que un correo debe abrir en el
+    // frontend, no en esta API (hoy solo el de restablecer contraseña, ver
+    // App\Mail\ResetPasswordMail).
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

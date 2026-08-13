@@ -637,11 +637,28 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   impersonar - falta conectar lo que ya existe del lado API.
 
 ### Auth (api + front)
-- **Recuperar contraseña / verificación de email**: `routes/api.php` solo
-  registra `register`/`login` - no hay `forgot-password`/`reset-password`/
-  `verify-email`. Un usuario que olvide la clave queda bloqueado sin
-  salida. El de mayor prioridad de esta lista (afecta a cualquier usuario,
-  no solo a un flujo administrativo).
+- ~~**Recuperar contraseña**~~ ✅ Migrado: `POST /v1/forgot-password` +
+  `POST /v1/reset-password` (`AuthController`), tabla compartida
+  `password_resets` (legacy también la usa, con esa migración vieja de
+  Laravel - config/auth.php apuntaba al default `password_reset_tokens`
+  del skeleton, que no existe en el schema). `ResetPasswordMail` (patrón
+  Mailable ya establecido en esta API, no `Notification` como legacy) con
+  link al frontend separado (`config('app.frontend_url')`, nueva env
+  `FRONTEND_URL` - a diferencia del legacy, monolito Blade/Inertia donde el
+  link apuntaba a su propia ruta web). **Mejora sobre legacy**: la
+  respuesta de `forgot-password` es siempre el mismo mensaje genérico,
+  exista o no ese correo (el broker de contraseñas por defecto de Laravel,
+  que legacy también usa sin modificar, responde distinto según el caso,
+  permitiendo enumerar qué correos están registrados).
+  `ForgotPasswordView.vue`/`ResetPasswordView.vue` + link "¿Olvidaste tu
+  contraseña?" en `LoginView.vue`.
+  **Confirmado que NO es un gap**: verificación de email
+  (`MustVerifyEmail`) - el propio legacy la implementa pero nunca la
+  aplica a ninguna ruta real (`web.php` no tiene ni un solo
+  `middleware('verified')`; el único uso es en `routes/jetstream.php`,
+  scaffolding propio de Jetstream sin conectar al negocio) - mismo patrón
+  de "existe pero está muerto" que otros hallazgos ya documentados en este
+  archivo (`SaasLead`, `WompiFees`).
 - **Pantalla de registro de negocios**: el backend ya soporta `register`
   vía `BusinessRegistrationService`, pero no existe ninguna vista que lo
   consuma - hoy el alta de negocios depende exclusivamente de SuperAdmin.
