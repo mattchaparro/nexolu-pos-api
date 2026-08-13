@@ -121,6 +121,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::put('/business', [BusinessController::class, 'update'])->name('business.update');
 
         Route::get('/dashboard/summary', [DashboardController::class, 'summary'])->name('dashboard.summary');
+        Route::get('/dashboard/whatsapp-onboarding', [DashboardController::class, 'whatsappOnboarding'])->name('dashboard.whatsapp-onboarding');
+        Route::post('/dashboard/whatsapp-onboarding/dismiss', [DashboardController::class, 'dismissWhatsappOnboarding'])->name('dashboard.whatsapp-onboarding.dismiss');
 
         Route::get('/subscription/status', [SubscriptionController::class, 'status'])->name('subscription.status');
         Route::post('/subscription/checkout', [SubscriptionController::class, 'initiate'])->name('subscription.checkout');

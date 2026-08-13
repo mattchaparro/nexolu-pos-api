@@ -748,17 +748,36 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   legacy).
 
 ### Dashboard (api + front)
-- **Desglose efectivo/transferencia del día**: legacy calcula
-  `today_cash`/`today_transfer` repartiendo por medio de pago, incluyendo
-  fiados cobrados (`DashboardController.php:44-56,71-72`);
-  `DashboardService` nuevo no los devuelve.
+- ~~**Desglose efectivo/transferencia del día**~~ ✅ Migrado (2026-08-13):
+  `today_cash`/`today_transfer` en `DashboardService::todaySummary()`,
+  mismo cálculo que `DashboardController.php:44-56` del legacy -
+  `Sale::allocatedRevenueByPaymentMethod()` (ya existía, compartida con
+  cierre de caja) por cada venta cerrada + `payment_method` de los fiados
+  cobrados hoy. Solo efectivo/transferencia se desglosan, igual que
+  legacy (el resto de métodos no se abren en cards aparte).
 - **Atajos configurables por usuario**: `userShortcuts` +
   `DashboardController::updateShortcuts()` (`:88,152`) no están portados
-  (`DashboardView.vue` solo tiene 5 stat cards + consejo del día).
+  (`DashboardView.vue` solo tiene stat cards + consejo del día).
   Prioridad baja.
-- **Card de onboarding de WhatsApp**: `whatsappOnboarding()` +
-  `dismissWhatsappOnboarding()` (`:107-152`) - sin ella, nadie descubre
-  desde el dashboard que debe vincular el canal de WhatsApp.
+- ~~**Card de onboarding de WhatsApp**~~ ✅ Migrado con alcance reducido
+  (2026-08-13): `GET /dashboard/whatsapp-onboarding` +
+  `POST .../dismiss` (mismas condiciones que
+  `DashboardController::whatsappOnboarding()` del legacy: null si el
+  usuario ya lo cerró, no tiene `ai_chat.use`, o el negocio tiene
+  `ai_chat_blocked`) + `WhatsappOnboardingCard.vue`. Dos diferencias
+  deliberadas con legacy:
+  - El checklist de "alertas activas" (`notification_preferences`) no se
+    portó - esta API todavía no tiene una pantalla de Ajustes donde
+    configurarlas (no existe en ningún lado del frontend, ver
+    `BusinessSettingsView.vue`), así que mostrar un check que nadie puede
+    prender confundiría más de lo que ayuda. Cuando exista esa pantalla,
+    agregar el checklist completo es trabajo aparte.
+  - Legacy enlaza a Ajustes > IA para vincular; acá no existe esa
+    pantalla tampoco, así que el flujo de vínculo (teléfono → código)
+    vive inline en el card mismo, reusando
+    `POST /ai/channels/whatsapp/start|confirm` (ya existían, sin ningún
+    frontend que los consumiera hasta ahora - la vinculación en sí era un
+    gap más grande de lo que el ítem original del backlog sugería).
 
 ### SuperAdmin (api + front)
 - **Salir de impersonación del lado del servidor**: legacy tiene

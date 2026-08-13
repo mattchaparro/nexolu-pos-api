@@ -17,4 +17,19 @@ class DashboardController extends Controller
             $this->dashboard->todaySummary($request->user()->business)
         );
     }
+
+    public function whatsappOnboarding(Request $request): JsonResponse
+    {
+        // ->setData(): ver la misma nota en BusinessServiceWorkflowController::show()
+        // sobre por que null tiene que emitirse asi para llegar como JSON
+        // null real, no "{}".
+        return response()->json()->setData($this->dashboard->whatsappOnboarding($request->user()));
+    }
+
+    public function dismissWhatsappOnboarding(Request $request): JsonResponse
+    {
+        $request->user()->forceFill(['whatsapp_onboarding_dismissed_at' => now()])->save();
+
+        return response()->json(['ok' => true]);
+    }
 }
