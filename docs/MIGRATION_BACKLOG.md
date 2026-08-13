@@ -662,16 +662,22 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   (ver comentario en `SellView.vue`). Prioridad baja.
 
 ### Catálogo (api + front)
-- **Duplicar producto**: `Admin\ProductsController::duplicate()` en legacy
-  (`routes/admin.php:94`) no tiene equivalente en `ProductController`.
-- **Exportar catálogo a PDF**: `ProductsController::catalogPdf()` en legacy
-  (`routes/admin.php:69`). Con dompdf ya instalado (ver receipts arriba),
-  esto es mucho más chico de lo que hubiera sido antes.
+- ~~**Duplicar producto**~~ ✅ Migrado (2026-08-13): `ProductService::duplicate()`
+  + `POST /products/{product}/duplicate`, mismo patrón que
+  `Admin\ProductsController::duplicate()` del legacy (sufijo `-COPIAN` libre
+  contra `withTrashed()`, stock en 0, receta copiada con las mismas
+  cantidades).
+- **Exportar catálogo a PDF**: decisión explícita de no migrar - nadie lo
+  usaba en el legacy (`ProductsController::catalogPdf()`,
+  `routes/admin.php:69`). No construir salvo que el usuario lo pida de
+  nuevo.
 
 ### Órdenes de servicio (api + front)
-- **Eliminar orden**: `ServiceOrdersController::destroy()` en legacy
-  (`routes/admin.php:90`) no existe en `ServiceOrderController`; el show
-  nuevo solo ofrece Abonar/Editar/Cancelar.
+- ~~**Eliminar orden**~~ ✅ Migrado (2026-08-13): `ServiceOrderService::delete()`
+  + `DELETE /service-orders/{serviceOrder}` - a diferencia del legacy (un
+  `delete()` sin más, bug real: un abono ya cobrado desaparecía de los
+  libros), acá se reembolsan los pagos primero (mismo patrón de fila
+  negativa que `cancel()`) y se cancela la cita vinculada si sigue activa.
 - **Filtro por etapa del workflow en el listado**: legacy filtra por
   `stage_id` y devuelve `workflowStages` para los chips
   (`ServiceOrdersController.php:31-32,57`); el índice nuevo solo acepta

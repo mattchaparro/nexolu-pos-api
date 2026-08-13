@@ -84,6 +84,13 @@ class ServiceOrderController extends Controller
         return response()->noContent();
     }
 
+    public function destroy(Request $request, ServiceOrder $serviceOrder): Response
+    {
+        $this->serviceOrderService->delete($request->user(), $serviceOrder);
+
+        return response()->noContent();
+    }
+
     public function setStage(SetServiceOrderStageRequest $request, ServiceOrder $serviceOrder): ServiceOrderResource
     {
         $order = $this->serviceOrderService->setStage(

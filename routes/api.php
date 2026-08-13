@@ -162,6 +162,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         });
         Route::middleware('permission:inventory.add')->group(function () {
             Route::apiResource('product-categories', ProductCategoryController::class)->only(['store', 'update', 'destroy']);
+            Route::post('/products/{product}/duplicate', [ProductController::class, 'duplicate'])->name('products.duplicate');
             Route::apiResource('products', ProductController::class)->only(['store', 'update', 'destroy']);
         });
         Route::middleware('permission:inventory.adjust')->group(function () {
@@ -322,7 +323,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             // metodos del controller - mismo bug ya encontrado en
             // BusinessTableController/OpenTabController.
             Route::apiResource('service-orders', ServiceOrderController::class)
-                ->only(['index', 'show', 'store', 'update'])
+                ->only(['index', 'show', 'store', 'update', 'destroy'])
                 ->parameters(['service-orders' => 'serviceOrder']);
         });
 

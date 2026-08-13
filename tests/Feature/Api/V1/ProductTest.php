@@ -443,6 +443,60 @@ class ProductTest extends TestCase
         $this->assertSoftDeleted('products', ['id' => $product->id]);
     }
 
+    public function test_duplicate_creates_a_copy_with_a_free_sku_and_zeroed_stock(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $product = Product::factory()->create(['business_id' => $business->id, 'name' => 'Camisa Azul', 'sku' => 'CAM-001', 'stock' => 40]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/products/{$product->id}/duplicate")
+            ->assertCreated();
+
+        $response->assertJsonPath('name', 'Camisa Azul — Copia 1');
+        $response->assertJsonPath('sku', 'CAM-001-COPIA1');
+        $response->assertJsonPath('stock', 0);
+        $this->assertDatabaseHas('products', ['business_id' => $business->id, 'sku' => 'CAM-001', 'stock' => 40]);
+    }
+
+    public function test_duplicating_twice_picks_the_next_free_copy_suffix(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $product = Product::factory()->create(['business_id' => $business->id, 'sku' => 'CAM-001']);
+
+        $this->actingAs($user, 'sanctum')->postJson("/api/v1/products/{$product->id}/duplicate")->assertCreated();
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/products/{$product->id}/duplicate")
+            ->assertCreated();
+
+        $response->assertJsonPath('sku', 'CAM-001-COPIA2');
+    }
+
+    public function test_duplicate_copies_the_recipe_with_the_same_quantities(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['ingredients' => true]]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $product = Product::factory()->create(['business_id' => $business->id, 'sku' => 'PIZ-001']);
+        $ingredient = Ingredient::factory()->create(['business_id' => $business->id]);
+        $product->ingredients()->attach($ingredient->id, ['quantity' => 2.5]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/products/{$product->id}/duplicate")
+            ->assertCreated();
+
+        $copyId = $response->json('id');
+        $this->assertDatabaseHas('ingredient_product', [
+            'product_id' => $copyId,
+            'ingredient_id' => $ingredient->id,
+            'quantity' => 2.5,
+        ]);
+    }
+
     public function test_created_product_response_reflects_database_defaults_not_nulls(): void
     {
         // Bug real: store() devolvia el modelo recien creado sin refrescar de

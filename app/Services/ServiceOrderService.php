@@ -206,6 +206,28 @@ class ServiceOrderService
         }
     }
 
+    /**
+     * Elimina la orden (soft delete). A diferencia del legacy
+     * (ServiceOrdersController::destroy() alla era un delete() sin mas,
+     * bug real: un abono ya cobrado desaparecia de los libros sin dejar
+     * rastro), acá se reembolsa primero cualquier pago con el mismo patron
+     * de fila negativa que cancel() - los pagos originales quedan intactos
+     * para un cierre de caja ya hecho, y se cancela la cita vinculada si
+     * tiene una todavia activa.
+     */
+    public function delete(User $user, ServiceOrder $order): void
+    {
+        $this->refundPayments($user, $order, 'Reembolso por eliminación de la orden');
+
+        if ($order->appointment_id) {
+            Appointment::where('id', $order->appointment_id)
+                ->whereNotIn('status', ['completed', 'cancelled'])
+                ->update(['status' => 'cancelled']);
+        }
+
+        $order->delete();
+    }
+
     private function refundPayments(User $user, ServiceOrder $order, string $reason): void
     {
         PaymentRefunder::refundGroupedByMethod($order->payments(), fn (string $method, float $total) => [

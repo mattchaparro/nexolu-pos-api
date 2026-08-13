@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Models\Appointment;
 use App\Models\Business;
 use App\Models\BusinessServiceWorkflow;
 use App\Models\Client;
@@ -203,6 +204,63 @@ class ServiceOrderTest extends TestCase
         $this->actingAs($user, 'sanctum')
             ->postJson("/api/v1/service-orders/{$order->id}/cancel")
             ->assertStatus(422);
+    }
+
+    public function test_delete_refunds_pending_payments_as_negative_rows_and_soft_deletes(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $order = ServiceOrder::factory()->create(['business_id' => $business->id, 'total' => 30000, 'amount_paid' => 12000, 'status' => 'partial']);
+        $order->payments()->create([
+            'business_id' => $business->id, 'amount' => 12000, 'payment_method' => 'cash', 'recorded_by_user_id' => $user->id,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/v1/service-orders/{$order->id}")
+            ->assertNoContent();
+
+        $this->assertSoftDeleted('service_orders', ['id' => $order->id]);
+        $this->assertDatabaseHas('service_payments', [
+            'service_order_id' => $order->id,
+            'amount' => -12000,
+            'payment_method' => 'cash',
+        ]);
+    }
+
+    public function test_delete_without_payments_does_not_create_a_refund_row(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $order = ServiceOrder::factory()->create(['business_id' => $business->id, 'total' => 30000, 'amount_paid' => 0, 'status' => 'pending']);
+
+        $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/v1/service-orders/{$order->id}")
+            ->assertNoContent();
+
+        $this->assertSoftDeleted('service_orders', ['id' => $order->id]);
+        $this->assertDatabaseCount('service_payments', 0);
+    }
+
+    public function test_deleting_an_order_cancels_its_still_active_linked_appointment(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $appointment = Appointment::factory()->create(['business_id' => $business->id, 'status' => 'confirmed']);
+        $order = ServiceOrder::factory()->create([
+            'business_id' => $business->id,
+            'appointment_id' => $appointment->id,
+            'total' => 10000,
+            'amount_paid' => 0,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/v1/service-orders/{$order->id}")
+            ->assertNoContent();
+
+        $this->assertDatabaseHas('appointments', ['id' => $appointment->id, 'status' => 'cancelled']);
     }
 
     public function test_user_can_only_see_their_business_service_orders(): void

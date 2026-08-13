@@ -39,6 +39,50 @@ class ProductService
         return $product->refresh()->load('category', 'ingredients');
     }
 
+    /**
+     * Duplica un producto - puerto de
+     * Admin\ProductsController::duplicate() del legacy, incluyendo el bug
+     * real que ese metodo ya corregia alla: el SKU es unico por
+     * (business_id, sku) y replicate() copia el de origen tal cual, asi
+     * que duplicar CUALQUIER producto violaba esa unicidad de una (visto
+     * en Sentry en produccion, POS-NEXOLU-S). Se busca un sufijo
+     * -COPIAN libre contra withTrashed() porque el indice unico de MySQL
+     * no excluye los borrados. El stock arranca en 0 (la copia no hereda
+     * existencias fisicas del original); la receta (si tiene) se copia
+     * con las mismas cantidades.
+     */
+    public function duplicate(Business $business, Product $product): Product
+    {
+        $baseName = preg_replace('/\s+—\sCopia\s\d+$/u', '', $product->name);
+        $baseSku = preg_replace('/-COPIA\d+$/', '', (string) $product->sku);
+
+        $n = 1;
+        while (
+            Product::withTrashed()
+                ->where('business_id', $business->id)
+                ->where('sku', $baseSku.'-COPIA'.$n)
+                ->exists()
+        ) {
+            $n++;
+        }
+
+        $copy = $product->replicate(['stock']);
+        $copy->name = $baseName.' — Copia '.$n;
+        $copy->sku = $baseSku.'-COPIA'.$n;
+        $copy->stock = 0;
+        $copy->save();
+
+        $ingredients = $business->hasFeature('ingredients') ? $product->ingredients : collect();
+        if ($ingredients->isNotEmpty()) {
+            $this->syncIngredients($copy, $ingredients->map(fn ($i) => [
+                'ingredient_id' => $i->id,
+                'quantity' => (float) $i->pivot->quantity,
+            ])->all());
+        }
+
+        return $copy->refresh()->load('category', 'ingredients');
+    }
+
     /** @param  array<string, mixed>  $data */
     public function update(Business $business, Product $product, array $data): Product
     {

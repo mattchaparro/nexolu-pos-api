@@ -208,4 +208,11 @@ class ProductController extends Controller
 
         return response()->noContent();
     }
+
+    public function duplicate(Request $request, Product $product): ProductResource
+    {
+        $copy = $this->productService->duplicate($request->user()->business, $product);
+
+        return new ProductResource($copy);
+    }
 }
