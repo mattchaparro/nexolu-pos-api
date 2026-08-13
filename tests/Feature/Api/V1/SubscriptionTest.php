@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Models\Business;
+use App\Models\SaasSubscriptionPayment;
 use App\Models\SubscriptionCheckoutOrder;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -48,6 +49,27 @@ class SubscriptionTest extends TestCase
             ->assertJsonPath('pricing.plan_base_cop', 65000)
             ->assertJsonPath('pricing.is_promo_eligible', false)
             ->assertJsonPath('pricing.total_cop', 65000);
+    }
+
+    public function test_status_includes_the_recent_payment_history(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $payment = SaasSubscriptionPayment::factory()->for($business)->create([
+            'amount_cop' => 65000,
+            'period_label' => '2026-08',
+            'paid_at' => now()->subDays(2),
+            'payment_method' => 'wompi',
+            'days_granted' => 30,
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')->getJson('/api/v1/subscription/status');
+
+        $response->assertOk()
+            ->assertJsonPath('payments.0.id', $payment->id)
+            ->assertJsonPath('payments.0.amount_cop', 65000)
+            ->assertJsonPath('payments.0.payment_method', 'wompi')
+            ->assertJsonPath('payments.0.days_granted', 30);
     }
 
     public function test_status_applies_the_promo_discount_for_a_new_business(): void

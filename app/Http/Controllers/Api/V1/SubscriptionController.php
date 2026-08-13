@@ -20,8 +20,22 @@ class SubscriptionController extends Controller
         return response()->json([
             'status' => $business->subscriptionStatus(),
             'days_remaining' => $business->daysRemaining(),
+            'trial_ends_at' => $business->trial_ends_at?->toDateString(),
             'paid_until' => $business->paid_until?->toDateString(),
             'pricing' => $this->subscriptions->pricingBreakdown($business),
+            'payments' => $business->saasSubscriptionPayments()
+                ->orderByDesc('paid_at')
+                ->orderByDesc('id')
+                ->limit(12)
+                ->get()
+                ->map(fn ($payment) => [
+                    'id' => $payment->id,
+                    'amount_cop' => $payment->amount_cop,
+                    'period_label' => $payment->period_label,
+                    'paid_at' => $payment->paid_at?->toDateString(),
+                    'payment_method' => $payment->payment_method,
+                    'days_granted' => $payment->days_granted,
+                ]),
         ]);
     }
 
