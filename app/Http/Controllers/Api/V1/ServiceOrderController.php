@@ -98,6 +98,11 @@ class ServiceOrderController extends Controller
         return $this->receiptDownloadResponse(app(ReceiptPdfService::class)->forServiceOrder($serviceOrder));
     }
 
+    public function printReceipt(Request $request, ServiceOrder $serviceOrder): Response
+    {
+        return $this->receiptPrintResponse(app(ReceiptPdfService::class)->printServiceOrder($serviceOrder, $request->boolean('auto_print', true)));
+    }
+
     public function sendReceipt(Request $request, ServiceOrder $serviceOrder): JsonResponse
     {
         return $this->receiptSendResponse($request, 'service-order', $serviceOrder->id, 'Comprobante de orden de servicio');

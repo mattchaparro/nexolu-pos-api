@@ -82,6 +82,72 @@ class ReceiptTest extends TestCase
             ->assertNotFound();
     }
 
+    // --- Version HTML para imprimir directo (distinta del PDF de arriba,
+    // pensada para que el navegador dispare window.print() contra la
+    // impresora termica sin pasar por un visor de PDF) ---
+
+    public function test_sale_receipt_print_returns_printable_html(): void
+    {
+        [$business, $user] = $this->admin();
+        $sale = Sale::factory()->create(['business_id' => $business->id]);
+        SaleItem::factory()->create(['sale_id' => $sale->id]);
+
+        $response = $this->actingAs($user, 'sanctum')->get("/api/v1/sales/{$sale->id}/receipt/print");
+
+        $response->assertOk();
+        $this->assertStringContainsString('text/html', $response->headers->get('Content-Type'));
+        $response->assertSee('window.print()', false);
+        $response->assertSee('Recibo de venta');
+    }
+
+    public function test_service_order_receipt_print_returns_printable_html(): void
+    {
+        [$business, $user] = $this->admin();
+        $order = ServiceOrder::factory()->create(['business_id' => $business->id]);
+
+        $response = $this->actingAs($user, 'sanctum')->get("/api/v1/service-orders/{$order->id}/receipt/print");
+
+        $response->assertOk();
+        $this->assertStringContainsString('text/html', $response->headers->get('Content-Type'));
+        $response->assertSee('window.print()', false);
+    }
+
+    public function test_layaway_receipt_print_returns_printable_html(): void
+    {
+        [$business, $user] = $this->admin();
+        $layaway = Layaway::factory()->create(['business_id' => $business->id]);
+        LayawayItem::factory()->create(['layaway_id' => $layaway->id]);
+
+        $response = $this->actingAs($user, 'sanctum')->get("/api/v1/layaways/{$layaway->id}/receipt/print");
+
+        $response->assertOk();
+        $this->assertStringContainsString('text/html', $response->headers->get('Content-Type'));
+        $response->assertSee('window.print()', false);
+    }
+
+    public function test_receipt_print_omits_the_auto_print_script_when_auto_print_is_false(): void
+    {
+        [$business, $user] = $this->admin();
+        $sale = Sale::factory()->create(['business_id' => $business->id]);
+        SaleItem::factory()->create(['sale_id' => $sale->id]);
+
+        $response = $this->actingAs($user, 'sanctum')->get("/api/v1/sales/{$sale->id}/receipt/print?auto_print=0");
+
+        $response->assertOk();
+        $response->assertDontSee('<script>window.print();</script>', false);
+    }
+
+    public function test_cannot_print_a_receipt_for_another_businesss_sale(): void
+    {
+        [, $user] = $this->admin();
+        $otherBusiness = Business::factory()->create();
+        $sale = Sale::factory()->create(['business_id' => $otherBusiness->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->get("/api/v1/sales/{$sale->id}/receipt/print")
+            ->assertNotFound();
+    }
+
     // --- Envio (dispara el job en cola) ---
 
     public function test_sending_a_sale_receipt_queues_the_job(): void

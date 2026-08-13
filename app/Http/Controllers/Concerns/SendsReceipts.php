@@ -27,6 +27,12 @@ trait SendsReceipts
         ]);
     }
 
+    /** @param  array{html: string, business: Business}  $print */
+    private function receiptPrintResponse(array $print): Response
+    {
+        return response($print['html'], 200, ['Content-Type' => 'text/html; charset=UTF-8']);
+    }
+
     /**
      * @param  'sale'|'service-order'|'layaway'  $entityType
      */

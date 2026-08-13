@@ -237,6 +237,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::post('/sales/{sale}/reverse', [SaleController::class, 'reverse'])->name('sales.reverse');
         Route::get('/sales/{sale}/receipt', [SaleController::class, 'receipt'])->name('sales.receipt');
+        Route::get('/sales/{sale}/receipt/print', [SaleController::class, 'printReceipt'])->name('sales.receipt.print');
         Route::post('/sales/{sale}/receipt/send', [SaleController::class, 'sendReceipt'])->name('sales.receipt.send');
         Route::apiResource('sales', SaleController::class)->only(['index', 'show', 'store']);
 
@@ -282,6 +283,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::post('/layaways/{layaway}/complete', [LayawayController::class, 'complete'])->name('layaways.complete');
             Route::post('/layaways/{layaway}/cancel', [LayawayController::class, 'cancel'])->name('layaways.cancel');
             Route::get('/layaways/{layaway}/receipt', [LayawayController::class, 'receipt'])->name('layaways.receipt');
+            Route::get('/layaways/{layaway}/receipt/print', [LayawayController::class, 'printReceipt'])->name('layaways.receipt.print');
             Route::post('/layaways/{layaway}/receipt/send', [LayawayController::class, 'sendReceipt'])->name('layaways.receipt.send');
             Route::apiResource('layaways', LayawayController::class)->only(['index', 'show', 'store']);
         });
@@ -300,6 +302,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::post('/service-orders/{serviceOrder}/cancel', [ServiceOrderController::class, 'cancel'])->name('service-orders.cancel');
             Route::patch('/service-orders/{serviceOrder}/stage', [ServiceOrderController::class, 'setStage'])->name('service-orders.stage.update');
             Route::get('/service-orders/{serviceOrder}/receipt', [ServiceOrderController::class, 'receipt'])->name('service-orders.receipt');
+            Route::get('/service-orders/{serviceOrder}/receipt/print', [ServiceOrderController::class, 'printReceipt'])->name('service-orders.receipt.print');
             Route::post('/service-orders/{serviceOrder}/receipt/send', [ServiceOrderController::class, 'sendReceipt'])->name('service-orders.receipt.send');
             // parameters(): el nombre que apiResource() deriva de 'service-orders'
             // (service_order) no coincide con el ServiceOrder $serviceOrder de los

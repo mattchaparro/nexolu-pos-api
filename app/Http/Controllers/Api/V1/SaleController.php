@@ -55,6 +55,11 @@ class SaleController extends Controller
         return $this->receiptDownloadResponse(app(ReceiptPdfService::class)->forSale($sale));
     }
 
+    public function printReceipt(Request $request, Sale $sale): Response
+    {
+        return $this->receiptPrintResponse(app(ReceiptPdfService::class)->printSale($sale, $request->boolean('auto_print', true)));
+    }
+
     public function sendReceipt(Request $request, Sale $sale): JsonResponse
     {
         return $this->receiptSendResponse($request, 'sale', $sale->id, 'Recibo de venta');

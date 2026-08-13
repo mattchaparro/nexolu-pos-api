@@ -86,6 +86,11 @@ class LayawayController extends Controller
         return $this->receiptDownloadResponse(app(ReceiptPdfService::class)->forLayaway($layaway));
     }
 
+    public function printReceipt(Request $request, Layaway $layaway): Response
+    {
+        return $this->receiptPrintResponse(app(ReceiptPdfService::class)->printLayaway($layaway, $request->boolean('auto_print', true)));
+    }
+
     public function sendReceipt(Request $request, Layaway $layaway): JsonResponse
     {
         return $this->receiptSendResponse($request, 'layaway', $layaway->id, 'Comprobante de apartado');
