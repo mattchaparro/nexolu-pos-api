@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Http\Controllers\Api\V1\SuperAdmin\ImpersonateController;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\ForgotPasswordRequest;
 use App\Http\Requests\Api\V1\LoginRequest;
@@ -10,6 +11,7 @@ use App\Http\Requests\Api\V1\ResetPasswordRequest;
 use App\Http\Resources\Api\V1\UserResource;
 use App\Models\User;
 use App\Services\BusinessRegistrationService;
+use App\Support\AuditLogger;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -55,7 +57,21 @@ class AuthController extends Controller
 
     public function logout(Request $request): JsonResponse
     {
-        $request->user()->currentAccessToken()->delete();
+        $user = $request->user();
+        $token = $user->currentAccessToken();
+
+        // Si el token que se cierra es de impersonacion, es un superadmin
+        // saliendo de "ver como" - ver ImpersonateController::start(). El
+        // inicio ya queda auditado; sin esto, el cierre no dejaba rastro.
+        if (str_starts_with((string) $token->name, ImpersonateController::TOKEN_NAME_PREFIX)) {
+            AuditLogger::log('superadmin.impersonation.ended', [
+                'business_id' => $user->business_id,
+                'impersonated_user_id' => $user->id,
+                'superadmin_id' => (int) substr((string) $token->name, strlen(ImpersonateController::TOKEN_NAME_PREFIX)),
+            ]);
+        }
+
+        $token->delete();
 
         return response()->json(status: 204);
     }

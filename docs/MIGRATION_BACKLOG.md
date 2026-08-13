@@ -806,21 +806,53 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
     gap más grande de lo que el ítem original del backlog sugería).
 
 ### SuperAdmin (api + front)
-- **Salir de impersonación del lado del servidor**: legacy tiene
-  `ImpersonateController::stop()`/`switchUser()` (`:42,70`); el nuevo solo
-  expone `start()`. El front hoy resuelve esto solo con el token guardado
-  en el store, sin un endpoint de cierre limpio.
-- **Acciones de suscripción en la UI**: el backend ya tiene `activate`/
-  `extendTrial`/`setCustomPrice`/`changePlan` (`BusinessesController.php:225-262`),
-  pero `SuperAdminBusinessesView.vue` los omite a propósito (ver comentario
-  en el archivo) - hoy no se puede activar un pago ni extender un trial
-  desde el panel nuevo. Solo falta el front.
+- ~~**Salir de impersonación del lado del servidor**~~ ✅ Resuelto
+  (2026-08-13): no hace falta un endpoint `stop` dedicado - el front ya
+  salía llamando `POST /logout` con el token de impersonación como bearer
+  (`AuthStore::stopImpersonating`), y eso ya revocaba ese token server-side
+  (`AuthController::logout` -> `currentAccessToken()->delete()`). Lo que
+  faltaba era la auditoría del cierre: solo quedaba loggeado
+  `superadmin.impersonation.started`, nunca el fin de la sesión. `logout()`
+  ahora detecta si el token que se está cerrando es de impersonación
+  (prefijo `ImpersonateController::TOKEN_NAME_PREFIX`) y loguea
+  `superadmin.impersonation.ended` con `superadmin_id`/`impersonated_user_id`/
+  `business_id` antes de revocarlo. Ver `ImpersonateTest::test_ending_an_impersonation_session_is_audited`.
+- ~~**Toggle de features por negocio en la UI**~~ ✅ Resuelto (2026-08-13):
+  el backend (`PATCH .../businesses/{business}/config`) ya existía completo;
+  la pestaña "Features" de `SuperAdminBusinessShowView.vue` era de solo
+  lectura a propósito (ver el comentario que tenía el archivo). Ahora cada
+  fila tiene un `NxSwitch`, con "Guardar cambios"/"Descartar cambios" (una
+  sola escritura por lote, no una por click) - ver
+  `useBusinessMutations.ts`.
+- ~~**Acciones de suscripción en la UI**~~ ✅ Resuelto (2026-08-13): el
+  backend ya tenía `activate`/`extendTrial`/`setCustomPrice`/`changePlan`
+  (`BusinessesController.php:225-262`); ahora `SuperAdminBusinessShowView.vue`
+  tiene un botón "Gestionar suscripción" que abre
+  `SubscriptionActionsModal.vue` (selector de acción + el formulario de
+  cada una) en vez de 4 componentes separados para 4 formularios chicos.
 - **Comunicaciones por negocio**: `communications()`/`previewEmail()`/
   `sendEmail()` de legacy (`BusinessesController.php:606,648,688`) sin
   equivalente - el `EmailController` nuevo solo hace logs/plantillas
   globales, no envío dirigido por negocio.
-- **Limpiar caché del negocio / addon de IA**: `flushCache()` (`:357`) y
-  `setAiAddon()` (`:541`) sin portar (`toggleAiChatBlock` es otra cosa).
+- **Limpiar caché del negocio**: `flushCache()` de legacy
+  (`BusinessesController.php:357`) sin portar.
+- **Addon de IA (cupo mensual + compra de paquetes adicionales)**: en el
+  legacy actual (no en el momento en que se escribió el ítem original de
+  este backlog) el asistente de IA + WhatsApp van incluidos en todo plan
+  con un cupo mensual de consultas; al agotarse, el negocio puede comprar
+  un paquete de mensajes adicionales que se cobra aparte (saldo que no
+  vence) - ver `AiMessagePackService`/`ai_message_pack_purchases` y
+  `SubscriptionPricingService::aiAddonPrice()` del legacy, migración
+  `2026_07_30_110000_create_ai_message_packs`. Las columnas heredadas ya
+  están en `schema.sql` (`ai_chat_enabled`, `ai_chat_billable`,
+  `ai_message_pack_balance`, `ai_chat_trial_*`, tabla
+  `ai_message_pack_purchases`), pero **nada de esta API las usa todavía** -
+  el acceso al Asistente hoy se resuelve solo por el permiso `ai_chat.use`,
+  sin cuota ni compra de paquetes. Lo único real construido es
+  `ai_chat_blocked` (interruptor de emergencia on/off, `toggleAiChatBlock`).
+  Falta: portar `AiAccessService`/`AiMessagePackService` (cupo mensual,
+  descuento por consulta, checkout del paquete) - módulo propio, no un
+  ítem chico.
 - **Filtros de estado del listado de negocios**: legacy filtra por
   `trial|paid|inactive|expired|winback` (`:37-54`);
   `SuperAdminBusinessesView.vue` solo tiene buscador de texto.
