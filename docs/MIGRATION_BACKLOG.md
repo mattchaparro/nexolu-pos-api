@@ -639,12 +639,28 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   listado nuevo solo muestra el saldo por fila. Menor.
 
 ### Agenda (api + front)
-- **Vista por día**: legacy tiene toggle Día/Semana
-  (`Pages/Admin/Appointments/Index.vue:582-603`); `AgendaView.vue` solo
-  maneja semana. En agendas densas la vista semanal no alcanza.
-- **Eliminar cita**: `AppointmentsController::destroy()` en legacy
-  (`:306`) no existe en `AppointmentController` ni en
-  `useAppointmentMutations.ts`.
+- ~~**Vista por día/mes**~~ ✅ Migrado y ampliado (2026-08-13): legacy
+  tiene toggle Día/Semana (`Pages/Admin/Appointments/Index.vue:582-603`);
+  `AgendaView.vue` ahora tiene Día/Semana/**Mes** (Mes es nuevo, sin
+  equivalente en legacy - pedido explícito). `WeekCalendar.vue` se
+  generalizó a `TimeGridCalendar.vue` (recibe `days: Date[]` en vez de
+  `weekStart`, así Día y Semana comparten el mismo posicionamiento por
+  hora); `MonthCalendar.vue` es la grilla de mes nueva. De paso se
+  corrigió un bug real en `AppointmentController::index()`: el filtro
+  `to` comparaba contra la medianoche del día (`Request::date()`), así
+  que cualquier cita de esa tarde/noche quedaba fuera del rango - no se
+  notaba con semana/día porque el `to` casi nunca caía en un día con
+  citas de la tarde, pero con Mes (rango de varios días, cada límite
+  diario mal cortado) sí. También se agregó `per_page` a ese mismo
+  endpoint (tope 200, mismo patrón que `ProductController`) - el
+  `paginate(50)` fijo se quedaba corto para el rango de un mes completo.
+- ~~**Eliminar cita**~~ ✅ Migrado: `DELETE /v1/appointments/{id}`, puerto
+  directo de `AppointmentsController::destroy()` de legacy (sin guardas
+  extra). `Appointment` usa `SoftDeletes`, así que es un soft-delete - una
+  orden de servicio vinculada (si la hay) no se toca, sigue con sus pagos
+  intactos, solo la cita desaparece del calendario. Botón "Eliminar" en
+  `AppointmentDetailModal.vue`, distinto de "Cancelar" (que además
+  reembolsa la orden).
 - ~~**"Cobrar cita" sin orden previa**~~ ✅ Confirmado que NO es un gap
   (2026-08-13): en legacy una cita se podía agendar sin decidir el
   servicio, y `chargeAppointment()` (`AppointmentsController.php:313-360`)
