@@ -168,9 +168,19 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::post('/products/bulk-update', [BulkStockUpdateController::class, 'store'])->name('products.bulk-update');
         });
 
-        Route::middleware(['feature:clients', 'permission:clients.manage'])->group(function () {
+        Route::middleware('feature:clients')->group(function () {
+            // Busqueda liviana + alta rapida: cualquiera que pueda vender,
+            // agendar o apartar necesita poder buscar/crear un cliente en el
+            // momento (ver ClientMatchField.vue en el front), sin el permiso
+            // clients.manage - ese es solo para el directorio completo
+            // (listar/editar/borrar), no para esto. Mismo criterio que
+            // Kitchen Board: no es una accion administrativa sensible.
             Route::get('/clients/search', [ClientController::class, 'search'])->name('clients.search');
-            Route::apiResource('clients', ClientController::class);
+            Route::post('/clients', [ClientController::class, 'store'])->name('clients.store');
+
+            Route::middleware('permission:clients.manage')->group(function () {
+                Route::apiResource('clients', ClientController::class)->except(['store']);
+            });
         });
 
         Route::middleware('feature:ingredients')->group(function () {

@@ -115,4 +115,42 @@ class ClientTest extends TestCase
 
         $this->assertSoftDeleted('clients', ['id' => $client->id]);
     }
+
+    /**
+     * search()/store() no exigen clients.manage a proposito: cualquiera que
+     * pueda vender/agendar/apartar necesita poder buscar o dar de alta un
+     * cliente en el momento, sin el permiso del directorio completo.
+     */
+    public function test_an_employee_without_clients_manage_can_search_and_create_clients(): void
+    {
+        $business = Business::factory()->create();
+        $employee = User::factory()->create(['business_id' => $business->id]);
+        $employee->assignRole('employee');
+
+        Client::factory()->create(['business_id' => $business->id, 'name' => 'Maria Perez', 'phone' => '3001112222']);
+
+        $this->actingAs($employee, 'sanctum')
+            ->getJson('/api/v1/clients/search?q=Maria')
+            ->assertOk()
+            ->assertJsonCount(1);
+
+        $this->actingAs($employee, 'sanctum')
+            ->postJson('/api/v1/clients', ['name' => 'Cliente Nuevo', 'phone' => '3005556666'])
+            ->assertCreated();
+    }
+
+    public function test_an_employee_without_clients_manage_cannot_list_update_or_delete_clients(): void
+    {
+        $business = Business::factory()->create();
+        $employee = User::factory()->create(['business_id' => $business->id]);
+        $employee->assignRole('employee');
+        $client = Client::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($employee, 'sanctum')->getJson('/api/v1/clients')->assertForbidden();
+        $this->actingAs($employee, 'sanctum')->getJson("/api/v1/clients/{$client->id}")->assertForbidden();
+        $this->actingAs($employee, 'sanctum')
+            ->putJson("/api/v1/clients/{$client->id}", ['name' => 'X'])
+            ->assertForbidden();
+        $this->actingAs($employee, 'sanctum')->deleteJson("/api/v1/clients/{$client->id}")->assertForbidden();
+    }
 }
