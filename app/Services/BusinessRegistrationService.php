@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Mail;
 class BusinessRegistrationService
 {
     /**
-     * @param  array{business_name: string, owner_name: string, email: string, password: string, phone?: ?string, whatsapp_number?: ?string, nit?: ?string, address?: ?string, setup_mode?: ?string, plan?: ?string}  $data
+     * @param  array{business_name: string, owner_name: string, email: string, password: string, phone?: ?string, whatsapp_number?: ?string, nit?: ?string, address?: ?string, setup_mode?: ?string, plan?: ?string, feature_flags?: ?array<string, bool>}  $data
      * @return array{business: Business, user: User}
      */
     public function register(array $data): array
@@ -31,6 +31,20 @@ class BusinessRegistrationService
             if (! empty($data['plan'])) {
                 $plan = $data['plan'];
                 $featureFlags = BusinessFeaturePresets::fromPlan($plan);
+
+                // Wizard de registro publico: solo se puede APAGAR una
+                // bandera que el plan trae encendida por defecto, nunca
+                // prender una que el plan no incluye - eso solo se logra
+                // subiendo de plan. Cualquier override de una clave que ya
+                // esta apagada en el plan se ignora en silencio, aunque el
+                // front no deberia enviarlo.
+                if (! empty($data['feature_flags']) && is_array($data['feature_flags'])) {
+                    foreach ($featureFlags as $key => $enabledByDefault) {
+                        if ($enabledByDefault && array_key_exists($key, $data['feature_flags'])) {
+                            $featureFlags[$key] = (bool) $data['feature_flags'][$key];
+                        }
+                    }
+                }
             } else {
                 $setupMode = $data['setup_mode'] ?? BusinessFeaturePresets::SETUP_RETAIL;
                 $plan = BusinessFeaturePresets::planForSetupMode($setupMode);

@@ -261,4 +261,67 @@ class ReceiptTest extends TestCase
 
         Mail::assertNothingSent();
     }
+
+    // --- Feature flag cash_receipts_pdf: gatea la descarga/envio del PDF,
+    // no la vista de impresion HTML (esa no depende del flag). ---
+
+    private function adminWithoutCashReceiptsPdf(): array
+    {
+        $business = Business::factory()->create(['feature_flags' => ['cash_receipts_pdf' => false]]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        return [$business, $user];
+    }
+
+    public function test_sale_receipt_pdf_is_blocked_without_the_feature(): void
+    {
+        [$business, $user] = $this->adminWithoutCashReceiptsPdf();
+        $sale = Sale::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->get("/api/v1/sales/{$sale->id}/receipt")
+            ->assertForbidden();
+    }
+
+    public function test_layaway_receipt_pdf_is_blocked_without_the_feature(): void
+    {
+        [$business, $user] = $this->adminWithoutCashReceiptsPdf();
+        $layaway = Layaway::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->get("/api/v1/layaways/{$layaway->id}/receipt")
+            ->assertForbidden();
+    }
+
+    public function test_service_order_receipt_pdf_is_blocked_without_the_feature(): void
+    {
+        [$business, $user] = $this->adminWithoutCashReceiptsPdf();
+        $order = ServiceOrder::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->get("/api/v1/service-orders/{$order->id}/receipt")
+            ->assertForbidden();
+    }
+
+    public function test_sending_a_sale_receipt_is_blocked_without_the_feature(): void
+    {
+        [$business, $user] = $this->adminWithoutCashReceiptsPdf();
+        $sale = Sale::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/sales/{$sale->id}/receipt/send", ['channel' => 'email', 'to' => 'cliente@example.com'])
+            ->assertForbidden();
+    }
+
+    public function test_sale_receipt_print_stays_available_without_the_feature(): void
+    {
+        [$business, $user] = $this->adminWithoutCashReceiptsPdf();
+        $sale = Sale::factory()->create(['business_id' => $business->id]);
+        SaleItem::factory()->create(['sale_id' => $sale->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->get("/api/v1/sales/{$sale->id}/receipt/print")
+            ->assertOk();
+    }
 }

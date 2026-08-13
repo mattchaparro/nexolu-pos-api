@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\SuperAdmin\CommunicationController;
 use App\Http\Controllers\Api\V1\SuperAdmin\CronJobController;
 use App\Http\Controllers\Api\V1\SuperAdmin\DashboardController;
 use App\Http\Controllers\Api\V1\SuperAdmin\EmailController;
+use App\Http\Controllers\Api\V1\SuperAdmin\FeatureCatalogController;
 use App\Http\Controllers\Api\V1\SuperAdmin\FinanceController;
 use App\Http\Controllers\Api\V1\SuperAdmin\ImpersonateController;
 use App\Http\Controllers\Api\V1\SuperAdmin\ServiceWorkflowController;
@@ -80,6 +81,8 @@ Route::get('/communications', [CommunicationController::class, 'index'])->name('
 Route::post('/businesses/{business}/communications', [CommunicationController::class, 'send'])->name('businesses.communications.send');
 
 Route::get('/whatsapp-templates', [WhatsAppTemplateController::class, 'index'])->name('whatsapp-templates.index');
+
+Route::get('/feature-catalog', [FeatureCatalogController::class, 'index'])->name('feature-catalog.index');
 
 Route::get('/emails/logs', [EmailController::class, 'logs'])->name('emails.logs');
 Route::get('/emails/templates', [EmailController::class, 'templates'])->name('emails.templates.index');

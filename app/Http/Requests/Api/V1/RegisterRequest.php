@@ -33,6 +33,14 @@ class RegisterRequest extends FormRequest
             'nit' => ['sometimes', 'nullable', 'string', 'max:30'],
             'address' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'setup_mode' => ['sometimes', 'nullable', 'string', Rule::in(BusinessFeaturePresets::setupModes())],
+            // Registro publico plan-primero (wizard del frontend): el usuario
+            // elige 'basic'/'full' y opcionalmente apaga banderas que ese
+            // plan trae encendidas por defecto - ver
+            // BusinessRegistrationService::register() para el clamp que
+            // impide prender una bandera fuera del plan desde aca.
+            'plan' => ['sometimes', 'nullable', 'string', Rule::in(['basic', 'full'])],
+            'feature_flags' => ['sometimes', 'nullable', 'array'],
+            'feature_flags.*' => ['boolean'],
             'device_name' => ['required', 'string', 'max:255'],
         ];
     }

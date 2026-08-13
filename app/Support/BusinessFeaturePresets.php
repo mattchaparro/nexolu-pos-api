@@ -176,12 +176,69 @@ class BusinessFeaturePresets
         };
     }
 
-    /** Precio mensual del plan en COP. */
+    /**
+     * Precio mensual del plan en COP. Misma fuente que
+     * SubscriptionPricingService::resolvePlanPrice() (SystemConfigStore,
+     * editable por superadmin sin redeploy) - antes este metodo hardcodeaba
+     * su propio default sin consultarla, lo que dejaba a
+     * Business::monthlyPriceCop() y SuperAdminBusinessService::activate()
+     * mostrando un precio desactualizado en cuanto alguien editara
+     * `plans.full_price_cop`/`plans.basic_price_cop`.
+     */
     public static function planPriceCop(string $plan): int
     {
         return match ($plan) {
-            'full' => 85000,
-            default => 65000,
+            'full' => (int) SystemConfigStore::get('plans.full_price_cop', '85000'),
+            default => (int) SystemConfigStore::get('plans.basic_price_cop', '65000'),
         };
+    }
+
+    /**
+     * Catalogo completo de banderas para la pantalla "Planes y Funciones" de
+     * SuperAdmin: clave, etiqueta, descripcion, grupo (mismos 6 grupos que
+     * BusinessFormFields.vue del legacy) y si cada plan la trae encendida
+     * por defecto. Solo lectura, no se persiste - basic()/full() siguen
+     * siendo la unica fuente de verdad de los valores.
+     *
+     * @return list<array{key: string, label: string, description: string, group: string, basic: bool, full: bool}>
+     */
+    public static function catalog(): array
+    {
+        $basic = self::basic();
+        $full = self::full();
+
+        $entries = [
+            ['key' => 'open_tabs', 'label' => 'Cuentas abiertas (mesas)', 'description' => 'Permite abrir una cuenta y agregar items antes de cobrar, pensado para mesas o clientes que consumen antes de pagar.', 'group' => 'POS y ventas'],
+            ['key' => 'receivables', 'label' => 'Fiados / crédito', 'description' => 'Permite vender a crédito y llevar el saldo pendiente de cada cliente.', 'group' => 'POS y ventas'],
+            ['key' => 'kitchen_board', 'label' => 'Comandera (cocina)', 'description' => 'Tablero de comandas para que cocina vea y actualice el estado de cada pedido.', 'group' => 'POS y ventas'],
+            ['key' => 'cash_receipts_pdf', 'label' => 'Recibos de caja en PDF', 'description' => 'Genera y envía el comprobante de venta, apartado u orden de servicio como PDF descargable o por WhatsApp/correo.', 'group' => 'POS y ventas'],
+
+            ['key' => 'inventory', 'label' => 'Inventario básico', 'description' => 'Lleva el stock de cada producto y lo descuenta automáticamente con cada venta.', 'group' => 'Inventario'],
+            ['key' => 'inventory_advanced', 'label' => 'Inventario avanzado (compras/proveedores)', 'description' => 'Habilita compras a proveedores, historial de costos y ajustes manuales de stock.', 'group' => 'Inventario'],
+            ['key' => 'ingredients', 'label' => 'Ingredientes y recetas', 'description' => 'Permite definir recetas y descontar ingredientes del inventario al vender un producto preparado.', 'group' => 'Inventario'],
+            ['key' => 'low_stock_alert', 'label' => 'Alertas de stock bajo', 'description' => 'Envía avisos por correo o WhatsApp cuando un producto o ingrediente baja del umbral configurado.', 'group' => 'Inventario'],
+
+            ['key' => 'expenses', 'label' => 'Gastos', 'description' => 'Registro de gastos del negocio, con tipos de gasto y plantillas recurrentes.', 'group' => 'Finanzas'],
+            ['key' => 'managerial_accounting', 'label' => 'Contabilidad gerencial', 'description' => 'Reportes mensuales y anuales de ingresos, gastos y cierre contable.', 'group' => 'Finanzas'],
+            ['key' => 'cash_closing', 'label' => 'Cierre de caja', 'description' => 'Turnos de caja con apertura, cierre y arqueo de efectivo.', 'group' => 'Finanzas'],
+
+            ['key' => 'services', 'label' => 'Catálogo de servicios', 'description' => 'Permite vender servicios (no solo productos) y crear órdenes de servicio.', 'group' => 'Catálogo'],
+            ['key' => 'layaway', 'label' => 'Apartados', 'description' => 'Reserva de productos con abonos parciales antes de completar la venta.', 'group' => 'Catálogo'],
+            ['key' => 'discounts', 'label' => 'Descuentos', 'description' => 'Descuentos configurables aplicables al vender.', 'group' => 'Catálogo'],
+            ['key' => 'charges', 'label' => 'Cargos (servicio / impoconsumo)', 'description' => 'Cargos adicionales configurables que se suman al cobrar, por ejemplo propina obligatoria o impoconsumo.', 'group' => 'Catálogo'],
+
+            ['key' => 'audit_logs', 'label' => 'Auditoría', 'description' => 'Historial de acciones sensibles realizadas por los usuarios del negocio.', 'group' => 'Equipo y seguridad'],
+            ['key' => 'permissions_management', 'label' => 'Gestión de permisos de empleados', 'description' => 'Permite personalizar, empleado por empleado, qué acciones puede realizar cada uno.', 'group' => 'Equipo y seguridad'],
+
+            ['key' => 'clients', 'label' => 'Directorio de clientes', 'description' => 'Ficha de cada cliente con su historial de compras.', 'group' => 'Clientes y agenda'],
+            ['key' => 'scheduling', 'label' => 'Agenda', 'description' => 'Calendario de citas, independiente del catálogo de servicios.', 'group' => 'Clientes y agenda'],
+            ['key' => 'reminders', 'label' => 'Planificador de recordatorios', 'description' => 'Recordatorios internos con fecha de vencimiento.', 'group' => 'Clientes y agenda'],
+        ];
+
+        return array_map(fn (array $entry) => [
+            ...$entry,
+            'basic' => $basic[$entry['key']],
+            'full' => $full[$entry['key']],
+        ], $entries);
     }
 }

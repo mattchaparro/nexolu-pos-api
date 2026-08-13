@@ -921,6 +921,59 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   "Agregar usuario" (modal nombre/correo/contraseña/rol), activar/desactivar
   por fila, y "Restablecer contraseña" (la muestra una sola vez, con botón
   de copiar - nunca se persiste en claro, igual que el backend).
+- ~~**Documentación de planes y funciones + huecos de aplicación de
+  banderas**~~ ✅ Resuelto (2026-08-13): auditoría completa de
+  `BusinessFeaturePresets` contra el registro de legacy encontró 3 huecos
+  de enforcement que legacy sí cubre y esta API no: `cash_receipts_pdf` sin
+  middleware en las rutas de recibo (PDF/envío) de ventas/apartados/órdenes
+  de servicio (la vista de impresión HTML, invención de esta API sin
+  equivalente en legacy, queda deliberadamente sin gatear - no es un PDF);
+  `InventorySendLowStockAlerts` chequeaba `hasFeature('inventory')` en vez
+  de `hasFeature('low_stock_alert')`, así que Básico recibía alertas
+  pensadas como exclusivas de Full; `permissions_management` (bandera sin
+  equivalente en legacy - ahí los permisos son roles Spatie ortogonales al
+  plan) sin ningún middleware en `EmployeeController` (se gatearon
+  `permission-catalog`/`updatePermissions`, no el alta/baja básica de
+  empleados, que sigue disponible en cualquier plan igual que en legacy).
+  También se encontró y corrigió una segunda fuente de precio
+  desincronizada: `BusinessFeaturePresets::planPriceCop()` hardcodeaba
+  85000/65000 sin consultar `SystemConfigStore`, a diferencia de
+  `SubscriptionPricingService::resolvePlanPrice()` - un superadmin editando
+  el precio del plan dejaba `Business::monthlyPriceCop()`/`activate()`
+  mostrando el precio viejo.
+
+  Nuevo `BusinessFeaturePresets::catalog()` (clave/etiqueta/descripción/
+  grupo/básico/full para las 20 banderas, agrupadas en los mismos 6 grupos
+  que `BusinessFormFields.vue` del legacy) + `SuperAdmin\FeatureCatalogController`
+  (`GET /superadmin/feature-catalog`) - nueva pantalla "Planes y Funciones"
+  de solo lectura en SuperAdmin. El duplicado manual
+  `src/utils/businessFeaturePresets.ts` (frontend, con el comentario
+  "mantener sincronizado a mano") se eliminó: la pestaña "Features" del
+  detalle de negocio ahora consume el mismo catálogo del backend.
+- ~~**Pantalla de registro de negocios**~~ ✅ Migrado (2026-08-13), pero
+  con la lógica corregida en vez de portada tal cual: el registro del
+  legacy es una entrevista de funciones (13 preguntas sí/no) que deriva el
+  plan *después*, con un bug real (el form siempre manda
+  `setup_mode: 'custom'`, que `planForSetupMode()` resuelve a `'basic'`
+  pase lo que pase) que deja plan y banderas en desacuerdo para todo
+  autorregistro; además `reminders` nunca se envía desde el form, así que
+  queda apagado aunque ambos planes lo traen por defecto. Esta vez el
+  flujo es plan-primero: se elige Básico o Full, y solo se puede *apagar*
+  una función que ese plan trae por defecto, nunca prender una de fuera
+  (subir de plan es el único camino a más funciones) - la decisión se tomó
+  explícitamente con el usuario. `RegisterRequest`/`BusinessRegistrationService`
+  ganaron soporte para `plan`+`feature_flags` (antes solo aceptaban
+  `setup_mode`, que se conserva sin cambios para no romper compatibilidad);
+  el clamp "solo apagar" vive en el backend
+  (`BusinessRegistrationService::register()`), no solo en la UI. Nuevo
+  endpoint público `GET /v1/plans` (`PlanCatalogController`, mismos datos
+  que el de SuperAdmin, sin auth) para que el wizard pueda mostrar
+  precio+funciones antes de que exista una sesión.
+  `modules/auth/views/RegisterView.vue` (nexolu-pos-front): paso 1 (datos
+  del negocio/dueño, estilo legacy), paso 2 (tarjetas de plan → lista de
+  banderas a apagar + panel "Lo que se activará en tu cuenta" en vivo,
+  mismo estilo del wizard de legacy que el usuario pidió conservar). Login
+  automático al terminar (mismo contrato de respuesta que `/login`).
 
 ### Auth (api + front)
 - ~~**Recuperar contraseña**~~ ✅ Migrado: `POST /v1/forgot-password` +
@@ -945,9 +998,6 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   scaffolding propio de Jetstream sin conectar al negocio) - mismo patrón
   de "existe pero está muerto" que otros hallazgos ya documentados en este
   archivo (`SaasLead`, `WompiFees`).
-- **Pantalla de registro de negocios**: el backend ya soporta `register`
-  vía `BusinessRegistrationService`, pero no existe ninguna vista que lo
-  consuma - hoy el alta de negocios depende exclusivamente de SuperAdmin.
 - **Login con Google**: `SocialController::googleRedirect/googleCallback`
   de legacy (`routes/web.php:44-45`) sin portar. Prioridad baja/opcional.
 

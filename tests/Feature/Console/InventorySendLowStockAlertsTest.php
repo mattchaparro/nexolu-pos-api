@@ -282,6 +282,27 @@ class InventorySendLowStockAlertsTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_does_not_notify_a_business_with_inventory_enabled_but_low_stock_alert_disabled(): void
+    {
+        Mail::fake();
+        $business = $this->businessWithAdmin([
+            'low_stock_email' => 'dueno@example.com',
+            'feature_flags' => ['inventory' => true, 'low_stock_alert' => false],
+        ]);
+        Product::factory()->create([
+            'business_id' => $business->id,
+            'is_active' => true,
+            'track_stock' => true,
+            'is_single_sale' => false,
+            'stock' => 1,
+            'low_stock_alert_threshold' => 5,
+        ]);
+
+        $this->artisan('inventory:send-low-stock-alerts')->assertSuccessful();
+
+        Mail::assertNothingSent();
+    }
+
     public function test_does_nothing_by_whatsapp_when_the_template_is_not_configured(): void
     {
         config(['services.whatsapp.templates.inventario_bajo' => ['name' => null]]);

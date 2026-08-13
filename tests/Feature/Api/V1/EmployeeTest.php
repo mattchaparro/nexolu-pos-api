@@ -191,4 +191,56 @@ class EmployeeTest extends TestCase
             ])
             ->assertForbidden();
     }
+
+    // --- Feature flag permissions_management: gatea solo la edicion de
+    // permisos granulares, no el alta/baja basica de empleados. ---
+
+    private function actingAdminWithoutPermissionsManagement(): array
+    {
+        $business = Business::factory()->create(['feature_flags' => ['permissions_management' => false]]);
+        $admin = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+        $admin->assignRole('admin');
+
+        return [$admin, $business];
+    }
+
+    public function test_permission_catalog_endpoint_is_blocked_without_the_feature(): void
+    {
+        [$admin] = $this->actingAdminWithoutPermissionsManagement();
+
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/employees/permission-catalog')
+            ->assertForbidden();
+    }
+
+    public function test_updating_employee_permissions_is_blocked_without_the_feature(): void
+    {
+        [$admin, $business] = $this->actingAdminWithoutPermissionsManagement();
+        $employee = User::factory()->create(['business_id' => $business->id]);
+        $employee->assignRole('employee');
+
+        $this->actingAs($admin, 'sanctum')
+            ->putJson("/api/v1/employees/{$employee->id}/permissions", ['permissions' => ['reports.sales']])
+            ->assertForbidden();
+    }
+
+    public function test_can_still_list_and_create_employees_without_the_feature(): void
+    {
+        Mail::fake();
+        [$admin] = $this->actingAdminWithoutPermissionsManagement();
+
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/employees')
+            ->assertOk();
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/v1/employees', [
+                'name' => 'Empleado Nuevo',
+                'email' => 'empleado@example.com',
+                'password' => 'secret123',
+                'password_confirmation' => 'secret123',
+                'role' => 'employee',
+            ])
+            ->assertCreated();
+    }
 }

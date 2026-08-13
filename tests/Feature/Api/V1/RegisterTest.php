@@ -139,6 +139,46 @@ class RegisterTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors('password');
     }
 
+    public function test_registering_with_a_plan_can_turn_off_a_flag_the_plan_includes_by_default(): void
+    {
+        $this->postJson('/api/v1/register', [
+            'business_name' => 'Tienda Full Sin Recordatorios',
+            'owner_name' => 'Laura Ruiz',
+            'email' => 'laura@example.com',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+            'plan' => 'full',
+            'feature_flags' => ['reminders' => false],
+            'device_name' => 'phpunit',
+        ])->assertCreated();
+
+        $business = Business::where('name', 'Tienda Full Sin Recordatorios')->first();
+        $this->assertSame('full', $business->subscription_plan);
+        $this->assertFalse($business->feature_flags['reminders']);
+        // El resto de defaults del plan Full siguen intactos.
+        $this->assertTrue($business->feature_flags['open_tabs']);
+    }
+
+    public function test_registering_with_a_plan_cannot_turn_on_a_flag_the_plan_excludes(): void
+    {
+        $this->postJson('/api/v1/register', [
+            'business_name' => 'Tienda Basica Con Trampa',
+            'owner_name' => 'Jorge Diaz',
+            'email' => 'jorge@example.com',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+            'plan' => 'basic',
+            // open_tabs no viene encendido por defecto en basic - intentar
+            // prenderlo desde el registro publico debe ser ignorado.
+            'feature_flags' => ['open_tabs' => true],
+            'device_name' => 'phpunit',
+        ])->assertCreated();
+
+        $business = Business::where('name', 'Tienda Basica Con Trampa')->first();
+        $this->assertSame('basic', $business->subscription_plan);
+        $this->assertFalse($business->feature_flags['open_tabs']);
+    }
+
     public function test_registering_with_an_invalid_setup_mode_is_rejected(): void
     {
         $this->postJson('/api/v1/register', [
