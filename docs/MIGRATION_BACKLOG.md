@@ -580,12 +580,20 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
 - **Eliminar cita**: `AppointmentsController::destroy()` en legacy
   (`:306`) no existe en `AppointmentController` ni en
   `useAppointmentMutations.ts`.
-- **"Cobrar cita" sin orden previa**: legacy puede crear la orden de
-  servicio + el abono inicial en un solo paso desde el modal de cobro de
-  una cita (`chargeAppointment()`, `AppointmentsController.php:313-360`).
-  El front nuevo solo ofrece "Abonar" sobre una orden ya existente
-  (`AppointmentDetailModal.vue:142`) - falta el camino "cita sin orden →
-  cobrar". El más grande de este módulo.
+- ~~**"Cobrar cita" sin orden previa**~~ ✅ Confirmado que NO es un gap
+  (2026-08-13): en legacy una cita se podía agendar sin decidir el
+  servicio, y `chargeAppointment()` (`AppointmentsController.php:313-360`)
+  existía como acción aparte para crear la orden + abono inicial en el
+  momento de cobrar. Acá esa arquitectura ya se cerró de raíz en vez de
+  portarse: `StoreAppointmentRequest` exige `services` (`required|min:1`),
+  así que toda cita nueva ya trae al menos un servicio, y
+  `AppointmentService::create()` ya crea la `ServiceOrder` vinculada (con
+  abono inicial opcional) en el mismo paso de agendar - nunca existe una
+  cita sin orden en la práctica, así que no hace falta un camino
+  "cita sin orden → cobrar" (`ServiceOrderService::create()` ya es el
+  único punto de entrada que arma la orden, ver su docblock). "Abonar"
+  sobre la orden ya vinculada (`AppointmentDetailModal.vue`) cubre el
+  resto.
 - Verificar que el modal de pago de la agenda excluya fiado/crédito de
   los medios de pago ofrecidos, como hace legacy
   (`AppointmentsController.php:48-52`). Menor, sin confirmar si ya aplica.
