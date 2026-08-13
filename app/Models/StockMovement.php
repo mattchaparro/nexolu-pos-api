@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ProductAvailability;
 use App\Traits\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -69,6 +70,14 @@ class StockMovement extends Model
     private static function applyToProduct(StockMovement $movement): void
     {
         $movement->product()->withoutGlobalScopes()->increment('stock', $movement->quantity);
+
+        // El stock cambió por SQL directo (increment), que no dispara el
+        // evento saved de Product - sin esto, el catálogo cacheado de
+        // Vender (ver App\Support\ProductAvailability::forBusiness())
+        // mostraría el stock viejo hasta 10 min.
+        if ($movement->business_id) {
+            ProductAvailability::clearCache((int) $movement->business_id);
+        }
 
         $product = Product::withoutGlobalScopes()->find($movement->product_id);
         if (! $product || ! $product->is_single_sale || ! $product->track_stock) {

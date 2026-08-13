@@ -5,8 +5,10 @@ namespace Tests\Feature\Support;
 use App\Models\Business;
 use App\Models\Ingredient;
 use App\Models\Product;
+use App\Models\User;
 use App\Support\ProductAvailability;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class ProductAvailabilityTest extends TestCase
@@ -64,5 +66,93 @@ class ProductAvailabilityTest extends TestCase
         $product->load('ingredients');
 
         $this->assertSame(4.0, ProductAvailability::effectiveStock($product, true));
+    }
+
+    // --- forBusiness(): catalogo completo para Vender ---
+
+    public function test_for_business_returns_the_full_catalog_beyond_the_pagination_cap_of_index(): void
+    {
+        $business = Business::factory()->create();
+        Product::factory()->count(210)->create(['business_id' => $business->id]);
+
+        $this->assertCount(210, ProductAvailability::forBusiness($business));
+    }
+
+    public function test_for_business_excludes_inactive_products(): void
+    {
+        $business = Business::factory()->create();
+        $active = Product::factory()->create(['business_id' => $business->id, 'is_active' => true]);
+        Product::factory()->create(['business_id' => $business->id, 'is_active' => false]);
+
+        $result = ProductAvailability::forBusiness($business);
+
+        $this->assertCount(1, $result);
+        $this->assertSame($active->id, $result->first()->id);
+    }
+
+    public function test_for_business_is_cached(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['ingredients' => false]]);
+        Product::factory()->create(['business_id' => $business->id]);
+
+        $this->assertFalse(Cache::has(ProductAvailability::cacheKey($business->id)));
+        ProductAvailability::forBusiness($business);
+        $this->assertTrue(Cache::has(ProductAvailability::cacheKey($business->id)));
+    }
+
+    public function test_for_business_skips_the_cache_when_the_ingredients_feature_is_enabled(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['ingredients' => true]]);
+        Product::factory()->create(['business_id' => $business->id]);
+
+        ProductAvailability::forBusiness($business);
+
+        $this->assertFalse(Cache::has(ProductAvailability::cacheKey($business->id)));
+    }
+
+    public function test_clear_cache_forgets_the_cached_catalog(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['ingredients' => false]]);
+        Product::factory()->create(['business_id' => $business->id]);
+        ProductAvailability::forBusiness($business);
+        $this->assertTrue(Cache::has(ProductAvailability::cacheKey($business->id)));
+
+        ProductAvailability::clearCache($business->id);
+
+        $this->assertFalse(Cache::has(ProductAvailability::cacheKey($business->id)));
+    }
+
+    /** Guardar un producto invalida el cache - un precio nuevo no puede tardar hasta 10 min en verse en Vender. */
+    public function test_saving_a_product_invalidates_the_cached_catalog(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['ingredients' => false]]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'name' => 'Nombre viejo']);
+        ProductAvailability::forBusiness($business);
+        $this->assertTrue(Cache::has(ProductAvailability::cacheKey($business->id)));
+
+        $product->update(['name' => 'Nombre nuevo']);
+
+        $this->assertFalse(Cache::has(ProductAvailability::cacheKey($business->id)));
+        $this->assertSame('Nombre nuevo', ProductAvailability::forBusiness($business)->first()->name);
+    }
+
+    /** El stock cambia por SQL directo (increment), que no dispara el evento saved de Product. */
+    public function test_a_stock_movement_invalidates_the_cached_catalog(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['ingredients' => false]]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 10]);
+        ProductAvailability::forBusiness($business);
+        $this->assertTrue(Cache::has(ProductAvailability::cacheKey($business->id)));
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/stock-movements', [
+            'product_id' => $product->id,
+            'type' => 'entry',
+            'quantity' => 5,
+        ])->assertCreated();
+
+        $this->assertFalse(Cache::has(ProductAvailability::cacheKey($business->id)));
+        $this->assertSame(15.0, (float) ProductAvailability::forBusiness($business)->first()->stock);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ProductAvailability;
 use App\Traits\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -57,6 +58,18 @@ class Product extends Model
                 $product->sku = self::generateSkuForBusiness((int) $product->business_id);
             }
         });
+
+        // Invalida el catalogo cacheado de Vender (ver
+        // App\Support\ProductAvailability::forBusiness()) - un producto
+        // nuevo, editado o borrado no debe tardar hasta 10 min en
+        // aparecer/desaparecer/actualizar precio ahi.
+        $clearCache = function (Product $product) {
+            if ($product->business_id) {
+                ProductAvailability::clearCache((int) $product->business_id);
+            }
+        };
+        static::saved($clearCache);
+        static::deleted($clearCache);
     }
 
     public static function generateSkuForBusiness(int $businessId): string

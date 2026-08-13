@@ -58,6 +58,42 @@ class ProductTest extends TestCase
             ->assertJsonPath('meta.per_page', 200);
     }
 
+    /**
+     * A diferencia de index() (topeado en 200), sellable() es el catalogo
+     * completo que usa Vender - con mas de 200 productos, index() nunca le
+     * mandaria al navegador los que caen despues en el orden alfabetico
+     * (ej. los que empiezan por "Z").
+     */
+    public function test_sellable_returns_the_full_catalog_beyond_the_pagination_cap_of_index(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['ingredients' => false]]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        Product::factory()->count(210)->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products/sellable')
+            ->assertOk()
+            ->assertJsonCount(210);
+    }
+
+    public function test_sellable_excludes_inactive_products(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['ingredients' => false]]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $active = Product::factory()->create(['business_id' => $business->id, 'is_active' => true]);
+        Product::factory()->create(['business_id' => $business->id, 'is_active' => false]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products/sellable')
+            ->assertOk()
+            ->assertJsonCount(1)
+            ->assertJsonPath('0.id', $active->id);
+    }
+
     public function test_products_can_be_searched_by_name_or_sku(): void
     {
         $business = Business::factory()->create();

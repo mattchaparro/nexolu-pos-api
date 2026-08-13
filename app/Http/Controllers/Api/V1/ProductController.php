@@ -9,6 +9,7 @@ use App\Http\Resources\Api\V1\ProductResource;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Services\ProductService;
+use App\Support\ProductAvailability;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -75,6 +76,20 @@ class ProductController extends Controller
             'variable_price_count' => $services->where('price_varies_at_sale', true)->count(),
             'fixed_price_count' => $services->where('price_varies_at_sale', false)->count(),
         ]);
+    }
+
+    /**
+     * Catálogo completo de productos vendibles, para Vender - distinto de
+     * index() (paginado en 200, pensado para Catálogo/Compras/edición
+     * masiva). Ver App\Support\ProductAvailability::forBusiness() para el
+     * porqué (bug real: con más de 200 productos, los que empiezan por
+     * "Z" nunca llegaban a Vender) y el cache de 10 min.
+     */
+    public function sellable(Request $request): AnonymousResourceCollection
+    {
+        return ProductResource::collection(
+            ProductAvailability::forBusiness($request->user()->business)
+        );
     }
 
     /** @var list<string> */

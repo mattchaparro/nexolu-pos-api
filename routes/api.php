@@ -149,6 +149,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             // Antes del apiResource: /products/summary no debe caer en la
             // ruta show (/products/{product}) del resource de abajo.
             Route::get('/products/summary', [ProductController::class, 'summary'])->name('products.summary');
+            Route::get('/products/sellable', [ProductController::class, 'sellable'])->name('products.sellable');
             Route::middleware('feature:services')->group(function () {
                 Route::get('/products/services-summary', [ProductController::class, 'servicesSummary'])->name('products.services-summary');
             });
