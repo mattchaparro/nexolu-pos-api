@@ -343,7 +343,34 @@ módulo por módulo desde los jobs programados, no desde un inventario completo)
 Todos tienen datos ya presentes en `schema.sql` (compartido), así que no hace
 falta migración, solo el código.
 
-- **Clientes frecuentes (`customers`)** - análisis arquitectónico
+- ~~**Clientes frecuentes (`customers`)**~~ ✅ Decisión revisada
+  (2026-08-13): el usuario pidió explícitamente unificar - "un cliente es un
+  cliente, sin importar si le vendo algo, le agendo un servicio o le abro un
+  apartado" - así que el análisis de abajo (que recomendaba mantenerlas
+  separadas, replicando la decisión del legacy) queda **superado**: se
+  mantiene como contexto de por qué legacy las separó, no como la decisión
+  final de esta migración. Lo que se construyó en su lugar:
+  - `ClientQuickAssociate.vue` (Vender, Cuentas abiertas, Apartados) - busca
+    un `Client` existente por nombre/teléfono/email y copia sus datos al
+    formulario, o crea un `Client` nuevo desde lo recién tipeado. `clients`
+    pasa a ser el único concepto de "cliente" en esta app; no se construye
+    `Customer` como tabla/modelo aparte.
+  - `GET /clients/search` y `POST /clients` ya no exigen `clients.manage`
+    (permiso solo para el directorio completo) - cualquiera que pueda
+    vender/agendar/apartar puede buscar o dar de alta un cliente.
+  - **Sin `client_id` en `sales`/`layaways`/`receivables` todavía** - esas 3
+    tablas ya existen en `schema.sql` y el legacy las sigue leyendo/
+    escribiendo, así que agregar la columna requiere coordinar con su
+    retiro (regla del proyecto, ver `CLAUDE.md`). Documentado en
+    `docs/CUTOVER_TODO.md` (ítem 4) con el `ALTER TABLE` exacto para cuando
+    sea seguro. Mientras tanto, `ClientQuickAssociate` ya resuelve el caso
+    de uso real (que quede un `Client` correcto) sin necesitar esa columna.
+  - `customers` queda sin usarse desde esta API - la tabla sigue en el
+    schema compartido (no se puede borrar sola), pero no se construye nada
+    nuevo sobre ella.
+
+  <details><summary>Análisis original (superado, contexto histórico)</summary>
+
   (2026-08-13, a pedido del usuario: "¿`clients` y `customers` no deberían
   ser lo mismo?"):
 
@@ -412,9 +439,10 @@ falta migración, solo el código.
   el resto del directorio, nunca un vínculo automático ni una fila
   compartida.
 
-  **Estado**: sigue sin construirse (no hay modelo `Customer`, hook en
-  `SaleService`, ni endpoint en esta API todavía) - lo de arriba es la
-  guía de diseño para cuando se priorice.
+  **Estado**: superado por la decisión de unificar (ver arriba) - este plan
+  de portar `Customer` como tabla aparte no se va a ejecutar.
+
+  </details>
 - ~~**Kitchen Board (comandas de cocina)**~~ ✅ Migrado. `SaleItem` ganó
   `kitchen_status`/`kitchen_updated_at` en fillable/casts (ya existían en
   `Sale`, sin usar - el propio docblock del modelo decía "modulo aparte que

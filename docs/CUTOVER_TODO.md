@@ -200,3 +200,69 @@ WHERE type = '';
 ```
 
 - [ ] Pendiente. Bajo riesgo (no bloquea nada), pero no ejecutar sin confirmar cada fila manualmente primero.
+
+---
+
+## 4. `sales`/`layaways`/`receivables` no tienen `client_id` — `clients` y `customers` sin unificar
+
+**Origen:** 2026-08-13, a pedido del usuario ("`clients` y `customers` deberían
+ser la misma tabla — un cliente es un cliente, sin importar si le vendo algo,
+le agendo un servicio o le abro un apartado").
+
+**El problema:** `appointments.client_id` y `service_orders.client_id` ya son FK
+reales a `clients` (`schema.sql:320-340,1717-1740`), pero `sales`, `layaways` y
+`receivables` **no tienen ninguna columna `client_id`** — solo texto libre
+(`customer_name`/`customer_phone`/`customer_identification`), sin vínculo
+persistido a `clients` en absoluto. `customers` (`schema.sql:629-646`) es una
+tabla aparte, autogenerada históricamente por el legacy desde esos mismos
+campos de texto libre de `sales` (`SaleService::syncCustomerProfile()` en el
+legacy), sin FK hacia/desde `clients` tampoco — confirmado que es deuda técnica
+del legacy, no una separación deliberada que valga la pena preservar (ver el
+análisis completo, ya superado por esta decisión, en `MIGRATION_BACKLOG.md`
+bajo "Clientes frecuentes (`customers`)").
+
+**Lo que se pudo hacer ya, sin tocar el esquema compartido:** `ClientQuickAssociate.vue`
+(Vender, Cuentas abiertas, Apartados) deja buscar un `Client` existente por
+nombre/teléfono/email y copiar sus datos al formulario, o crear un `Client`
+nuevo desde el nombre/teléfono recién tipeado — sin depender de una columna
+`client_id` en la venta/cuenta/apartado, porque el objetivo real (que exista un
+`Client` real y actualizado) no necesita un vínculo persistido en esa tabla
+específica. Ver `App\Http\Controllers\Api\V1\ClientController::search()`/
+`store()`, ahora gateados solo por `feature:clients` (sin `permission:clients.manage`)
+para que cualquiera que pueda vender/agendar/apartar los use.
+
+**Por qué no se agrega la columna ahora:** `sales`, `layaways` y `receivables`
+ya existen en `schema.sql` y el legacy todavía las lee/escribe en producción —
+un `ALTER TABLE ... ADD COLUMN client_id` desde esta API violaría la regla del
+proyecto (`CLAUDE.md`: "nunca migración que toque una tabla que el legacy ya
+usa"), y aunque la columna en sí sería aditiva (no rompe lecturas del legacy),
+coordinar el cambio de esquema con el retiro/parcheo del legacy es el proceso
+correcto, no una excepción de "es solo agregar una columna".
+
+**Fix cuando sea seguro:**
+
+```sql
+ALTER TABLE sales ADD COLUMN client_id BIGINT UNSIGNED NULL AFTER customer_identification,
+  ADD CONSTRAINT sales_client_id_foreign FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL;
+ALTER TABLE layaways ADD COLUMN client_id BIGINT UNSIGNED NULL AFTER customer_phone,
+  ADD CONSTRAINT layaways_client_id_foreign FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL;
+ALTER TABLE receivables ADD COLUMN client_id BIGINT UNSIGNED NULL AFTER customer_identification,
+  ADD CONSTRAINT receivables_client_id_foreign FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL;
+```
+
+Mismo patrón que `appointments`/`service_orders` ya usan: la columna `client_id`
+convive con el texto libre existente (una snapshot del nombre/teléfono al
+momento de la venta, no se borra), el FK es opcional (`ON DELETE SET NULL`).
+Una vez agregada la columna: `ClientQuickAssociate` pasa de "prefill de texto"
+a "guardar el vínculo real" (un cambio de app trivial), y se puede hacer un
+backfill de las filas existentes que matcheen por teléfono contra `clients`.
+
+**`customers`:** superada por este enfoque — no vale la pena portar el modelo
+`Customer` ni el hook `syncCustomerProfile()`; `clients` ya cumple ese rol una
+vez tenga los FKs de arriba. La tabla `customers` queda huérfana en el schema
+compartido (no se puede borrar sola sin coordinar con el legacy), sin datos
+nuevos escritos desde esta API.
+
+- [ ] Pendiente. Requiere coordinar con el retiro/parcheo del legacy antes del
+  `ALTER TABLE`. Mientras tanto, `ClientQuickAssociate.vue` ya cubre el caso de
+  uso real (que quede un `Client` correcto) sin la columna.
