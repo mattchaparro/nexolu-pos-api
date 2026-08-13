@@ -38,8 +38,11 @@ class WhatsAppCloudClient implements MessagingChannel
     /**
      * Texto libre. Solo se entrega dentro de la ventana de 24h desde el
      * ultimo mensaje del usuario - fuera de ella, usar sendTemplate().
+     *
+     * $businessId/$type no se usan aca (solo los lee LoggingMessagingChannel,
+     * el decorator que envuelve esta clase) - ver MessagingChannel::sendText().
      */
-    public function sendText(string $to, string $body): bool
+    public function sendText(string $to, string $body, ?int $businessId = null, string $type = 'generico'): bool
     {
         return $this->post($to, [
             'messaging_product' => 'whatsapp',
@@ -55,8 +58,14 @@ class WhatsAppCloudClient implements MessagingChannel
      *
      * @param  list<array<string, mixed>>  $components
      */
-    public function sendTemplate(string $to, string $name, string $languageCode, array $components = []): bool
-    {
+    public function sendTemplate(
+        string $to,
+        string $name,
+        string $languageCode,
+        array $components = [],
+        ?int $businessId = null,
+        string $type = 'generico',
+    ): bool {
         $template = ['name' => $name, 'language' => ['code' => $languageCode]];
         if ($components !== []) {
             $template['components'] = $components;
@@ -86,6 +95,8 @@ class WhatsAppCloudClient implements MessagingChannel
         string $cta,
         array $data,
         string $flowToken,
+        ?int $businessId = null,
+        string $type = 'generico',
     ): bool {
         return $this->post($to, [
             'messaging_product' => 'whatsapp',
@@ -116,8 +127,14 @@ class WhatsAppCloudClient implements MessagingChannel
      * Documento por link (Meta descarga la URL, no se le mandan bytes). Solo
      * entrega dentro de la ventana de 24h - ver MessagingChannel::sendDocument().
      */
-    public function sendDocument(string $to, string $documentUrl, string $filename, string $caption = ''): bool
-    {
+    public function sendDocument(
+        string $to,
+        string $documentUrl,
+        string $filename,
+        string $caption = '',
+        ?int $businessId = null,
+        string $type = 'generico',
+    ): bool {
         $document = ['link' => $documentUrl, 'filename' => $filename];
         if ($caption !== '') {
             $document['caption'] = $caption;

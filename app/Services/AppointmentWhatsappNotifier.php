@@ -54,7 +54,7 @@ class AppointmentWhatsappNotifier
 
         $template = config("services.whatsapp.templates.{$templateKey}");
 
-        return $this->client->sendTemplate($phone, $template['name'], $template['lang'] ?? 'es_CO', $components());
+        return $this->client->sendTemplate($phone, $template['name'], $template['lang'] ?? 'es_CO', $components(), $appointment->business_id, $templateKey);
     }
 
     /** @return list<array<string, mixed>> */

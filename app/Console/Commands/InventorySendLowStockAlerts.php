@@ -120,7 +120,7 @@ class InventorySendLowStockAlerts extends Command
         $sent = 0;
 
         foreach ($recipients as $identity) {
-            if ($client->sendTemplate($identity->external_id, $template['name'], $template['lang'] ?? 'es_CO', $components)) {
+            if ($client->sendTemplate($identity->external_id, $template['name'], $template['lang'] ?? 'es_CO', $components, $business->id, 'inventario_bajo')) {
                 $sent++;
             }
         }

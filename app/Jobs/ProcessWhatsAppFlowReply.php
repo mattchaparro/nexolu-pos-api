@@ -64,7 +64,7 @@ class ProcessWhatsAppFlowReply implements ShouldQueue
         try {
             $result = $drafts->confirm($draftId, AiTenantContext::forUser($user), $values);
         } catch (RuntimeException $e) {
-            $client->sendText($this->from, 'No pude registrarlo. Intenta de nuevo.');
+            $client->sendText($this->from, 'No pude registrarlo. Intenta de nuevo.', $user->business_id, 'ai_chat_flow');
             Log::error('whatsapp.flow: fallo al contactar al Asistente de IA', [
                 'draft_id' => $draftId, 'from' => $this->from, 'error' => $e->getMessage(),
             ]);
@@ -73,19 +73,19 @@ class ProcessWhatsAppFlowReply implements ShouldQueue
         }
 
         if ($result->status() === 404) {
-            $client->sendText($this->from, 'No encontre ese borrador. Puede que ya haya expirado.');
+            $client->sendText($this->from, 'No encontre ese borrador. Puede que ya haya expirado.', $user->business_id, 'ai_chat_flow');
 
             return;
         }
 
         if ($result->status() === 409) {
-            $client->sendText($this->from, 'Esto ya se habia registrado.');
+            $client->sendText($this->from, 'Esto ya se habia registrado.', $user->business_id, 'ai_chat_flow');
 
             return;
         }
 
         if ($result->failed()) {
-            $client->sendText($this->from, (string) ($result->json('detail') ?? 'No pude registrarlo. Intenta de nuevo.'));
+            $client->sendText($this->from, (string) ($result->json('detail') ?? 'No pude registrarlo. Intenta de nuevo.'), $user->business_id, 'ai_chat_flow');
             Log::warning('whatsapp.flow: el IA Core rechazo la confirmacion', [
                 'draft_id' => $draftId, 'from' => $this->from, 'status' => $result->status(), 'body' => $result->body(),
             ]);
@@ -93,6 +93,6 @@ class ProcessWhatsAppFlowReply implements ShouldQueue
             return;
         }
 
-        $client->sendText($this->from, '✅ Registrado.');
+        $client->sendText($this->from, '✅ Registrado.', $user->business_id, 'ai_chat_flow');
     }
 }

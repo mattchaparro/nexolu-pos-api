@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
  */
 class LogChannelOtpSender implements ChannelOtpSender
 {
-    public function send(string $channel, string $externalId, string $code): void
+    public function send(string $channel, string $externalId, string $code, ?int $businessId = null): void
     {
         Log::info('OTP de vinculacion de canal (emisor de log, sin envio real)', [
             'channel' => $channel,

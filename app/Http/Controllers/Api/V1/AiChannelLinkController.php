@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\AiChannelIdentity;
+use App\Services\Messaging\Contracts\MessagingChannel;
 use App\Services\WhatsApp\ChannelLinkService;
 use App\Services\WhatsApp\Exceptions\ChannelLinkException;
-use App\Services\WhatsApp\WhatsAppCloudClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -15,7 +15,7 @@ class AiChannelLinkController extends Controller
 {
     private const CHANNEL = AiChannelIdentity::CHANNEL_WHATSAPP;
 
-    public function __construct(private ChannelLinkService $links) {}
+    public function __construct(private ChannelLinkService $links, private MessagingChannel $client) {}
 
     /** Pide el OTP para el numero que el usuario escribio. */
     public function start(Request $request): JsonResponse
@@ -42,7 +42,7 @@ class AiChannelLinkController extends Controller
 
         try {
             $identity = $this->links->confirm($request->user(), self::CHANNEL, $validated['code']);
-            $this->sendWelcomeTemplate($identity->external_id, $request->user()->business?->name ?? '');
+            $this->sendWelcomeTemplate($identity->external_id, $request->user()->business?->name ?? '', $request->user()->business_id);
 
             return response()->json([
                 'ok' => true,
@@ -62,7 +62,7 @@ class AiChannelLinkController extends Controller
         return response()->json(['ok' => true, 'message' => 'Tu WhatsApp quedo desvinculado.']);
     }
 
-    private function sendWelcomeTemplate(string $externalId, string $businessName): void
+    private function sendWelcomeTemplate(string $externalId, string $businessName, ?int $businessId): void
     {
         $template = config('services.whatsapp.templates.welcome');
         if (empty($template['name'])) {
@@ -79,8 +79,8 @@ class AiChannelLinkController extends Controller
             ];
         }
 
-        app(WhatsAppCloudClient::class)->sendTemplate(
-            $externalId, (string) $template['name'], (string) ($template['lang'] ?? 'es'), $components,
+        $this->client->sendTemplate(
+            $externalId, (string) $template['name'], (string) ($template['lang'] ?? 'es'), $components, $businessId, 'welcome',
         );
     }
 }

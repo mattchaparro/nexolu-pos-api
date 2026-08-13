@@ -65,7 +65,7 @@ class ChannelLinkService
             'attempts' => 0,
         ]);
 
-        $this->sender->send($channel, $externalId, $code);
+        $this->sender->send($channel, $externalId, $code, $user->business_id);
 
         return $challenge;
     }

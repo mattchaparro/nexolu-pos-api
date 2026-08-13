@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\SuperAdmin\AnnouncementController;
 use App\Http\Controllers\Api\V1\SuperAdmin\AuditLogController;
 use App\Http\Controllers\Api\V1\SuperAdmin\BusinessDataController;
 use App\Http\Controllers\Api\V1\SuperAdmin\BusinessesController;
+use App\Http\Controllers\Api\V1\SuperAdmin\CommunicationController;
 use App\Http\Controllers\Api\V1\SuperAdmin\CronJobController;
 use App\Http\Controllers\Api\V1\SuperAdmin\DashboardController;
 use App\Http\Controllers\Api\V1\SuperAdmin\EmailController;
@@ -73,6 +74,8 @@ Route::get('/subscription-transactions', [SubscriptionTransactionController::cla
 
 Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 Route::get('/finance', [FinanceController::class, 'index'])->name('finance.index');
+
+Route::get('/communications', [CommunicationController::class, 'index'])->name('communications.index');
 
 Route::get('/emails/logs', [EmailController::class, 'logs'])->name('emails.logs');
 Route::get('/emails/templates', [EmailController::class, 'templates'])->name('emails.templates.index');

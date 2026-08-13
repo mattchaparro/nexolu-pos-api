@@ -7,6 +7,7 @@ use App\Services\Messaging\Contracts\MessagingChannel;
 use App\Services\Messaging\Contracts\MessagingCostReporter;
 use App\Services\WhatsApp\Contracts\ChannelOtpSender;
 use App\Services\WhatsApp\LogChannelOtpSender;
+use App\Services\WhatsApp\LoggingMessagingChannel;
 use App\Services\WhatsApp\NexoluCommsChannel;
 use App\Services\WhatsApp\NexoluCommsCostReporter;
 use App\Services\WhatsApp\WhatsAppCloudClient;
@@ -31,10 +32,15 @@ class AppServiceProvider extends ServiceProvider
         // Nexolu Communications, NexoluCommsChannel). Todo lo demas (jobs,
         // comandos, PlatformFinanceService) depende de las interfaces, no de
         // App\Services\WhatsApp\* directamente, asi que el cambio de
-        // proveedor en produccion es solo tocar MESSAGING_DRIVER.
-        $this->app->bind(MessagingChannel::class, fn () => config('services.comms_core.driver') === 'nexolu_comms'
-            ? $this->app->make(NexoluCommsChannel::class)
-            : $this->app->make(WhatsAppCloudClient::class));
+        // proveedor en produccion es solo tocar MESSAGING_DRIVER. Envuelto en
+        // LoggingMessagingChannel para que todo envio quede en whatsapp_logs
+        // (pantalla de Comunicaciones de SuperAdmin) sin importar cual de
+        // los dos proveedores este activo.
+        $this->app->bind(MessagingChannel::class, fn () => new LoggingMessagingChannel(
+            config('services.comms_core.driver') === 'nexolu_comms'
+                ? $this->app->make(NexoluCommsChannel::class)
+                : $this->app->make(WhatsAppCloudClient::class)
+        ));
 
         $this->app->bind(MessagingCostReporter::class, fn () => config('services.comms_core.driver') === 'nexolu_comms'
             ? $this->app->make(NexoluCommsCostReporter::class)

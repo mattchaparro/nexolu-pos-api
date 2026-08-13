@@ -58,6 +58,13 @@ class SendReceiptJob implements ShouldQueue
             'id' => $this->entityId,
         ]);
 
-        $messagingChannel->sendDocument($this->to, $documentUrl, $pdf['filename'], 'Aquí tienes tu comprobante.');
+        $messagingChannel->sendDocument(
+            $this->to,
+            $documentUrl,
+            $pdf['filename'],
+            'Aquí tienes tu comprobante.',
+            $pdf['business']->id,
+            'comprobante',
+        );
     }
 }

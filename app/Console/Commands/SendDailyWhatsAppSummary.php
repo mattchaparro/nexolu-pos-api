@@ -72,7 +72,7 @@ class SendDailyWhatsAppSummary extends Command
             $components = $this->components($data);
 
             foreach ($recipients as $identity) {
-                if ($client->sendTemplate($identity->external_id, $template['name'], $template['lang'] ?? 'es', $components)) {
+                if ($client->sendTemplate($identity->external_id, $template['name'], $template['lang'] ?? 'es', $components, $business->id, 'resumen_diario')) {
                     $sent++;
                 }
             }

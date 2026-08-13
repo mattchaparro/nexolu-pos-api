@@ -830,10 +830,29 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   tiene un botón "Gestionar suscripción" que abre
   `SubscriptionActionsModal.vue` (selector de acción + el formulario de
   cada una) en vez de 4 componentes separados para 4 formularios chicos.
-- **Comunicaciones por negocio**: `communications()`/`previewEmail()`/
-  `sendEmail()` de legacy (`BusinessesController.php:606,648,688`) sin
-  equivalente - el `EmailController` nuevo solo hace logs/plantillas
-  globales, no envío dirigido por negocio.
+- ~~**Bitácora de comunicaciones filtrable por canal/negocio**~~ ✅ Resuelto
+  (2026-08-13): no existía ningún log granular por-mensaje de WhatsApp
+  (solo `whatsapp_usage_daily`, agregado por día/categoría) - se agregó la
+  tabla `whatsapp_logs` (nueva, el legacy nunca la toca, aplicada a mano
+  via `mysql` CLI contra `pos_saas`/`testing`, documentada en
+  `schema.sql` - sin archivo en `database/migrations/`, mismo patrón que
+  el resto del proyecto). `App\Services\WhatsApp\LoggingMessagingChannel`
+  (decorator, bind real de `MessagingChannel` en `AppServiceProvider`)
+  loguea cada envío exitoso/fallido sin importar el proveedor
+  (`WhatsAppCloudClient`/`NexoluCommsChannel`) - los ~9 call sites
+  (recordatorios, resumen diario, alertas de stock, comprobantes, OTP,
+  bienvenida, chat de IA) ahora declaran `business_id`/`type`. Nuevo
+  `CommunicationController::index` (`GET /superadmin/communications`) une
+  `email_logs` + `whatsapp_logs` con un `UNION ALL` a nivel SQL (pagina y
+  ordena sin cargar todo el histórico a memoria), filtrable por
+  `channel`/`business_id`. Frontend: pantalla "Comunicaciones" nueva
+  (`superadmin-communications`), reemplaza el item de menú "Correos" que
+  quedaba deshabilitado.
+- **Comunicaciones dirigidas por negocio (enviar, no solo ver)**:
+  `communications()`/`previewEmail()`/`sendEmail()` de legacy
+  (`BusinessesController.php:606,648,688`) - un SuperAdmin redactando y
+  mandando un correo a un negocio puntual desde el panel. Sigue sin
+  equivalente (la bitácora de arriba es de solo lectura).
 - **Limpiar caché del negocio**: `flushCache()` de legacy
   (`BusinessesController.php:357`) sin portar.
 - **Addon de IA (cupo mensual + compra de paquetes adicionales)**: en el
@@ -853,13 +872,17 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   Falta: portar `AiAccessService`/`AiMessagePackService` (cupo mensual,
   descuento por consulta, checkout del paquete) - módulo propio, no un
   ítem chico.
-- **Filtros de estado del listado de negocios**: legacy filtra por
-  `trial|paid|inactive|expired|winback` (`:37-54`);
-  `SuperAdminBusinessesView.vue` solo tiene buscador de texto.
-- **Gestión de equipo desde SuperAdmin**: el backend ya tiene
-  `SuperAdmin\UserController::store/toggle/resetPassword`, pero la
-  pestaña "Equipo" de `SuperAdminBusinessShowView.vue` es solo lectura +
-  impersonar - falta conectar lo que ya existe del lado API.
+- ~~**Filtros de estado del listado de negocios**~~ ✅ Resuelto
+  (2026-08-13): el backend ya soportaba `?status=trial|paid|inactive|expired`
+  (`BusinessesController::index`); se agregó el selector en
+  `SuperAdminBusinessesView.vue` junto al buscador de texto. `winback` del
+  legacy no tiene equivalente (no hay campo que lo derive todavía).
+- ~~**Gestión de equipo desde SuperAdmin**~~ ✅ Resuelto (2026-08-13): el
+  backend ya tenía `SuperAdmin\UserController::store/toggle/resetPassword`;
+  la pestaña "Equipo" de `SuperAdminBusinessShowView.vue` ahora tiene
+  "Agregar usuario" (modal nombre/correo/contraseña/rol), activar/desactivar
+  por fila, y "Restablecer contraseña" (la muestra una sola vez, con botón
+  de copiar - nunca se persiste en claro, igual que el backend).
 
 ### Auth (api + front)
 - ~~**Recuperar contraseña**~~ ✅ Migrado: `POST /v1/forgot-password` +

@@ -29,7 +29,7 @@ class NexoluCommsChannel implements MessagingChannel
         return ! empty(config('services.comms_core.api_key')) && ! empty(config('services.comms_core.base_url'));
     }
 
-    public function sendText(string $to, string $body): bool
+    public function sendText(string $to, string $body, ?int $businessId = null, string $type = 'generico'): bool
     {
         return $this->send($to, ['text' => $body]);
     }
@@ -37,8 +37,14 @@ class NexoluCommsChannel implements MessagingChannel
     /**
      * @param  list<array<string, mixed>>  $components
      */
-    public function sendTemplate(string $to, string $name, string $languageCode, array $components = []): bool
-    {
+    public function sendTemplate(
+        string $to,
+        string $name,
+        string $languageCode,
+        array $components = [],
+        ?int $businessId = null,
+        string $type = 'generico',
+    ): bool {
         return $this->send($to, [
             'whatsapp_template' => [
                 'name' => $name,
@@ -55,8 +61,14 @@ class NexoluCommsChannel implements MessagingChannel
      * `text`/`whatsapp_template`/`whatsapp_flow` de arriba - ajustar si
      * Nexolu Communications (repo aparte) termina exponiendolo distinto.
      */
-    public function sendDocument(string $to, string $documentUrl, string $filename, string $caption = ''): bool
-    {
+    public function sendDocument(
+        string $to,
+        string $documentUrl,
+        string $filename,
+        string $caption = '',
+        ?int $businessId = null,
+        string $type = 'generico',
+    ): bool {
         return $this->send($to, [
             'document' => [
                 'url' => $documentUrl,
@@ -77,6 +89,8 @@ class NexoluCommsChannel implements MessagingChannel
         string $cta,
         array $data,
         string $flowToken,
+        ?int $businessId = null,
+        string $type = 'generico',
     ): bool {
         return $this->send($to, [
             'text' => $bodyText,

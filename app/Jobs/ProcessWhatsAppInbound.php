@@ -54,7 +54,7 @@ class ProcessWhatsAppInbound implements ShouldQueue
         $user = $resolver->resolveUser(self::CHANNEL, $this->from);
 
         if ($user === null) {
-            $client->sendText($this->from, $this->onboardingMessage());
+            $client->sendText($this->from, $this->onboardingMessage(), null, 'ai_chat_onboarding');
 
             return;
         }
@@ -97,12 +97,12 @@ class ProcessWhatsAppInbound implements ShouldQueue
                     $message .= "\n\n📝 Tienes un borrador pendiente de confirmar. Por ahora confirmalo desde el POS.";
                 }
 
-                $client->sendText($this->from, $message);
+                $client->sendText($this->from, $message, $user->business_id, 'ai_chat');
             }
         } catch (RuntimeException $e) {
-            $client->sendText($this->from, $e->getMessage());
+            $client->sendText($this->from, $e->getMessage(), $user->business_id, 'ai_chat');
         } catch (\Throwable $e) {
-            $client->sendText($this->from, 'Uf, algo fallo de mi lado. Intenta de nuevo en un momento.');
+            $client->sendText($this->from, 'Uf, algo fallo de mi lado. Intenta de nuevo en un momento.', $user->business_id, 'ai_chat');
 
             try {
                 Log::error('whatsapp.inbound: fallo al procesar', ['from' => $this->from, 'error' => $e->getMessage()]);
@@ -163,6 +163,8 @@ class ProcessWhatsAppInbound implements ShouldQueue
             $flow['cta'] ?? 'Confirmar',
             $data,
             (string) $draft['id'],
+            $user->business_id,
+            'ai_chat_flow',
         );
     }
 

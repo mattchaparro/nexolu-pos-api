@@ -66,7 +66,7 @@ class RemindersSendWhatsAppNotifications extends Command
                 continue;
             }
 
-            if ($client->sendTemplate($identity->external_id, $template['name'], $template['lang'] ?? 'es', $this->components($reminder))) {
+            if ($client->sendTemplate($identity->external_id, $template['name'], $template['lang'] ?? 'es', $this->components($reminder), $reminder->business_id, 'recordatorio')) {
                 $reminder->update(['last_notified_on' => $today]);
                 $sent++;
             }

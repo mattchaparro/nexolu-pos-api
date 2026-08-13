@@ -24,8 +24,15 @@ interface MessagingChannel
     /**
      * Texto libre. En WhatsApp, solo se entrega dentro de la ventana de 24h
      * desde el ultimo mensaje del usuario - fuera de ella, usar sendTemplate().
+     *
+     * $businessId/$type son solo para el log de comunicaciones de SuperAdmin
+     * (ver WhatsappLog, escrito por App\Services\WhatsApp\LoggingMessagingChannel
+     * - el binding real de esta interfaz, que envuelve a esta implementacion).
+     * Ninguna implementacion concreta los necesita para enviar; quedan aca
+     * para que el llamante los declare junto al resto de argumentos del
+     * envio, no en un paso aparte facil de olvidar.
      */
-    public function sendText(string $to, string $body): bool;
+    public function sendText(string $to, string $body, ?int $businessId = null, string $type = 'generico'): bool;
 
     /**
      * Mensaje de plantilla: via para mensajes iniciados por el negocio (OTP,
@@ -34,7 +41,14 @@ interface MessagingChannel
      *
      * @param  list<array<string, mixed>>  $components
      */
-    public function sendTemplate(string $to, string $name, string $languageCode, array $components = []): bool;
+    public function sendTemplate(
+        string $to,
+        string $name,
+        string $languageCode,
+        array $components = [],
+        ?int $businessId = null,
+        string $type = 'generico',
+    ): bool;
 
     /**
      * Documento adjunto (hoy: comprobantes de venta/orden de servicio/
@@ -49,7 +63,14 @@ interface MessagingChannel
      * agrega mas adelante sin tener que tocar este metodo (el nombre de la
      * plantilla se resolveria en la implementacion, no en el llamante).
      */
-    public function sendDocument(string $to, string $documentUrl, string $filename, string $caption = ''): bool;
+    public function sendDocument(
+        string $to,
+        string $documentUrl,
+        string $filename,
+        string $caption = '',
+        ?int $businessId = null,
+        string $type = 'generico',
+    ): bool;
 
     /**
      * Formulario nativo con datos prellenados, para confirmar un borrador de
@@ -65,8 +86,10 @@ interface MessagingChannel
         string $cta,
         array $data,
         string $flowToken,
+        ?int $businessId = null,
+        string $type = 'generico',
     ): bool;
 
-    /** Marca el mensaje entrante como leido y, si el canal lo soporta, activa el indicador de "escribiendo...". */
+    /** Marca el mensaje entrante como leido y, si el canal lo soporta, activa el indicador de "escribiendo...". No se loguea - un acuse de lectura no es un mensaje enviado. */
     public function markAsReadWithTyping(string $to, string $messageId): bool;
 }

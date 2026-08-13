@@ -2178,6 +2178,39 @@ CREATE TABLE `users` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `whatsapp_logs`
+--
+-- NOTA: esta tabla no viene del dump original de produccion (2026-08-03) -
+-- se agrego despues (2026-08-13) para loggear cada envio saliente de
+-- WhatsApp, mismo shape que `email_logs`. El legacy monolito nunca la lee
+-- ni la escribe, asi que agregarla aca no viola la regla de "nunca migrar
+-- una tabla que el legacy ya usa" (CLAUDE.md) - es una tabla nueva, no una
+-- alteracion de una compartida. Aplicada a mano via `mysql` CLI contra
+-- pos_saas y testing (nunca via `php artisan migrate`, igual que el resto
+-- del schema), no existe archivo en database/migrations/ para esto - ver
+-- ese mismo directorio, vacio a proposito.
+--
+
+DROP TABLE IF EXISTS `whatsapp_logs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `whatsapp_logs` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `business_id` bigint unsigned DEFAULT NULL,
+  `type` varchar(60) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `to_phone` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `status` enum('sent','failed') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'sent',
+  `error` text COLLATE utf8mb4_unicode_ci,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `whatsapp_logs_business_id_created_at_index` (`business_id`,`created_at`),
+  KEY `whatsapp_logs_type_created_at_index` (`type`,`created_at`),
+  CONSTRAINT `whatsapp_logs_business_id_foreign` FOREIGN KEY (`business_id`) REFERENCES `businesses` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `whatsapp_usage_daily`
 --
 

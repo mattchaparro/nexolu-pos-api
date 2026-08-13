@@ -9,7 +9,7 @@ class WhatsAppOtpSender implements ChannelOtpSender
 {
     public function __construct(private MessagingChannel $client) {}
 
-    public function send(string $channel, string $externalId, string $code): void
+    public function send(string $channel, string $externalId, string $code, ?int $businessId = null): void
     {
         $template = config('services.whatsapp.templates.otp');
 
@@ -18,7 +18,9 @@ class WhatsAppOtpSender implements ChannelOtpSender
         if (empty($template['name'])) {
             $this->client->sendText(
                 $externalId,
-                "Tu codigo de vinculacion con Nexolú es {$code}. Vence en 5 minutos."
+                "Tu codigo de vinculacion con Nexolú es {$code}. Vence en 5 minutos.",
+                $businessId,
+                'otp'
             );
 
             return;
@@ -37,6 +39,6 @@ class WhatsAppOtpSender implements ChannelOtpSender
             ];
         }
 
-        $this->client->sendTemplate($externalId, (string) $template['name'], (string) ($template['lang'] ?? 'es'), $components);
+        $this->client->sendTemplate($externalId, (string) $template['name'], (string) ($template['lang'] ?? 'es'), $components, $businessId, 'otp');
     }
 }

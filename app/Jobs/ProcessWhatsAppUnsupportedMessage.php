@@ -2,8 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Services\Messaging\Contracts\MessagingChannel;
 use App\Services\WhatsApp\IdentityResolver;
-use App\Services\WhatsApp\WhatsAppCloudClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -35,7 +35,7 @@ class ProcessWhatsAppUnsupportedMessage implements ShouldQueue
         public readonly string $type,
     ) {}
 
-    public function handle(IdentityResolver $resolver, WhatsAppCloudClient $client): void
+    public function handle(IdentityResolver $resolver, MessagingChannel $client): void
     {
         $user = $resolver->resolveUser('whatsapp', $this->from);
 
@@ -44,7 +44,9 @@ class ProcessWhatsAppUnsupportedMessage implements ShouldQueue
                 $this->from,
                 'Hola 👋 Para usar el asistente de Nexolú por WhatsApp, primero vincula '
                 .'este numero desde el POS: entra a tu cuenta, ve al Asistente y elige '
-                .'"Asistente por WhatsApp".'
+                .'"Asistente por WhatsApp".',
+                null,
+                'ai_chat_onboarding',
             );
 
             return;
@@ -52,6 +54,6 @@ class ProcessWhatsAppUnsupportedMessage implements ShouldQueue
 
         $label = self::LABELS[$this->type] ?? 'ese tipo de mensaje';
 
-        $client->sendText($this->from, "Por ahora no puedo leer {$label} 🙏 Escríbeme el pedido en texto y te ayudo.");
+        $client->sendText($this->from, "Por ahora no puedo leer {$label} 🙏 Escríbeme el pedido en texto y te ayudo.", $user->business_id, 'ai_chat');
     }
 }
