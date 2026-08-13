@@ -975,6 +975,27 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   mismo estilo del wizard de legacy que el usuario pidió conservar). Login
   automático al terminar (mismo contrato de respuesta que `/login`).
 
+  **Extendido (2026-08-13)**: paso 3 nuevo, obligatorio - verificar por OTP
+  el WhatsApp del negocio antes de dejar entrar al dashboard. Sin esto, el
+  negocio quedaba con `AiChannelIdentity` sin vincular hasta que alguien
+  entrara a Ajustes y usara el card de onboarding del Dashboard
+  (`WhatsappOnboardingCard.vue`); ahora se pide una sola vez, en el
+  registro mismo, reusando el mecanismo de OTP que ya existía para el
+  Asistente de IA (`POST /ai/channels/whatsapp/start|confirm`,
+  `ChannelLinkService`) en vez de construir uno nuevo sin sesión - el paso
+  3 corre ya con la cuenta creada y el login automático hecho. De paso
+  sirve como verificación mínima anti-bot (nadie termina el registro sin
+  poder recibir un WhatsApp real) y deja claro, desde el paso 1, la
+  distinción entre el número de WhatsApp (a donde llegan **todas** las
+  notificaciones: resúmenes, alertas, recordatorios) y el teléfono que
+  aparece en facturas/reportes (`Business::phone`, que legacy y esta API
+  ya mostraban en el header del recibo) - por defecto son el mismo número;
+  el paso 1 solo pide uno distinto si el usuario marca explícitamente "uso
+  un número diferente para facturas y reportes". `whatsapp_number` pasó de
+  opcional a obligatorio en `RegisterRequest`; `phone` sigue opcional y
+  `BusinessRegistrationService::register()` lo completa con el
+  `whatsapp_number` ya verificado cuando no se manda aparte.
+
 ### Auth (api + front)
 - ~~**Recuperar contraseña**~~ ✅ Migrado: `POST /v1/forgot-password` +
   `POST /v1/reset-password` (`AuthController`), tabla compartida

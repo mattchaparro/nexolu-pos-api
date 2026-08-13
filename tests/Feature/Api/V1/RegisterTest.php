@@ -23,6 +23,7 @@ class RegisterTest extends TestCase
             'email' => 'ana@example.com',
             'password' => 'secret123',
             'password_confirmation' => 'secret123',
+            'whatsapp_number' => '3001234567',
             'device_name' => 'phpunit',
         ]);
 
@@ -62,6 +63,57 @@ class RegisterTest extends TestCase
         ]);
     }
 
+    public function test_whatsapp_number_is_required(): void
+    {
+        $this->postJson('/api/v1/register', [
+            'business_name' => 'Tienda Sin WhatsApp',
+            'owner_name' => 'Dueño Z',
+            'email' => 'sinwa@example.com',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+            'device_name' => 'phpunit',
+        ])->assertStatus(422)->assertJsonValidationErrors('whatsapp_number');
+    }
+
+    public function test_phone_defaults_to_the_whatsapp_number_when_not_given_separately(): void
+    {
+        $this->postJson('/api/v1/register', [
+            'business_name' => 'Tienda Un Solo Numero',
+            'owner_name' => 'Dueño Unico',
+            'email' => 'unico@example.com',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+            'whatsapp_number' => '3009876543',
+            'device_name' => 'phpunit',
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('businesses', [
+            'name' => 'Tienda Un Solo Numero',
+            'phone' => '3009876543',
+            'whatsapp_number' => '3009876543',
+        ]);
+    }
+
+    public function test_phone_can_be_set_separately_from_the_whatsapp_number(): void
+    {
+        $this->postJson('/api/v1/register', [
+            'business_name' => 'Tienda Dos Numeros',
+            'owner_name' => 'Dueño Doble',
+            'email' => 'doble@example.com',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+            'whatsapp_number' => '3001112233',
+            'phone' => '6015551234',
+            'device_name' => 'phpunit',
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('businesses', [
+            'name' => 'Tienda Dos Numeros',
+            'phone' => '6015551234',
+            'whatsapp_number' => '3001112233',
+        ]);
+    }
+
     public function test_default_setup_mode_is_retail_with_the_basic_plan(): void
     {
         $this->postJson('/api/v1/register', [
@@ -70,6 +122,7 @@ class RegisterTest extends TestCase
             'email' => 'carlos@example.com',
             'password' => 'secret123',
             'password_confirmation' => 'secret123',
+            'whatsapp_number' => '3001234567',
             'device_name' => 'phpunit',
         ])->assertCreated();
 
@@ -87,6 +140,7 @@ class RegisterTest extends TestCase
             'password' => 'secret123',
             'password_confirmation' => 'secret123',
             'setup_mode' => 'food_service',
+            'whatsapp_number' => '3001234567',
             'device_name' => 'phpunit',
         ])->assertCreated();
 
@@ -103,6 +157,7 @@ class RegisterTest extends TestCase
             'email' => 'pedro@example.com',
             'password' => 'secret123',
             'password_confirmation' => 'secret123',
+            'whatsapp_number' => '3001234567',
             'device_name' => 'phpunit',
         ])->assertCreated();
 
@@ -123,6 +178,7 @@ class RegisterTest extends TestCase
             'email' => $existing->email,
             'password' => 'secret123',
             'password_confirmation' => 'secret123',
+            'whatsapp_number' => '3001234567',
             'device_name' => 'phpunit',
         ])->assertStatus(422)->assertJsonValidationErrors('email');
     }
@@ -135,6 +191,7 @@ class RegisterTest extends TestCase
             'email' => 'x@example.com',
             'password' => 'short',
             'password_confirmation' => 'short',
+            'whatsapp_number' => '3001234567',
             'device_name' => 'phpunit',
         ])->assertStatus(422)->assertJsonValidationErrors('password');
     }
@@ -149,6 +206,7 @@ class RegisterTest extends TestCase
             'password_confirmation' => 'secret123',
             'plan' => 'full',
             'feature_flags' => ['reminders' => false],
+            'whatsapp_number' => '3001234567',
             'device_name' => 'phpunit',
         ])->assertCreated();
 
@@ -171,6 +229,7 @@ class RegisterTest extends TestCase
             // open_tabs no viene encendido por defecto en basic - intentar
             // prenderlo desde el registro publico debe ser ignorado.
             'feature_flags' => ['open_tabs' => true],
+            'whatsapp_number' => '3001234567',
             'device_name' => 'phpunit',
         ])->assertCreated();
 
@@ -188,6 +247,7 @@ class RegisterTest extends TestCase
             'password' => 'secret123',
             'password_confirmation' => 'secret123',
             'setup_mode' => 'not-a-real-mode',
+            'whatsapp_number' => '3001234567',
             'device_name' => 'phpunit',
         ])->assertStatus(422)->assertJsonValidationErrors('setup_mode');
     }

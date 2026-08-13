@@ -54,7 +54,11 @@ class BusinessRegistrationService
             $business = Business::create([
                 'name' => $data['business_name'],
                 'owner_name' => $data['owner_name'],
-                'phone' => $data['phone'] ?? null,
+                // Si el negocio no aclara un telefono distinto para
+                // facturas/reportes, usamos el mismo whatsapp_number ya
+                // pedido - evita duplicar el dato para el caso comun (un
+                // solo numero para todo).
+                'phone' => $data['phone'] ?? $data['whatsapp_number'] ?? null,
                 'whatsapp_number' => $data['whatsapp_number'] ?? null,
                 'nit' => $data['nit'] ?? null,
                 'address' => $data['address'] ?? null,

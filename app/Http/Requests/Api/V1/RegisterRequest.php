@@ -24,12 +24,18 @@ class RegisterRequest extends FormRequest
             'owner_name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
+            // Opcional a proposito: solo se pide si el negocio usa un numero
+            // DISTINTO al de WhatsApp para facturas/reportes (ver
+            // RegisterView.vue) - si no se manda, BusinessRegistrationService
+            // lo deja igual al whatsapp_number ya verificado.
             'phone' => ['sometimes', 'nullable', 'string', 'max:15'],
-            // WhatsApp es el canal principal de notificaciones (recordatorios,
-            // resumen diario, IA cuando llegue) - pedirlo al registrarse
-            // deja al negocio "notificable" desde el minuto cero, sin depender
-            // de que despues entre a Ajustes.
-            'whatsapp_number' => ['sometimes', 'nullable', 'string', 'max:20'],
+            // Obligatorio: es el canal por el que el negocio recibe TODAS sus
+            // notificaciones (recordatorios, resumen diario, alertas de
+            // inventario) - el wizard de registro lo verifica con un OTP
+            // justo despues de crear la cuenta (ver AiChannelLinkController),
+            // lo que de paso sirve como verificacion anti-bot minima: nadie
+            // termina el registro sin poder recibir un codigo por WhatsApp.
+            'whatsapp_number' => ['required', 'string', 'max:20'],
             'nit' => ['sometimes', 'nullable', 'string', 'max:30'],
             'address' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'setup_mode' => ['sometimes', 'nullable', 'string', Rule::in(BusinessFeaturePresets::setupModes())],
