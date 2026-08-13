@@ -737,6 +737,32 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   `nonCreditPaymentMethods` (`isCreditPaymentMethodId`) antes de pintar
   `PaymentMethodPicker` - mismo comportamiento que
   `AppointmentsController.php:48-52` del legacy.
+- **Confirmación al agendar + recordatorio 2h antes por WhatsApp** ✅
+  Construido (2026-08-13, pedido explícito - sin equivalente en legacy,
+  que solo mandaba un recordatorio por correo el día anterior via
+  `AppointmentsSendReminders`): `AppointmentWhatsappNotifier` +
+  `SendAppointmentConfirmationJob` (se dispara al agendar, si hay
+  `client_phone`) + el comando nuevo `appointments:send-two-hour-reminders`
+  (cada 5 min, mismo patrón que `reminders:send-whatsapp-notifications`).
+  Sin columna propia para trackear el envío del recordatorio
+  (`appointments` es tabla compartida con el monolito, no se le puede
+  agregar una - ver `CLAUDE.md`; y en toda esta migración nunca se ha
+  usado `database/migrations/`, las 85 tablas ya vienen pre-provistas en
+  `schema.sql`): se reutiliza el modelo `Reminder` polimórfico (mismo
+  patrón que los 4 hooks de Compra/Proveedor/Gasto/Plantilla de gasto
+  fijo) con `notify_whatsapp=false` a propósito, para que
+  `reminders:send-whatsapp-notifications` (que le avisa al STAFF via su
+  `AiChannelIdentity`) la ignore por completo - el comando nuevo es el
+  único que la procesa, y le escribe al teléfono del cliente, no al
+  creador. `ReminderController::index()` excluye estos reminders del
+  Planificador (son un detalle de implementación del sistema, no una
+  tarea del staff). Cancelar/reprogramar/eliminar una cita
+  actualiza/borra su `Reminder` pendiente en `AppointmentService`.
+  **Sin plantillas de WhatsApp aprobadas todavía en Meta**:
+  `WHATSAPP_TEMPLATE_CITA_CONFIRMACION`/`WHATSAPP_TEMPLATE_CITA_RECORDATORIO`
+  (`.env`) quedan vacías por defecto - mismo patrón tolerante que
+  `WHATSAPP_FLOW_GASTO_ID` - hasta que alguien cree y apruebe las
+  plantillas reales en Meta, nada se envía.
 
 ### Apartados (api)
 - ~~`layaway_allowed_category_ids` no se aplica~~ ✅ Migrado

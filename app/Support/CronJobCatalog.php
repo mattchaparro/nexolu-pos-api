@@ -49,6 +49,13 @@ class CronJobCatalog
             'command' => 'appointments:send-reminders',
         ],
         [
+            'key' => 'appointment_two_hour_reminders',
+            'name' => 'Recordatorio de cita (2h antes) por WhatsApp',
+            'description' => 'Avisa por WhatsApp al cliente que su cita es en 2 horas.',
+            'schedule' => 'Cada 5 minutos',
+            'command' => 'appointments:send-two-hour-reminders',
+        ],
+        [
             'key' => 'low_stock_alerts',
             'name' => 'Alertas de inventario bajo',
             'description' => 'Avisa por correo y/o WhatsApp a negocios con productos o ingredientes bajo el umbral minimo configurado.',

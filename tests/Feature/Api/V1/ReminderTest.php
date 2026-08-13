@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Models\Appointment;
 use App\Models\Business;
 use App\Models\Reminder;
 use App\Models\User;
@@ -95,6 +96,35 @@ class ReminderTest extends TestCase
         $this->assertSame([$sooner->id, $later->id], $pendingIds);
         $completedIds = array_column($response->json('completed'), 'id');
         $this->assertContains($done->id, $completedIds);
+    }
+
+    /**
+     * El recordatorio de 2h antes de una cita (ver AppointmentService) lo
+     * genera el sistema solo para trackear su propio envio de WhatsApp al
+     * cliente - no es una tarea del staff, no debe aparecer en el
+     * Planificador.
+     */
+    public function test_index_excludes_appointment_generated_reminders(): void
+    {
+        $admin = $this->admin();
+        $appointment = Appointment::factory()->create(['business_id' => $admin->business_id]);
+
+        $pending = Reminder::factory()->for($admin->business, 'business')->create([
+            'created_by_user_id' => $admin->id,
+            'remindable_type' => Appointment::class,
+            'remindable_id' => $appointment->id,
+        ]);
+        $done = Reminder::factory()->done()->for($admin->business, 'business')->create([
+            'created_by_user_id' => $admin->id,
+            'remindable_type' => Appointment::class,
+            'remindable_id' => $appointment->id,
+        ]);
+
+        $response = $this->actingAs($admin, 'sanctum')->getJson('/api/v1/reminders');
+
+        $response->assertOk();
+        $this->assertNotContains($pending->id, array_column($response->json('pending'), 'id'));
+        $this->assertNotContains($done->id, array_column($response->json('completed'), 'id'));
     }
 
     public function test_destroy_removes_the_reminder(): void

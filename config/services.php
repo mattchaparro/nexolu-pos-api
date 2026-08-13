@@ -124,6 +124,21 @@ return [
                 'name' => 'low_stock_alert',
                 'lang' => 'es_CO',
             ],
+            // Confirmacion al agendar + recordatorio 2h antes de una cita -
+            // funcionalidad nueva, sin equivalente en legacy (que solo
+            // mandaba un recordatorio por correo el dia anterior, ver
+            // AppointmentsSendReminders). Sin plantilla real aprobada
+            // todavia en Meta, por eso via env() y no hardcodeado como las
+            // de arriba (mismo patron que flows.gasto.id): AppointmentWhatsappNotifier
+            // no envia nada hasta que se configure el nombre real.
+            'cita_confirmacion' => [
+                'name' => env('WHATSAPP_TEMPLATE_CITA_CONFIRMACION', ''),
+                'lang' => 'es_CO',
+            ],
+            'cita_recordatorio' => [
+                'name' => env('WHATSAPP_TEMPLATE_CITA_RECORDATORIO', ''),
+                'lang' => 'es_CO',
+            ],
         ],
 
         // WhatsApp Flows publicados en Meta, para confirmar borradores de

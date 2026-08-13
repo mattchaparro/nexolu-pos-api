@@ -2,14 +2,17 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Jobs\SendAppointmentConfirmationJob;
 use App\Models\Appointment;
 use App\Models\Business;
 use App\Models\BusinessServiceWorkflow;
 use App\Models\Product;
+use App\Models\Reminder;
 use App\Models\ServiceWorkflow;
 use App\Models\ServiceWorkflowStage;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class AppointmentTest extends TestCase
@@ -38,6 +41,54 @@ class AppointmentTest extends TestCase
             ->assertJsonPath('service_order.status', 'pending');
 
         $this->assertDatabaseHas('service_orders', ['appointment_id' => $response->json('id'), 'total' => 40000]);
+    }
+
+    public function test_creating_an_appointment_with_a_phone_queues_the_whatsapp_confirmation_and_a_two_hour_reminder(): void
+    {
+        Queue::fake();
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $service = Product::factory()->service()->create(['business_id' => $business->id, 'price' => 40000]);
+        $starts = now()->addDay()->setTime(15, 0);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/appointments', [
+            'services' => [['id' => $service->id]],
+            'client_name' => 'Ana Gomez',
+            'client_phone' => '3001112233',
+            'starts_at' => $starts->toIso8601String(),
+            'ends_at' => $starts->copy()->addHour()->toIso8601String(),
+        ]);
+        $appointmentId = $response->json('id');
+
+        Queue::assertPushed(SendAppointmentConfirmationJob::class, fn ($job) => $job->appointmentId === $appointmentId);
+
+        $reminder = Reminder::where('remindable_type', Appointment::class)->where('remindable_id', $appointmentId)->first();
+        $this->assertNotNull($reminder);
+        $this->assertSame(Reminder::STATUS_PENDING, $reminder->status);
+        $this->assertFalse((bool) $reminder->notify_whatsapp);
+        $expected = $starts->copy()->subHours(2)->timezone('America/Bogota');
+        $this->assertSame($expected->toDateString(), $reminder->due_date->toDateString());
+        $this->assertSame($expected->format('H:i'), substr((string) $reminder->notify_time, 0, 5));
+    }
+
+    public function test_creating_an_appointment_without_a_phone_does_not_queue_anything(): void
+    {
+        Queue::fake();
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $service = Product::factory()->service()->create(['business_id' => $business->id, 'price' => 40000]);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/appointments', [
+            'services' => [['id' => $service->id]],
+            'client_name' => 'Ana Gomez',
+            'starts_at' => now()->addDay()->toIso8601String(),
+            'ends_at' => now()->addDay()->addHour()->toIso8601String(),
+        ]);
+
+        Queue::assertNotPushed(SendAppointmentConfirmationJob::class);
+        $this->assertDatabaseMissing('reminders', ['remindable_type' => Appointment::class, 'remindable_id' => $response->json('id')]);
     }
 
     public function test_the_linked_order_stage_is_exposed_when_the_business_has_a_workflow_assigned(): void
@@ -244,6 +295,34 @@ class AppointmentTest extends TestCase
         $response->assertOk()->assertJsonPath('status', 'pending');
     }
 
+    public function test_reschedule_updates_the_pending_two_hour_reminder_to_match_the_new_time(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $service = Product::factory()->service()->create(['business_id' => $business->id, 'price' => 40000]);
+        $originalStart = now()->addDay()->setTime(15, 0);
+
+        $created = $this->actingAs($user, 'sanctum')->postJson('/api/v1/appointments', [
+            'services' => [['id' => $service->id]],
+            'client_name' => 'Ana Gomez',
+            'client_phone' => '3001112233',
+            'starts_at' => $originalStart->toIso8601String(),
+            'ends_at' => $originalStart->copy()->addHour()->toIso8601String(),
+        ])->json();
+
+        $newStart = now()->addDays(3)->setTime(18, 0);
+        $this->actingAs($user, 'sanctum')->postJson("/api/v1/appointments/{$created['id']}/reschedule", [
+            'starts_at' => $newStart->toIso8601String(),
+            'ends_at' => $newStart->copy()->addHour()->toIso8601String(),
+        ])->assertOk();
+
+        $reminder = Reminder::where('remindable_type', Appointment::class)->where('remindable_id', $created['id'])->first();
+        $expected = $newStart->copy()->subHours(2)->timezone('America/Bogota');
+        $this->assertSame($expected->toDateString(), $reminder->fresh()->due_date->toDateString());
+        $this->assertSame($expected->format('H:i'), substr((string) $reminder->fresh()->notify_time, 0, 5));
+    }
+
     public function test_cancelling_an_appointment_also_cancels_and_refunds_its_linked_order(): void
     {
         $business = Business::factory()->create();
@@ -272,6 +351,28 @@ class AppointmentTest extends TestCase
             'amount' => -40000,
             'payment_method' => 'cash',
         ]);
+    }
+
+    public function test_cancelling_an_appointment_deletes_its_pending_two_hour_reminder(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $service = Product::factory()->service()->create(['business_id' => $business->id, 'price' => 40000]);
+
+        $created = $this->actingAs($user, 'sanctum')->postJson('/api/v1/appointments', [
+            'services' => [['id' => $service->id]],
+            'client_name' => 'Ana Gomez',
+            'client_phone' => '3001112233',
+            'starts_at' => now()->addDay()->toIso8601String(),
+            'ends_at' => now()->addDay()->addHour()->toIso8601String(),
+        ])->json();
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson("/api/v1/appointments/{$created['id']}/status", ['status' => 'cancelled'])
+            ->assertOk();
+
+        $this->assertDatabaseMissing('reminders', ['remindable_type' => Appointment::class, 'remindable_id' => $created['id']]);
     }
 
     /**
@@ -369,6 +470,28 @@ class AppointmentTest extends TestCase
             ->assertNoContent();
 
         $this->assertDatabaseHas('service_orders', ['appointment_id' => $created['id'], 'total' => 40000]);
+    }
+
+    public function test_deleting_an_appointment_deletes_its_pending_two_hour_reminder(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $service = Product::factory()->service()->create(['business_id' => $business->id, 'price' => 40000]);
+
+        $created = $this->actingAs($user, 'sanctum')->postJson('/api/v1/appointments', [
+            'services' => [['id' => $service->id]],
+            'client_name' => 'Ana Gomez',
+            'client_phone' => '3001112233',
+            'starts_at' => now()->addDay()->toIso8601String(),
+            'ends_at' => now()->addDay()->addHour()->toIso8601String(),
+        ])->json();
+
+        $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/v1/appointments/{$created['id']}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('reminders', ['remindable_type' => Appointment::class, 'remindable_id' => $created['id']]);
     }
 
     public function test_user_cannot_delete_another_businesss_appointment(): void

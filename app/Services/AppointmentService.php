@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Jobs\SendAppointmentConfirmationJob;
 use App\Models\Appointment;
 use App\Models\Business;
 use App\Models\Product;
+use App\Models\Reminder;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -22,14 +24,17 @@ use Illuminate\Validation\ValidationException;
  */
 class AppointmentService
 {
-    public function __construct(private ServiceOrderService $serviceOrderService) {}
+    public function __construct(
+        private ServiceOrderService $serviceOrderService,
+        private ReminderService $reminderService,
+    ) {}
 
     /**
      * @param  array{client_id?: ?int, services: array<int, array{id: int, custom_price?: float|int|string|null}>, user_id?: ?int, client_name: string, client_phone?: ?string, client_email?: ?string, starts_at: string, ends_at: string, notes?: ?string, initial_payment?: float|int|string|null, payment_method?: ?string}  $data
      */
     public function create(User $user, array $data): Appointment
     {
-        return DB::transaction(function () use ($user, $data) {
+        $appointment = DB::transaction(function () use ($user, $data) {
             $business = $user->business;
             $startsAt = $this->parseUtc($data['starts_at']);
             $endsAt = $this->parseUtc($data['ends_at']);
@@ -71,6 +76,65 @@ class AppointmentService
             // SaleService::createSale sobre por que fresh() rompe el 201).
             return $appointment->refresh()->load('client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments', 'serviceOrder.stage');
         });
+
+        if ($appointment->client_phone) {
+            // Fuera de la transaccion (QUEUE_CONNECTION=redis, after_commit
+            // en false): un worker rapido no debe tomar el job antes de que
+            // la fila exista de verdad.
+            SendAppointmentConfirmationJob::dispatch($appointment->id);
+            $this->createTwoHourReminder($user, $appointment);
+        }
+
+        return $appointment;
+    }
+
+    /**
+     * Crea la fila Reminder (ver docblock de la clase) que
+     * AppointmentsSendTwoHourReminders procesa 2h antes de starts_at.
+     */
+    private function createTwoHourReminder(User $user, Appointment $appointment): void
+    {
+        $remindAt = $appointment->starts_at->copy()->subHours(2)->timezone('America/Bogota');
+
+        $this->reminderService->create($appointment->business_id, $user->id, [
+            'title' => 'Recordatorio de cita: '.$appointment->client_name,
+            'due_date' => $remindAt->toDateString(),
+            'notify_time' => $remindAt->format('H:i'),
+            'remindable_type' => Appointment::class,
+            'remindable_id' => $appointment->id,
+        ]);
+    }
+
+    /**
+     * Reprograma el Reminder de 2h de una cita ya agendada (update()/
+     * reschedule() cambian starts_at) - solo si ya existe uno pendiente; si
+     * nunca se creo (sin telefono al agendar) no se crea ahora, caso menor
+     * que queda fuera de alcance.
+     */
+    private function rescheduleTwoHourReminder(Appointment $appointment): void
+    {
+        $remindAt = $appointment->starts_at->copy()->subHours(2)->timezone('America/Bogota');
+
+        Reminder::where('remindable_type', Appointment::class)
+            ->where('remindable_id', $appointment->id)
+            ->where('status', Reminder::STATUS_PENDING)
+            ->update(['due_date' => $remindAt->toDateString(), 'notify_time' => $remindAt->format('H:i')]);
+    }
+
+    /** Cancelar la cita hace que ya no tenga sentido avisarle al cliente. */
+    private function cancelTwoHourReminder(Appointment $appointment): void
+    {
+        Reminder::where('remindable_type', Appointment::class)
+            ->where('remindable_id', $appointment->id)
+            ->where('status', Reminder::STATUS_PENDING)
+            ->delete();
+    }
+
+    /** Eliminar la cita (soft delete) tampoco debe avisarle al cliente. */
+    public function delete(Appointment $appointment): void
+    {
+        $this->cancelTwoHourReminder($appointment);
+        $appointment->delete();
     }
 
     /**
@@ -116,6 +180,8 @@ class AppointmentService
                 ]);
             }
 
+            $this->rescheduleTwoHourReminder($appointment);
+
             return $appointment->fresh()->load('client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments', 'serviceOrder.stage');
         });
     }
@@ -125,6 +191,7 @@ class AppointmentService
         $this->assertNoConflict($appointment->business, $appointment->user_id, $startsAt, $endsAt, $appointment->id);
 
         $appointment->update(['starts_at' => $startsAt, 'ends_at' => $endsAt, 'status' => 'pending']);
+        $this->rescheduleTwoHourReminder($appointment);
 
         return $appointment->fresh()->load('client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments', 'serviceOrder.stage');
     }
@@ -146,6 +213,7 @@ class AppointmentService
                 if ($order && $order->status !== 'cancelled') {
                     $this->serviceOrderService->cancel($user, $order, 'Reembolso por cancelación de la cita');
                 }
+                $this->cancelTwoHourReminder($appointment);
             }
 
             return $appointment->fresh()->load('client', 'service', 'staff', 'serviceOrder.items', 'serviceOrder.payments', 'serviceOrder.stage');

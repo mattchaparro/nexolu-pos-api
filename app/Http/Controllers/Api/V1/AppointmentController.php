@@ -99,7 +99,7 @@ class AppointmentController extends Controller
      */
     public function destroy(Appointment $appointment): Response
     {
-        $appointment->delete();
+        $this->appointmentService->delete($appointment);
 
         return response()->noContent();
     }

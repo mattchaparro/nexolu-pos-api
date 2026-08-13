@@ -28,6 +28,9 @@ $logCronRun('subscriptions:notify-expiring', 'subscription_expiring')->dailyAt('
 $logCronRun('trials:notify-expiring', 'trial_expiring')->dailyAt('09:00');
 $logCronRun('audit:prune', 'audit_prune')->dailyAt('03:15');
 $logCronRun('appointments:send-reminders', 'appointment_reminders')->dailyAt('09:00');
+// Cada 5 min, mismo motivo que reminder_whatsapp: una cita a cualquier hora
+// necesita que el aviso se dispare cerca de "2h antes", no en una hora fija.
+$logCronRun('appointments:send-two-hour-reminders', 'appointment_two_hour_reminders')->everyFiveMinutes();
 $logCronRun('inventory:send-low-stock-alerts', 'low_stock_alerts')->dailyAt('08:00');
 // Cada 5 min y no una hora fija: un recordatorio "hoy a las 5:00pm" tiene
 // que dispararse cerca de esa hora, sea cual sea.
