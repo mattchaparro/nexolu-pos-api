@@ -77,6 +77,7 @@ Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard
 Route::get('/finance', [FinanceController::class, 'index'])->name('finance.index');
 
 Route::get('/communications', [CommunicationController::class, 'index'])->name('communications.index');
+Route::post('/businesses/{business}/communications', [CommunicationController::class, 'send'])->name('businesses.communications.send');
 
 Route::get('/whatsapp-templates', [WhatsAppTemplateController::class, 'index'])->name('whatsapp-templates.index');
 

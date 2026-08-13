@@ -849,11 +849,22 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   `channel`/`business_id`. Frontend: pantalla "Comunicaciones" nueva
   (`superadmin-communications`), reemplaza el item de menú "Correos" que
   quedaba deshabilitado.
-- **Comunicaciones dirigidas por negocio (enviar, no solo ver)**:
-  `communications()`/`previewEmail()`/`sendEmail()` de legacy
-  (`BusinessesController.php:606,648,688`) - un SuperAdmin redactando y
-  mandando un correo a un negocio puntual desde el panel. Sigue sin
-  equivalente (la bitácora de arriba es de solo lectura).
+- ~~**Comunicaciones dirigidas por negocio (enviar, no solo ver)**~~ ✅
+  Migrado (2026-08-13), pero NO como puerto de
+  `communications()`/`previewEmail()`/`sendEmail()` del legacy
+  (`BusinessesController.php:606,648,688`): esos 3 métodos solo mandan 2
+  correos de marketing con contenido fijo (`promo_reminder`,
+  `special_price`), y lo que se pidió esta vez fue algo más general - que
+  el superadmin pueda escribir lo que quiera. `App\Services\BusinessCommunicationService::send()`
+  redacta y manda un correo (asunto + cuerpo libres, `App\Mail\BusinessDirectedMail`)
+  o un WhatsApp (vía la plantilla genérica ya aprobada 'recordatorio' /
+  `general_reminder` - una única variable de texto libre, tope 300
+  caracteres, mismo mecanismo que `reminders:send-whatsapp-notifications`)
+  a un negocio puntual. Ambos canales quedan automáticamente en la
+  bitácora de Comunicaciones (arriba) sin código adicional: el correo vía
+  `LogSentEmail` (headers `X-Nexolu-*`), el WhatsApp vía
+  `LoggingMessagingChannel`. Modal "Redactar" en
+  `SuperAdminCommunicationsView.vue` (nexolu-pos-front).
 - **Limpiar caché del negocio**: `flushCache()` de legacy
   (`BusinessesController.php:357`) sin portar.
 - ~~**Addon de IA (cupo mensual + compra de paquetes adicionales)**~~ ✅

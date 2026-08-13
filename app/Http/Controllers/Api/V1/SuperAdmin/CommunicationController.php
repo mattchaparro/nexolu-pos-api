@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Api\V1\SuperAdmin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\V1\SuperAdmin\SendBusinessCommunicationRequest;
 use App\Models\Business;
+use App\Services\BusinessCommunicationService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 /**
  * Bitacora unificada de todo lo que la app manda hacia afuera (email +
@@ -19,6 +23,8 @@ use Illuminate\Support\Facades\DB;
  */
 class CommunicationController extends Controller
 {
+    public function __construct(private BusinessCommunicationService $communications) {}
+
     public function index(Request $request): array
     {
         $channel = $request->string('channel')->toString();
@@ -93,5 +99,21 @@ class CommunicationController extends Controller
                 'total' => $page->total(),
             ],
         ];
+    }
+
+    public function send(SendBusinessCommunicationRequest $request, Business $business): JsonResponse
+    {
+        try {
+            $this->communications->send(
+                $business,
+                $request->validated('channel'),
+                $request->validated('subject'),
+                $request->validated('message'),
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 502);
+        }
+
+        return response()->json(['ok' => true]);
     }
 }
