@@ -193,6 +193,72 @@ class ProductTest extends TestCase
             ->assertJsonCount(2, 'data');
     }
 
+    public function test_for_layaway_excludes_services_inactive_and_out_of_stock_products(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $eligible = Product::factory()->create(['business_id' => $business->id, 'stock' => 5, 'track_stock' => true]);
+        $service = Product::factory()->create(['business_id' => $business->id, 'is_service' => true, 'track_stock' => false]);
+        $inactive = Product::factory()->create(['business_id' => $business->id, 'is_active' => false]);
+        $outOfStock = Product::factory()->create(['business_id' => $business->id, 'stock' => 0, 'track_stock' => true]);
+        $untracked = Product::factory()->create(['business_id' => $business->id, 'track_stock' => false]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?for_layaway=1')
+            ->assertOk();
+
+        $ids = collect($response->json('data'))->pluck('id');
+        $this->assertTrue($ids->contains($eligible->id));
+        $this->assertTrue($ids->contains($untracked->id));
+        $this->assertFalse($ids->contains($service->id));
+        $this->assertFalse($ids->contains($inactive->id));
+        $this->assertFalse($ids->contains($outOfStock->id));
+    }
+
+    public function test_for_layaway_respects_the_business_category_allowlist(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $allowedCategory = ProductCategory::factory()->create(['business_id' => $business->id]);
+        $business->update(['layaway_allowed_category_ids' => [$allowedCategory->id]]);
+
+        $allowed = Product::factory()->create(['business_id' => $business->id, 'category_id' => $allowedCategory->id]);
+        $otherCategory = ProductCategory::factory()->create(['business_id' => $business->id]);
+        $notAllowed = Product::factory()->create(['business_id' => $business->id, 'category_id' => $otherCategory->id]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?for_layaway=1')
+            ->assertOk();
+
+        $ids = collect($response->json('data'))->pluck('id');
+        $this->assertTrue($ids->contains($allowed->id));
+        $this->assertFalse($ids->contains($notAllowed->id));
+    }
+
+    public function test_for_layaway_include_ids_brings_back_out_of_stock_products_already_on_the_layaway(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $outOfStock = Product::factory()->create(['business_id' => $business->id, 'stock' => 0, 'track_stock' => true]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?for_layaway=1')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/products?for_layaway=1&include_ids[]={$outOfStock->id}")
+            ->assertOk();
+
+        $this->assertTrue(collect($response->json('data'))->pluck('id')->contains($outOfStock->id));
+    }
+
     public function test_creating_a_service_forces_no_stock_tracking_regardless_of_what_the_client_sends(): void
     {
         $business = Business::factory()->create();

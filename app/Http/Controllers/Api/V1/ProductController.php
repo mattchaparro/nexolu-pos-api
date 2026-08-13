@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
+use Illuminate\Support\Arr;
 
 class ProductController extends Controller
 {
@@ -108,6 +109,35 @@ class ProductController extends Controller
         // filtrar por una categoria raiz incluye tambien sus subcategorias.
         if ($request->filled('category_id')) {
             $query->whereIn('category_id', ProductCategory::idsIncludingChildren((int) $request->integer('category_id')));
+        }
+
+        // for_layaway: puerto de LayawaysController::create()/show() del
+        // legacy (mismo filtro en los dos metodos alla) - un apartado nunca
+        // vende servicios ni productos inactivos/sin stock, y el negocio
+        // puede restringir a categorias especificas via
+        // layaway_allowed_category_ids. include_ids evita que un producto
+        // que ya esta en el apartado (pero ahora sin stock, p.ej.) desaparezca
+        // del selector al editar - mismo whereIn($currentProductIds) que
+        // legacy hace en show().
+        if ($request->boolean('for_layaway')) {
+            $query->where('is_service', false)->where('is_active', true);
+
+            $includeIds = collect(Arr::wrap($request->input('include_ids', [])))
+                ->map(fn ($id) => (int) $id)
+                ->filter()
+                ->all();
+
+            $query->where(function ($q) use ($includeIds) {
+                $q->where('track_stock', false)->orWhere('stock', '>', 0);
+                if ($includeIds !== []) {
+                    $q->orWhereIn('id', $includeIds);
+                }
+            });
+
+            $allowedCategoryIds = $business?->layaway_allowed_category_ids;
+            if (is_array($allowedCategoryIds) && $allowedCategoryIds !== []) {
+                $query->whereIn('category_id', $allowedCategoryIds);
+            }
         }
 
         // filter: a diferencia de category_id/search (puerto directo de

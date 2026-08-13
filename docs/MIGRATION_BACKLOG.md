@@ -591,14 +591,13 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   (`AppointmentsController.php:48-52`). Menor, sin confirmar si ya aplica.
 
 ### Apartados (api)
-- **`layaway_allowed_category_ids` no se aplica**: legacy restringe qué
-  productos se pueden apartar a las categorías configuradas por el
-  negocio, excluyendo inactivos/sin stock
-  (`LayawaysController.php:41-55,97-108`). El campo existe en el modelo
-  `Business` pero `useLayawayProductOptions.ts` trae todos los productos
-  sin filtrar - un negocio que solo permite apartar electrodomésticos hoy
-  puede apartar cualquier cosa. Es una regla de negocio real, no solo un
-  detalle de UI - vale la pena priorizarlo.
+- ~~`layaway_allowed_category_ids` no se aplica~~ ✅ Migrado
+  (`ProductController::index()` con `for_layaway=1`, puerto de
+  `LayawaysController.php:41-55,97-108`: excluye servicios, inactivos, sin
+  stock, y respeta la lista de categorías permitidas del negocio;
+  `include_ids` trae de vuelta un producto ya apartado aunque se haya
+  agotado, igual que el `whereIn($currentProductIds)` de `show()` en
+  legacy).
 
 ### Dashboard (api + front)
 - **Desglose efectivo/transferencia del día**: legacy calcula
