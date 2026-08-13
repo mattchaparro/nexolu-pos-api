@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\ExpenseType;
 use App\Models\User;
 use App\Services\AiChatService;
+use App\Services\AiQuotaService;
 use App\Services\Messaging\Contracts\MessagingChannel;
 use App\Services\WhatsApp\IdentityResolver;
 use App\Support\AiTenantContext;
@@ -49,7 +50,7 @@ class ProcessWhatsAppInbound implements ShouldQueue
         public readonly ?string $wamid = null,
     ) {}
 
-    public function handle(IdentityResolver $resolver, AiChatService $chat, MessagingChannel $client): void
+    public function handle(IdentityResolver $resolver, AiChatService $chat, MessagingChannel $client, AiQuotaService $quota): void
     {
         $user = $resolver->resolveUser(self::CHANNEL, $this->from);
 
@@ -73,6 +74,7 @@ class ProcessWhatsAppInbound implements ShouldQueue
 
         try {
             $context = AiTenantContext::forUser($user, self::CHANNEL);
+            $quota->consumeMessage($user->business, $user);
 
             $result = $chat->send(self::AGENT, $this->text, $context, $conversationId);
 

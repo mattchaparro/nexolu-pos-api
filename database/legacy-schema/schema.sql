@@ -201,6 +201,44 @@ CREATE TABLE `ai_message_pack_purchases` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `ai_message_pack_checkout_orders`
+--
+-- NO existe en el legacy: el legacy nunca tuvo un flujo de compra self-serve
+-- de paquetes de IA (AiMessagePackService::acreditar() solo se llamaba desde
+-- tests). Es una tabla genuinamente nueva de este repo, sin equivalente en
+-- pos-saas-legacy y que el monolito legacy nunca lee ni escribe - por eso se
+-- agrega directo aca (no via migration, ver CLAUDE.md) mirror de
+-- `subscription_checkout_orders` (ver AiMessagePackCheckoutService).
+--
+
+DROP TABLE IF EXISTS `ai_message_pack_checkout_orders`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `ai_message_pack_checkout_orders` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `business_id` bigint unsigned NOT NULL,
+  `order_key` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `messages` int unsigned NOT NULL,
+  `price_cop` int unsigned NOT NULL,
+  `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `provider` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'wompi',
+  `provider_order_id` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_by_user_id` bigint unsigned DEFAULT NULL,
+  `confirmed_at` timestamp NULL DEFAULT NULL,
+  `payload` json DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `ai_message_pack_checkout_orders_order_key_unique` (`order_key`),
+  KEY `ai_message_pack_checkout_orders_business_id_status_index` (`business_id`,`status`),
+  KEY `ai_message_pack_checkout_orders_provider_status_index` (`provider`,`status`),
+  KEY `ai_message_pack_checkout_orders_created_by_user_id_foreign` (`created_by_user_id`),
+  CONSTRAINT `ai_message_pack_checkout_orders_business_id_foreign` FOREIGN KEY (`business_id`) REFERENCES `businesses` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `ai_message_pack_checkout_orders_created_by_user_id_foreign` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `ai_messages`
 --
 

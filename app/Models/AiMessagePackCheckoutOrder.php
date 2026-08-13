@@ -8,32 +8,33 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Orden de cobro de la suscripcion mensual con Nexolu Payments Core (ver
- * App\Services\SubscriptionService::initiateCheckout()/checkoutStatus()):
- * se crea en pending y la confirmacion real llega por webhook firmado (ver
- * PaymentsCoreWebhookController::approve()).
+ * Orden de cobro self-serve de un paquete de mensajes de IA, mismo patron que
+ * SubscriptionCheckoutOrder: se crea en pending, se manda a Nexolu Payments
+ * Core, y la confirmacion real llega por webhook (ver
+ * PaymentsCoreWebhookController::approve()). Sin equivalente en el legacy -
+ * ver comentario en database/legacy-schema/schema.sql.
  */
 #[Fillable([
     'business_id',
     'order_key',
-    'amount_cop',
-    'ai_addon_included',
-    'ai_addon_amount_cop',
-    'subscription_days',
+    'messages',
+    'price_cop',
     'status',
     'provider',
     'provider_order_id',
+    'created_by_user_id',
     'confirmed_at',
     'payload',
 ])]
-class SubscriptionCheckoutOrder extends Model
+class AiMessagePackCheckoutOrder extends Model
 {
     use HasFactory;
 
     protected function casts(): array
     {
         return [
-            'ai_addon_included' => 'boolean',
+            'messages' => 'integer',
+            'price_cop' => 'integer',
             'confirmed_at' => 'datetime',
             'payload' => 'array',
         ];
@@ -42,5 +43,10 @@ class SubscriptionCheckoutOrder extends Model
     public function business(): BelongsTo
     {
         return $this->belongsTo(Business::class);
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
     }
 }

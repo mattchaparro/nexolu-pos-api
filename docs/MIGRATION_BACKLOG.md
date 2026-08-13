@@ -508,15 +508,16 @@ falta migración, solo el código.
 - **Login social (Google OAuth)**: `SocialController` (`auth/google`,
   `auth/google/callback`) no tiene equivalente - hoy `POST /v1/login` es
   únicamente usuario/contraseña vía Sanctum.
-- ~~**Ajustes de IA a nivel superadmin**~~ ✅ Parcialmente migrado - alcance
-  redefinido tras revisar legacy de cerca. `SuperAdmin/AiSettingsController`
-  de legacy (cupo mensual incluido, tamaño/precio del paquete adicional) es
-  config del sistema de addon-por-suscripción, que ya está fuera de alcance
-  de esta migración (ver "Addon de IA vía suscripción" más abajo - el propio
-  legacy nunca cobra por ahí, `ai_addon_included` siempre es `false`) - no
-  se portó, sería configurar un cobro que no existe.
-  Lo que sí se portó, y es genuinamente útil independiente del addon:
-  **`ai_chat_blocked`** como interruptor de emergencia por negocio (abuso,
+- ~~**Ajustes de IA a nivel superadmin**~~ ✅ Parcialmente migrado. El
+  cupo mensual + paquetes que `SuperAdmin/AiSettingsController` de legacy
+  edita (`monthly_included_messages`, `pack_size`, `pack_price_cop`) sí se
+  migró como modelo comercial (ver "Addon de IA" más abajo) - lo que falta
+  es solo la pantalla de SuperAdmin para editar esas 3 claves en caliente;
+  `AiQuotaSettings` ya lee de `SystemConfigStore` con las mismas claves que
+  el legacy, lista para esa pantalla el día que se construya.
+  Lo que sí se portó desde el principio, y es genuinamente útil
+  independiente del cupo: **`ai_chat_blocked`** como interruptor de
+  emergencia por negocio (abuso,
   soporte, etc.). En legacy este campo existe pero **nunca tenía un botón
   real para activarlo** - solo era un efecto secundario de
   `AiAccessService` (sistema de addon, dead code) al abrir una prueba
@@ -855,23 +856,49 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   equivalente (la bitácora de arriba es de solo lectura).
 - **Limpiar caché del negocio**: `flushCache()` de legacy
   (`BusinessesController.php:357`) sin portar.
-- **Addon de IA (cupo mensual + compra de paquetes adicionales)**: en el
-  legacy actual (no en el momento en que se escribió el ítem original de
-  este backlog) el asistente de IA + WhatsApp van incluidos en todo plan
-  con un cupo mensual de consultas; al agotarse, el negocio puede comprar
-  un paquete de mensajes adicionales que se cobra aparte (saldo que no
-  vence) - ver `AiMessagePackService`/`ai_message_pack_purchases` y
-  `SubscriptionPricingService::aiAddonPrice()` del legacy, migración
-  `2026_07_30_110000_create_ai_message_packs`. Las columnas heredadas ya
-  están en `schema.sql` (`ai_chat_enabled`, `ai_chat_billable`,
-  `ai_message_pack_balance`, `ai_chat_trial_*`, tabla
-  `ai_message_pack_purchases`), pero **nada de esta API las usa todavía** -
-  el acceso al Asistente hoy se resuelve solo por el permiso `ai_chat.use`,
-  sin cuota ni compra de paquetes. Lo único real construido es
-  `ai_chat_blocked` (interruptor de emergencia on/off, `toggleAiChatBlock`).
-  Falta: portar `AiAccessService`/`AiMessagePackService` (cupo mensual,
-  descuento por consulta, checkout del paquete) - módulo propio, no un
-  ítem chico.
+- ~~**Addon de IA (cupo mensual + compra de paquetes adicionales)**~~ ✅
+  Migrado (2026-08-13). El legacy tiene dos modelos comerciales
+  superpuestos para el Asistente: uno vestigial (trial gratis, addon pago
+  con expiración - `ai_chat_billable`, `ai_chat_addon_expires_at`,
+  `ai_chat_trial_*`) que `AiAccessService::estado()` (el único método que
+  de verdad gatea el acceso) nunca consulta, y uno activo (cupo mensual
+  incluido en el plan + paquetes comprados sin expiración como fallback)
+  que sí. Solo el segundo se portó - el primero es código muerto en el
+  legacy y no tiene sentido replicarlo aquí. Tampoco existía un flujo de
+  compra real en el legacy (`AiMessagePackService::acreditar()` solo se
+  llamaba desde tests); el checkout self-serve se diseñó desde cero
+  reusando el patrón `SubscriptionCheckoutOrder`/`SubscriptionService`
+  (Nexolu Payments Core + webhook firmado) ya construido para "Mi
+  suscripción".
+
+  Backend: `App\Support\AiQuotaSettings` (cupo mensual/tamaño y precio de
+  paquete, vía `SystemConfigStore` con fallback a `config/ai.php`, mismas
+  claves que el legacy `AiSettings` para una futura pantalla de Ajustes de
+  IA en SuperAdmin); `App\Models\AiUsageDaily` sobre la tabla ya existente
+  `ai_usage_daily`; `App\Services\AiQuotaService::assertAccess()` (plan
+  vencido, hooked en `AiTenantContext::forUser()` - los 5 puntos de
+  entrada al Asistente quedan cubiertos), `consumeMessage()` (consumo
+  atómico cupo→paquetes, nunca al revés, con reserva del 60% para
+  empleados - piso de 1 mensaje - via `employeeQuotaShare`) y `state()`
+  (para la card de Ajustes); `App\Services\AiMessagePackService::credit()`
+  /`consumeOne()` sobre `Business::ai_message_pack_balance` +
+  `ai_message_pack_purchases` (auditoría); tabla nueva
+  `ai_message_pack_checkout_orders` (sin equivalente en el legacy,
+  documentada en `schema.sql`) +
+  `App\Services\AiMessagePackCheckoutService`; `PaymentsCoreWebhookController`
+  extendido para reconocer ambos tipos de orden (referencia
+  `NEX-`/`NEXPACK-`) en `approve()`/`fail()`/`void()`. Nuevas excepciones
+  `AiQuotaExceededException`/`AiSubscriptionExpiredException`.
+
+  Frontend: card "Asistente de IA" en `BusinessSettingsView.vue` (barra de
+  cupo mensual usado, cupo restante, balance de paquetes, botón "Comprar
+  paquete" solo para admin/dueño reusando el widget de Wompi) - módulo
+  `src/modules/ai-message-packs/`.
+
+  **Sigue sin portar**: pantalla de SuperAdmin para editar
+  `monthly_included_messages`/`pack_size`/`pack_price_cop` en caliente (el
+  legacy sí la tiene, `AiSettingsController`/`AiUsage/Settings.vue`) - las
+  claves de `SystemConfigStore` ya están listas para eso.
 - ~~**Filtros de estado del listado de negocios**~~ ✅ Resuelto
   (2026-08-13): el backend ya soportaba `?status=trial|paid|inactive|expired`
   (`BusinessesController::index`); se agregó el selector en

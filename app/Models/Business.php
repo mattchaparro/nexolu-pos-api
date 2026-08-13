@@ -56,6 +56,8 @@ use Illuminate\Validation\ValidationException;
     'crm_notes',
     'crm_next_follow_up_at',
     'ai_chat_blocked',
+    'ai_chat_daily_messages',
+    'ai_message_pack_balance',
 ])]
 class Business extends Model
 {
@@ -79,6 +81,8 @@ class Business extends Model
         return [
             'active' => 'boolean',
             'ai_chat_blocked' => 'boolean',
+            'ai_chat_daily_messages' => 'integer',
+            'ai_message_pack_balance' => 'integer',
             'trial_ends_at' => 'datetime',
             'paid_until' => 'datetime',
             'crm_next_follow_up_at' => 'datetime',

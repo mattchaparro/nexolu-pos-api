@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\AiChannelLinkController;
 use App\Http\Controllers\Api\V1\AiChatController;
 use App\Http\Controllers\Api\V1\AiDraftController;
 use App\Http\Controllers\Api\V1\AiInsightController;
+use App\Http\Controllers\Api\V1\AiMessagePackController;
 use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BulkStockUpdateController;
@@ -127,6 +128,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('/subscription/status', [SubscriptionController::class, 'status'])->name('subscription.status');
         Route::post('/subscription/checkout', [SubscriptionController::class, 'initiate'])->name('subscription.checkout');
         Route::get('/subscription/checkout/{reference}', [SubscriptionController::class, 'checkoutStatus'])->name('subscription.checkout.status');
+
+        Route::get('/ai/message-packs/state', [AiMessagePackController::class, 'state'])->name('ai.message-packs.state');
+        Route::post('/ai/message-packs/checkout', [AiMessagePackController::class, 'initiate'])->name('ai.message-packs.checkout');
+        Route::get('/ai/message-packs/checkout/{reference}', [AiMessagePackController::class, 'checkoutStatus'])->name('ai.message-packs.checkout.status');
 
         Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');
         Route::put('/settings/{setting}', [SettingController::class, 'update'])->name('settings.update');

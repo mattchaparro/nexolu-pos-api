@@ -3,7 +3,9 @@
 namespace App\Support;
 
 use App\Exceptions\AiChatBlockedException;
+use App\Exceptions\AiSubscriptionExpiredException;
 use App\Models\User;
+use App\Services\AiQuotaService;
 
 /**
  * Arma el TenantContext que el Nexolu IA Core espera en cada llamada (chat o
@@ -14,8 +16,9 @@ use App\Models\User;
  * Tambien es el unico choke point de los 5 puntos de entrada al Asistente de
  * IA (chat web, insights, drafts, WhatsApp) - por eso el bloqueo del
  * superadmin (Business::ai_chat_blocked, ver
- * SuperAdmin\BusinessesController::toggleAiChatBlock()) se revisa aqui y no
- * en cada controller/job por separado.
+ * SuperAdmin\BusinessesController::toggleAiChatBlock()) y el vencimiento del
+ * plan (AiQuotaService::assertAccess()) se revisan aqui y no en cada
+ * controller/job por separado.
  */
 class AiTenantContext
 {
@@ -23,12 +26,15 @@ class AiTenantContext
      * @return array<string, mixed>
      *
      * @throws AiChatBlockedException
+     * @throws AiSubscriptionExpiredException
      */
     public static function forUser(User $user, string $channel = 'web'): array
     {
         if ($user->business->ai_chat_blocked) {
             throw new AiChatBlockedException;
         }
+
+        app(AiQuotaService::class)->assertAccess($user->business);
 
         return [
             'business_id' => (string) $user->business_id,

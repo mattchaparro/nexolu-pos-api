@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Exceptions\AiChatBlockedException;
+use App\Exceptions\AiQuotaExceededException;
+use App\Exceptions\AiSubscriptionExpiredException;
 use App\Http\Controllers\Controller;
 use App\Services\AiChatService;
+use App\Services\AiQuotaService;
 use App\Support\AiTenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,7 +24,7 @@ use RuntimeException;
  */
 class AiChatController extends Controller
 {
-    public function __construct(private AiChatService $aiChatService) {}
+    public function __construct(private AiChatService $aiChatService, private AiQuotaService $quota) {}
 
     public function send(Request $request): JsonResponse
     {
@@ -39,6 +42,7 @@ class AiChatController extends Controller
 
         try {
             $context = AiTenantContext::forUser($user);
+            $this->quota->consumeMessage($user->business, $user);
 
             $result = $this->aiChatService->send(
                 $validated['agent'],
@@ -46,7 +50,7 @@ class AiChatController extends Controller
                 $context,
                 $validated['conversation_id'] ?? null
             );
-        } catch (AiChatBlockedException $e) {
+        } catch (AiChatBlockedException|AiSubscriptionExpiredException|AiQuotaExceededException $e) {
             return response()->json(['error' => $e->getMessage()], 403);
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 502);

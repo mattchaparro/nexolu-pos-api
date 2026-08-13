@@ -4,6 +4,7 @@ namespace Tests\Feature\Api;
 
 use App\Mail\SubscriptionPaymentResultMail;
 use App\Mail\SubscriptionPaymentSuperadminNoticeMail;
+use App\Models\AiMessagePackCheckoutOrder;
 use App\Models\Business;
 use App\Models\SaasSubscriptionPayment;
 use App\Models\SubscriptionCheckoutOrder;
@@ -211,5 +212,85 @@ class PaymentsCoreWebhookTest extends TestCase
         Mail::assertQueued(SubscriptionPaymentResultMail::class, fn ($mail) => $mail->hasTo($admin->email) && $mail->succeeded === false && $mail->failureStatus === 'DECLINED'
         );
         Mail::assertQueued(SubscriptionPaymentSuperadminNoticeMail::class);
+    }
+
+    public function test_approved_event_credits_an_ai_message_pack_order(): void
+    {
+        $business = Business::factory()->create(['ai_message_pack_balance' => 500]);
+        $order = AiMessagePackCheckoutOrder::factory()->for($business)->create([
+            'status' => 'pending',
+            'messages' => 1000,
+            'price_cop' => 15000,
+        ]);
+
+        $response = $this->postSigned([
+            'event' => 'payment.approved',
+            'transaction_id' => 'core-tx-pack-1',
+            'reference' => $order->order_key,
+            'provider_transaction_id' => 'wompi-tx-pack-1',
+            'status' => 'approved',
+        ]);
+
+        $response->assertOk()->assertJsonPath('ok', true);
+
+        $order->refresh();
+        $this->assertSame('confirmed', $order->status);
+        $this->assertSame('wompi-tx-pack-1', $order->provider_order_id);
+        $this->assertNotNull($order->confirmed_at);
+
+        $this->assertSame(1500, $business->fresh()->ai_message_pack_balance);
+        $this->assertDatabaseHas('ai_message_pack_purchases', [
+            'business_id' => $business->id,
+            'messages' => 1000,
+            'price_cop' => 15000,
+        ]);
+    }
+
+    public function test_approved_event_for_an_ai_message_pack_order_is_idempotent_against_retries(): void
+    {
+        $business = Business::factory()->create(['ai_message_pack_balance' => 0]);
+        $order = AiMessagePackCheckoutOrder::factory()->for($business)->create(['status' => 'pending', 'messages' => 1000]);
+
+        $payload = [
+            'event' => 'payment.approved',
+            'transaction_id' => 'core-tx-pack-2',
+            'reference' => $order->order_key,
+            'status' => 'approved',
+        ];
+
+        $this->postSigned($payload)->assertOk();
+        $this->postSigned($payload)->assertOk();
+
+        $this->assertSame(1000, $business->fresh()->ai_message_pack_balance);
+        $this->assertSame(1, AiMessagePackCheckoutOrder::where('order_key', $order->order_key)->count());
+    }
+
+    public function test_declined_event_marks_an_ai_message_pack_order_as_failed_without_crediting(): void
+    {
+        $business = Business::factory()->create(['ai_message_pack_balance' => 0]);
+        $order = AiMessagePackCheckoutOrder::factory()->for($business)->create(['status' => 'pending']);
+
+        $this->postSigned([
+            'event' => 'payment.declined',
+            'transaction_id' => 'core-tx-pack-3',
+            'reference' => $order->order_key,
+            'status' => 'declined',
+        ])->assertOk();
+
+        $this->assertSame('failed', $order->fresh()->status);
+        $this->assertSame(0, $business->fresh()->ai_message_pack_balance);
+    }
+
+    public function test_voided_event_cancels_an_ai_message_pack_order(): void
+    {
+        $order = AiMessagePackCheckoutOrder::factory()->create(['status' => 'pending']);
+
+        $this->postSigned([
+            'event' => 'payment.voided',
+            'transaction_id' => 'core-tx-pack-4',
+            'reference' => $order->order_key,
+        ])->assertOk();
+
+        $this->assertSame('cancelled', $order->fresh()->status);
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Exceptions\AiChatBlockedException;
+use App\Exceptions\AiSubscriptionExpiredException;
 use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Services\Ai\Contracts\AiInsightDefinition;
@@ -30,7 +31,7 @@ class AiInsightController extends Controller
 
         try {
             $context = AiTenantContext::forUser($user);
-        } catch (AiChatBlockedException $e) {
+        } catch (AiChatBlockedException|AiSubscriptionExpiredException $e) {
             return response()->json(['error' => $e->getMessage()], 403);
         }
 
@@ -53,7 +54,7 @@ class AiInsightController extends Controller
 
         try {
             $entry = $this->buildEntry($user->business, $definition, AiTenantContext::forUser($user), forceRefresh: true);
-        } catch (AiChatBlockedException $e) {
+        } catch (AiChatBlockedException|AiSubscriptionExpiredException $e) {
             return response()->json(['error' => $e->getMessage()], 403);
         }
 

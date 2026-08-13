@@ -7,6 +7,7 @@ use App\Models\AiChannelIdentity;
 use App\Models\Business;
 use App\Models\User;
 use App\Services\AiChatService;
+use App\Services\AiQuotaService;
 use App\Services\WhatsApp\IdentityResolver;
 use App\Services\WhatsApp\WhatsAppCloudClient;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -55,6 +56,7 @@ class ProcessWhatsAppInboundTest extends TestCase
             app(IdentityResolver::class),
             app(AiChatService::class),
             app(WhatsAppCloudClient::class),
+            app(AiQuotaService::class),
         );
 
         Http::assertSent(fn ($request) => str_contains($request['text']['body'] ?? '', 'vincula'));
@@ -78,6 +80,7 @@ class ProcessWhatsAppInboundTest extends TestCase
             app(IdentityResolver::class),
             app(AiChatService::class),
             app(WhatsAppCloudClient::class),
+            app(AiQuotaService::class),
         );
 
         Http::assertSent(fn ($request) => $request->url() === 'http://ia-core.test/v1/chat'
@@ -105,6 +108,7 @@ class ProcessWhatsAppInboundTest extends TestCase
             app(IdentityResolver::class),
             app(AiChatService::class),
             app(WhatsAppCloudClient::class),
+            app(AiQuotaService::class),
         );
 
         Http::assertSent(fn ($request) => ($request['conversation_id'] ?? null) === 'conv-existing');
@@ -130,6 +134,7 @@ class ProcessWhatsAppInboundTest extends TestCase
             app(IdentityResolver::class),
             app(AiChatService::class),
             app(WhatsAppCloudClient::class),
+            app(AiQuotaService::class),
         );
 
         Http::assertSent(fn ($request) => str_contains($request['text']['body'] ?? '', 'borrador pendiente'));
@@ -158,6 +163,7 @@ class ProcessWhatsAppInboundTest extends TestCase
             app(IdentityResolver::class),
             app(AiChatService::class),
             app(WhatsAppCloudClient::class),
+            app(AiQuotaService::class),
         );
 
         Http::assertSent(function ($request) {
@@ -191,6 +197,7 @@ class ProcessWhatsAppInboundTest extends TestCase
             app(IdentityResolver::class),
             app(AiChatService::class),
             app(WhatsAppCloudClient::class),
+            app(AiQuotaService::class),
         );
 
         Http::assertSent(fn ($request) => str_contains($request['text']['body'] ?? '', 'proveedor no disponible'));
@@ -206,6 +213,7 @@ class ProcessWhatsAppInboundTest extends TestCase
             app(IdentityResolver::class),
             app(AiChatService::class),
             app(WhatsAppCloudClient::class),
+            app(AiQuotaService::class),
         );
 
         Http::assertNotSent(fn ($request) => str_contains($request->url(), 'ia-core'));

@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Mail\SubscriptionPaymentResultMail;
 use App\Mail\SubscriptionPaymentSuperadminNoticeMail;
+use App\Models\AiMessagePackCheckoutOrder;
 use App\Models\SaasSubscriptionPayment;
 use App\Models\SubscriptionCheckoutOrder;
 use App\Models\User;
+use App\Services\AiMessagePackService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,17 +19,26 @@ use Throwable;
 
 /**
  * Webhook publico del Nexolu Payments Core (servicio Python aparte, repo
- * nexolu-payments-core): unico punto por el que este POS se entera de que
- * un cobro de suscripcion cambio de estado. Nunca se confia en la respuesta
- * del navegador/widget - la fuente de verdad de un pago es este webhook,
- * firmado por el Core (ver docs/APP_INTEGRATION.md seccion 3 del Core).
+ * nexolu-payments-core): unico punto por el que este POS se entera de que un
+ * cobro (suscripcion o paquete de mensajes de IA) cambio de estado. Nunca se
+ * confia en la respuesta del navegador/widget - la fuente de verdad de un
+ * pago es este webhook, firmado por el Core (ver docs/APP_INTEGRATION.md
+ * seccion 3 del Core).
  *
  * Responde 200 en cuanto la firma es valida y el evento quedo procesado -
  * el Core reintenta hasta 3 veces si no responde 2xx, asi que este handler
- * debe ser rapido e idempotente (ver approve()).
+ * debe ser rapido e idempotente (ver approveSubscription()/approvePack()).
+ *
+ * Una referencia solo puede pertenecer a una de las dos tablas de ordenes
+ * (subscription_checkout_orders o ai_message_pack_checkout_orders): cada
+ * servicio de checkout genera la suya con un prefijo distinto
+ * (NEX-/NEXPACK-), asi que basta con probar la de suscripcion primero y caer
+ * a la de paquetes si no aparece.
  */
 class PaymentsCoreWebhookController extends Controller
 {
+    public function __construct(private AiMessagePackService $packs) {}
+
     public function handle(Request $request): JsonResponse
     {
         if (! $this->hasValidSignature($request)) {
@@ -73,6 +84,20 @@ class PaymentsCoreWebhookController extends Controller
      * @param  array<string, mixed>  $payload
      */
     private function approve(string $reference, array $payload): void
+    {
+        if (SubscriptionCheckoutOrder::where('order_key', $reference)->exists()) {
+            $this->approveSubscription($reference, $payload);
+
+            return;
+        }
+
+        $this->approvePack($reference, $payload);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function approveSubscription(string $reference, array $payload): void
     {
         // El envio de correos queda fuera de la transaccion a proposito: no
         // hay razon para retener el lock de la fila mientras se encolan.
@@ -129,9 +154,67 @@ class PaymentsCoreWebhookController extends Controller
     }
 
     /**
+     * Acredita un paquete de mensajes de IA. Mismo guard de idempotencia que
+     * approveSubscription() (lockForUpdate + status=pending), sin correos: es
+     * una compra dentro del producto, no un cobro que amerite avisar al
+     * superadmin.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function approvePack(string $reference, array $payload): void
+    {
+        DB::transaction(function () use ($reference, $payload) {
+            $order = AiMessagePackCheckoutOrder::where('order_key', $reference)
+                ->where('status', 'pending')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $order) {
+                Log::info('payments_core.webhook: orden de paquete no encontrada o ya procesada', ['reference' => $reference]);
+
+                return;
+            }
+
+            $order->update([
+                'status' => 'confirmed',
+                'provider_order_id' => $payload['provider_transaction_id'] ?? $payload['transaction_id'] ?? null,
+                'confirmed_at' => now(),
+                'payload' => $payload,
+            ]);
+
+            $this->packs->credit(
+                $order->business,
+                $order->messages,
+                $order->price_cop,
+                $order->created_by_user_id,
+                'Compra self-serve via Payments Core - Transaccion: '.($payload['provider_transaction_id'] ?? $payload['transaction_id'] ?? ''),
+            );
+
+            Log::info('payments_core.webhook: paquete de mensajes de IA acreditado', [
+                'business_id' => $order->business_id,
+                'messages' => $order->messages,
+            ]);
+        });
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      */
     private function fail(string $reference, array $payload): void
+    {
+        if (SubscriptionCheckoutOrder::where('order_key', $reference)->exists()) {
+            $this->failSubscription($reference, $payload);
+
+            return;
+        }
+
+        $this->failPack($reference, $payload);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function failSubscription(string $reference, array $payload): void
     {
         // A diferencia del legacy (que dejaba la orden en pending para
         // siempre en un rechazo), aca se marca failed explicitamente: el
@@ -149,6 +232,22 @@ class PaymentsCoreWebhookController extends Controller
         Log::info('payments_core.webhook: pago fallido', ['reference' => $reference, 'status' => $payload['status'] ?? null]);
 
         $this->notifyPaymentResult($order, succeeded: false, payload: $payload);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function failPack(string $reference, array $payload): void
+    {
+        $order = AiMessagePackCheckoutOrder::where('order_key', $reference)->where('status', 'pending')->first();
+
+        if (! $order) {
+            return;
+        }
+
+        $order->update(['status' => 'failed', 'payload' => $payload]);
+
+        Log::info('payments_core.webhook: pago de paquete fallido', ['reference' => $reference, 'status' => $payload['status'] ?? null]);
     }
 
     /**
@@ -198,10 +297,14 @@ class PaymentsCoreWebhookController extends Controller
             ->where('status', 'pending')
             ->first();
 
-        if (! $order) {
+        if ($order) {
+            $order->update(['status' => 'cancelled', 'payload' => $payload]);
+
             return;
         }
 
-        $order->update(['status' => 'cancelled', 'payload' => $payload]);
+        AiMessagePackCheckoutOrder::where('order_key', $reference)
+            ->where('status', 'pending')
+            ->update(['status' => 'cancelled', 'payload' => $payload]);
     }
 }
