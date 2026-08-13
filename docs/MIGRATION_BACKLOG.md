@@ -611,6 +611,20 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   ya tenía el CRUD completo; solo faltaba `ClientsView.vue`/
   `ClientFormModal.vue` en el frontend, más un item real en el menú
   (legacy nunca tuvo uno tampoco - el módulo era inalcanzable ahí también).
+- ~~**Bug real: Vender no mostraba productos más allá del ítem #200 en
+  orden alfabético**~~ ✅ `fetchSellableProducts()` pedía
+  `/products?per_page=200` (tope de `ProductController::index`, ordenado
+  por `name`) y se quedaba solo con esa página - cualquier negocio con más
+  de 200 productos perdía silenciosamente los que caían después en el
+  alfabeto (peor caso: los que empiezan por "Z"). Se agregó
+  `GET /products/sellable`, respaldado por
+  `ProductAvailability::forBusiness()` (fusionada con la clase existente
+  `effectiveStock()`, igual que en legacy) - trae el catálogo activo
+  completo sin tope, cacheado 10 min por negocio (salteado si el negocio
+  tiene el feature `ingredients`, igual que legacy, porque ahí el stock es
+  demasiado volátil para cachear). Invalidado al guardar/borrar un
+  producto y al registrar un movimiento de stock (que muta `stock` con un
+  `increment()` SQL directo, sin disparar el evento `saved` de `Product`).
 
 **Pendientes, por módulo** (repo entre paréntesis):
 
