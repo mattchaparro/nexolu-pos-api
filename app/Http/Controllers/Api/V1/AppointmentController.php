@@ -26,7 +26,12 @@ class AppointmentController extends Controller
             $query->where('starts_at', '>=', $request->date('from'));
         }
         if ($request->filled('to')) {
-            $query->where('starts_at', '<=', $request->date('to'));
+            // endOfDay(): 'to' es una fecha sin hora (limite del rango
+            // visible del calendario, ver AgendaView.vue) - compararla tal
+            // cual contra starts_at excluía cualquier cita después de la
+            // medianoche de ese día, el bug se notaba recién con la vista
+            // de mes (rango de varios días, cada límite diario mal cortado).
+            $query->where('starts_at', '<=', $request->date('to')->endOfDay());
         }
         if ($request->filled('status')) {
             $query->where('status', $request->string('status'));

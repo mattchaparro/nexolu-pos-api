@@ -274,6 +274,37 @@ class AppointmentTest extends TestCase
         ]);
     }
 
+    /**
+     * 'to' es una fecha sin hora (limite del rango visible del calendario)
+     * - una cita que empieza a las 6pm de ese mismo dia debe seguir
+     * contando como parte del rango, no quedar cortada en la medianoche.
+     */
+    public function test_the_to_filter_includes_the_whole_day_not_just_midnight(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $lateAppointment = Appointment::factory()->create([
+            'business_id' => $business->id,
+            'starts_at' => '2026-08-16 18:00:00',
+            'ends_at' => '2026-08-16 19:00:00',
+        ]);
+        $nextDayAppointment = Appointment::factory()->create([
+            'business_id' => $business->id,
+            'starts_at' => '2026-08-17 09:00:00',
+            'ends_at' => '2026-08-17 10:00:00',
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/appointments?from=2026-08-10&to=2026-08-16')
+            ->assertOk();
+
+        $ids = collect($response->json('data'))->pluck('id');
+        $this->assertTrue($ids->contains($lateAppointment->id));
+        $this->assertFalse($ids->contains($nextDayAppointment->id));
+    }
+
     public function test_per_page_can_be_raised_above_the_default_for_the_month_view(): void
     {
         $business = Business::factory()->create();
