@@ -279,6 +279,42 @@ class ServiceOrderTest extends TestCase
             ->assertJsonCount(2, 'data');
     }
 
+    public function test_index_filters_by_stage_id(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $workflow = ServiceWorkflow::factory()->create();
+        $stageA = ServiceWorkflowStage::factory()->create(['workflow_id' => $workflow->id]);
+        $stageB = ServiceWorkflowStage::factory()->create(['workflow_id' => $workflow->id]);
+        $this->assignWorkflow($business, $workflow);
+
+        ServiceOrder::factory()->create(['business_id' => $business->id, 'stage_id' => $stageA->id]);
+        ServiceOrder::factory()->count(2)->create(['business_id' => $business->id, 'stage_id' => $stageB->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/service-orders?stage_id={$stageA->id}")
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+    }
+
+    public function test_summary_sums_the_balance_of_pending_and_partial_orders_only(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        ServiceOrder::factory()->create(['business_id' => $business->id, 'status' => 'pending', 'total' => 30000, 'amount_paid' => 0]);
+        ServiceOrder::factory()->create(['business_id' => $business->id, 'status' => 'partial', 'total' => 50000, 'amount_paid' => 20000]);
+        ServiceOrder::factory()->create(['business_id' => $business->id, 'status' => 'paid', 'total' => 10000, 'amount_paid' => 10000]);
+        ServiceOrder::factory()->cancelled()->create(['business_id' => $business->id, 'total' => 99999, 'amount_paid' => 0]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/service-orders/summary')
+            ->assertOk()
+            ->assertJsonPath('pending_balance', 60000);
+    }
+
     /**
      * 'services' y 'scheduling' son features independientes (ver el mismo
      * test en AppointmentTest) - Ordenes de servicio depende solo de

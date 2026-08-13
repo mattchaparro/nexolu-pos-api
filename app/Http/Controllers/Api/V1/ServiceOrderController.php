@@ -23,6 +23,25 @@ class ServiceOrderController extends Controller
 
     public function __construct(private ServiceOrderService $serviceOrderService) {}
 
+    /**
+     * Card de saldo pendiente agregado del listado - suma total-amount_paid
+     * de TODAS las ordenes pendientes/abonadas del negocio, sin importar
+     * los filtros de index() (mismo criterio que ProductController::summary()).
+     * Puerto de $pendingBalance en ServiceOrdersController::index() del
+     * legacy, que vive junto al listado alla porque Inertia manda todo en
+     * una sola respuesta - acá es su propio endpoint, igual que Productos.
+     */
+    public function summary(): JsonResponse
+    {
+        $pendingBalance = ServiceOrder::whereIn('status', ['pending', 'partial'])
+            ->selectRaw('SUM(total - amount_paid) as pending_balance')
+            ->value('pending_balance');
+
+        return response()->json([
+            'pending_balance' => (float) ($pendingBalance ?? 0),
+        ]);
+    }
+
     public function index(Request $request): AnonymousResourceCollection
     {
         $query = ServiceOrder::with(['client', 'items', 'payments', 'stage'])
@@ -31,6 +50,10 @@ class ServiceOrderController extends Controller
 
         if ($request->filled('status')) {
             $query->where('status', $request->string('status'));
+        }
+
+        if ($request->filled('stage_id')) {
+            $query->where('stage_id', $request->integer('stage_id'));
         }
 
         if ($request->filled('search')) {

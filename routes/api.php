@@ -312,6 +312,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::middleware(['feature:services', 'permission:appointments.manage'])->group(function () {
             Route::get('/service-workflow', [BusinessServiceWorkflowController::class, 'show'])->name('service-workflow.show');
 
+            // Antes del apiResource, mismo motivo que /products/summary.
+            Route::get('/service-orders/summary', [ServiceOrderController::class, 'summary'])->name('service-orders.summary');
             Route::post('/service-orders/{serviceOrder}/pay', [ServiceOrderController::class, 'pay'])->name('service-orders.pay');
             Route::post('/service-orders/{serviceOrder}/cancel', [ServiceOrderController::class, 'cancel'])->name('service-orders.cancel');
             Route::patch('/service-orders/{serviceOrder}/stage', [ServiceOrderController::class, 'setStage'])->name('service-orders.stage.update');

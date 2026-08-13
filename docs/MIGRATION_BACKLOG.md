@@ -678,13 +678,19 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   `delete()` sin más, bug real: un abono ya cobrado desaparecía de los
   libros), acá se reembolsan los pagos primero (mismo patrón de fila
   negativa que `cancel()`) y se cancela la cita vinculada si sigue activa.
-- **Filtro por etapa del workflow en el listado**: legacy filtra por
-  `stage_id` y devuelve `workflowStages` para los chips
-  (`ServiceOrdersController.php:31-32,57`); el índice nuevo solo acepta
-  `status`/`search`.
-- **Card de saldo pendiente agregado**: legacy suma el saldo de todas las
-  órdenes pendientes/parciales (`ServiceOrdersController.php:51-53`); el
-  listado nuevo solo muestra el saldo por fila. Menor.
+- ~~**Filtro por etapa del workflow en el listado**~~ ✅ Migrado
+  (2026-08-13): `stage_id` en `GET /service-orders` (puerto directo de
+  `ServiceOrdersController.php:31-32`); las etapas para los chips ya se
+  obtenían de `GET /service-workflow` (existía desde antes, usado en
+  `ServiceOrderShowView.vue`), así que no hizo falta duplicar
+  `workflowStages` en la respuesta del índice - `ServiceOrdersView.vue`
+  reusa `useServiceWorkflow()` para pintarlos.
+- ~~**Card de saldo pendiente agregado**~~ ✅ Migrado (2026-08-13):
+  `GET /service-orders/summary` (mismo patrón que
+  `ProductController::summary()`) suma `total - amount_paid` de las
+  órdenes `pending`/`partial` de todo el negocio, sin importar los filtros
+  activos del listado - igual que `$pendingBalance` en
+  `ServiceOrdersController.php:51-53` del legacy.
 
 ### Agenda (api + front)
 - ~~**Vista por día/mes**~~ ✅ Migrado y ampliado (2026-08-13): legacy
@@ -723,9 +729,14 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   único punto de entrada que arma la orden, ver su docblock). "Abonar"
   sobre la orden ya vinculada (`AppointmentDetailModal.vue`) cubre el
   resto.
-- Verificar que el modal de pago de la agenda excluya fiado/crédito de
-  los medios de pago ofrecidos, como hace legacy
-  (`AppointmentsController.php:48-52`). Menor, sin confirmar si ya aplica.
+- ~~Verificar que el modal de pago de la agenda excluya fiado/crédito de
+  los medios de pago ofrecidos~~ ✅ Confirmado que NO es un gap
+  (2026-08-13): `AppointmentDetailModal.vue` reusa
+  `PayServiceOrderModal.vue` tal cual (el mismo modal de "Abonar" de
+  Órdenes de servicio, no uno propio de Agenda), que ya filtra con
+  `nonCreditPaymentMethods` (`isCreditPaymentMethodId`) antes de pintar
+  `PaymentMethodPicker` - mismo comportamiento que
+  `AppointmentsController.php:48-52` del legacy.
 
 ### Apartados (api)
 - ~~`layaway_allowed_category_ids` no se aplica~~ ✅ Migrado
