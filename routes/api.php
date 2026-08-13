@@ -318,7 +318,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::middleware(['feature:scheduling', 'permission:appointments.manage'])->group(function () {
             Route::post('/appointments/{appointment}/reschedule', [AppointmentController::class, 'reschedule'])->name('appointments.reschedule');
             Route::put('/appointments/{appointment}/status', [AppointmentController::class, 'updateStatus'])->name('appointments.status.update');
-            Route::apiResource('appointments', AppointmentController::class)->only(['index', 'show', 'store', 'update']);
+            Route::apiResource('appointments', AppointmentController::class)->only(['index', 'show', 'store', 'update', 'destroy']);
         });
 
         Route::prefix('superadmin')->name('superadmin.')->middleware('superadmin')->group(function () {

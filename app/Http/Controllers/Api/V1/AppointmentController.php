@@ -12,6 +12,7 @@ use App\Models\Appointment;
 use App\Services\AppointmentService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Http\Response;
 
 class AppointmentController extends Controller
 {
@@ -74,5 +75,20 @@ class AppointmentController extends Controller
         );
 
         return new AppointmentResource($appointment);
+    }
+
+    /**
+     * Puerto directo de AppointmentsController::destroy() del legacy: sin
+     * guardas extra. Appointment usa SoftDeletes, así que esto es un UPDATE
+     * (deleted_at), no un DELETE real - la orden de servicio vinculada (si
+     * existe) no se toca para nada, sigue con sus pagos intactos, solo la
+     * cita desaparece del calendario. "Cancelar" (updateStatus) sigue
+     * siendo la acción que además reembolsa la orden.
+     */
+    public function destroy(Appointment $appointment): Response
+    {
+        $appointment->delete();
+
+        return response()->noContent();
     }
 }

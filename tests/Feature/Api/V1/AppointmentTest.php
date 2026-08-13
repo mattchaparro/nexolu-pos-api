@@ -274,6 +274,60 @@ class AppointmentTest extends TestCase
         ]);
     }
 
+    public function test_user_can_delete_an_appointment(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $appointment = Appointment::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/v1/appointments/{$appointment->id}")
+            ->assertNoContent();
+
+        $this->assertSoftDeleted('appointments', ['id' => $appointment->id]);
+    }
+
+    /**
+     * Appointment usa SoftDeletes - eliminar la cita es un UPDATE
+     * (deleted_at), no un DELETE real, así que el ON DELETE SET NULL de
+     * service_orders.appointment_id nunca se dispara. La orden sigue
+     * intacta y vinculada, solo la cita desaparece del calendario.
+     */
+    public function test_deleting_an_appointment_does_not_delete_its_linked_order(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $service = Product::factory()->service()->create(['business_id' => $business->id, 'price' => 40000]);
+
+        $created = $this->actingAs($user, 'sanctum')->postJson('/api/v1/appointments', [
+            'services' => [['id' => $service->id]],
+            'client_name' => 'Ana Gomez',
+            'starts_at' => now()->addDay()->toIso8601String(),
+            'ends_at' => now()->addDay()->addHour()->toIso8601String(),
+        ])->json();
+
+        $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/v1/appointments/{$created['id']}")
+            ->assertNoContent();
+
+        $this->assertDatabaseHas('service_orders', ['appointment_id' => $created['id'], 'total' => 40000]);
+    }
+
+    public function test_user_cannot_delete_another_businesss_appointment(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $otherBusiness = Business::factory()->create();
+        $appointment = Appointment::factory()->create(['business_id' => $otherBusiness->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/v1/appointments/{$appointment->id}")
+            ->assertNotFound();
+    }
+
     public function test_user_can_only_see_their_business_appointments(): void
     {
         $business = Business::factory()->create();
