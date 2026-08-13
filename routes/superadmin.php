@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\SuperAdmin\SubscriptionTransactionController;
 use App\Http\Controllers\Api\V1\SuperAdmin\SupportGuideController;
 use App\Http\Controllers\Api\V1\SuperAdmin\SupportTicketController;
 use App\Http\Controllers\Api\V1\SuperAdmin\UserController;
+use App\Http\Controllers\Api\V1\SuperAdmin\WhatsAppTemplateController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -76,6 +77,8 @@ Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard
 Route::get('/finance', [FinanceController::class, 'index'])->name('finance.index');
 
 Route::get('/communications', [CommunicationController::class, 'index'])->name('communications.index');
+
+Route::get('/whatsapp-templates', [WhatsAppTemplateController::class, 'index'])->name('whatsapp-templates.index');
 
 Route::get('/emails/logs', [EmailController::class, 'logs'])->name('emails.logs');
 Route::get('/emails/templates', [EmailController::class, 'templates'])->name('emails.templates.index');

@@ -90,21 +90,31 @@ return [
 
         // Plantillas aprobadas en Meta: no son secretos, cambian poco y son
         // las mismas en todo ambiente, por eso van hardcodeadas y no en env.
+        // 'description'/'triggered_by' son el texto que consume
+        // SuperAdmin\WhatsAppTemplateController (pantalla de solo lectura,
+        // ver docs/WHATSAPP_TEMPLATES_PENDING.md para el detalle mas
+        // profundo de las que faltan crear en Meta: texto sugerido, etc).
         'templates' => [
             'otp' => [
                 'name' => 'verify_whatsapp_in_business',
                 'lang' => 'es',
                 'has_button' => true,
+                'description' => 'Código OTP para vincular un número de WhatsApp a una cuenta.',
+                'triggered_by' => 'WhatsAppOtpSender',
             ],
             'welcome' => [
                 'name' => 'welcome_whatsapp_linked',
                 'lang' => 'es_CO',
                 'var' => null,
                 'var_max' => 60,
+                'description' => 'Bienvenida al vincular exitosamente un número de WhatsApp.',
+                'triggered_by' => 'ChannelLinkService',
             ],
             'recordatorio' => [
                 'name' => 'general_reminder',
                 'lang' => 'es_CO',
+                'description' => 'Recordatorio genérico (Planificador de recordatorios).',
+                'triggered_by' => 'reminders:send-whatsapp-notifications',
             ],
             // Resumen diario del negocio (notifications:send-daily-whatsapp-summary).
             // Mismo nombre real que ya usa legacy en el mismo WABA: creada en
@@ -115,6 +125,8 @@ return [
             'resumen_diario' => [
                 'name' => 'daily_business_summary',
                 'lang' => 'es_CO',
+                'description' => 'Resumen diario del negocio (ventas, caja). En revisión en Meta desde 2026-07-23.',
+                'triggered_by' => 'notifications:send-daily-whatsapp-summary',
             ],
             // Alerta de inventario bajo (inventory:send-low-stock-alerts).
             // Creada en Meta como 'low_stock_alert', es_CO, APPROVED. 3
@@ -123,6 +135,8 @@ return [
             'inventario_bajo' => [
                 'name' => 'low_stock_alert',
                 'lang' => 'es_CO',
+                'description' => 'Alerta de inventario bajo (productos e ingredientes).',
+                'triggered_by' => 'inventory:send-low-stock-alerts',
             ],
             // Confirmacion al agendar + recordatorio 2h antes de una cita -
             // funcionalidad nueva, sin equivalente en legacy (que solo
@@ -134,10 +148,14 @@ return [
             'cita_confirmacion' => [
                 'name' => env('WHATSAPP_TEMPLATE_CITA_CONFIRMACION', ''),
                 'lang' => 'es_CO',
+                'description' => 'Confirmación al agendar una cita. Sin crear en Meta todavía.',
+                'triggered_by' => 'AppointmentWhatsappNotifier::sendConfirmation',
             ],
             'cita_recordatorio' => [
                 'name' => env('WHATSAPP_TEMPLATE_CITA_RECORDATORIO', ''),
                 'lang' => 'es_CO',
+                'description' => 'Recordatorio 2 horas antes de una cita. Sin crear en Meta todavía.',
+                'triggered_by' => 'appointments:send-two-hour-reminders',
             ],
         ],
 
@@ -154,6 +172,8 @@ return [
                 'screen' => 'GASTO',
                 'body' => 'Confirma los datos del gasto:',
                 'cta' => 'Confirmar',
+                'description' => 'Confirmar un borrador de gasto del Asistente de IA sin salir de WhatsApp. Sin crear en Meta todavía.',
+                'triggered_by' => 'ProcessWhatsAppInbound::sendExpenseFlow',
             ],
         ],
     ],
