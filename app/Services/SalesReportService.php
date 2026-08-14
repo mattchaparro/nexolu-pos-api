@@ -174,6 +174,19 @@ class SalesReportService
                 'payment_methods_today' => $serviceOrdersByOrder->get($o->id, collect())->pluck('payment_method')->filter()->unique()->values()->all(),
             ])->values();
 
+        $recentReceivables = $paidReceivables
+            ->sortByDesc(fn ($r) => $r->paid_at ?? $r->created_at)
+            ->take(10)
+            ->map(fn ($r) => [
+                'id' => $r->id,
+                'customer_name' => $r->customer_name,
+                'customer_phone' => $r->customer_phone,
+                'amount' => (float) $r->amount,
+                'payment_method' => $r->payment_method,
+                'paid_at' => ($r->paid_at ?? $r->created_at)->format($sameDay ? 'H:i' : 'd/m · H:i'),
+            ])
+            ->values();
+
         $courtesyTotal = (float) $closedSales->where('is_non_revenue', true)->sum('total');
         $totalExpenses = (float) Expense::where('business_id', $businessId)
             ->where('scope', 'operacional')
@@ -218,6 +231,7 @@ class SalesReportService
             'open_sales' => $openSales->map($mapSale)->values(),
             'recent_service_orders' => $recentServiceOrders,
             'recent_layaways' => $recentLayaways,
+            'recent_receivables' => $recentReceivables,
         ];
     }
 

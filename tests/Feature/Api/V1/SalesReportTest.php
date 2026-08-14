@@ -42,7 +42,28 @@ class SalesReportTest extends TestCase
                 'date', 'total_sales', 'closed_sales_revenue', 'sales_count',
                 'open_count', 'open_total', 'total_all', 'payment_breakdown',
                 'top_products', 'recent_sales', 'open_sales',
+                'recent_service_orders', 'recent_layaways', 'recent_receivables',
             ]);
+    }
+
+    public function test_daily_summary_includes_recent_receivables_with_customer_and_payment_method(): void
+    {
+        [$business, $admin] = $this->admin();
+
+        Receivable::factory()->for($business)->paid()->create([
+            'amount' => 12000, 'payment_method' => 'transfer',
+            'customer_name' => 'Cliente Fiado', 'customer_phone' => '3001234567',
+        ]);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/sales/daily?date='.today()->toDateString())
+            ->assertOk();
+
+        $receivable = collect($response->json('recent_receivables'))->first();
+        $this->assertSame('Cliente Fiado', $receivable['customer_name']);
+        $this->assertSame('3001234567', $receivable['customer_phone']);
+        $this->assertSame('transfer', $receivable['payment_method']);
+        $this->assertSame(12000, $receivable['amount']);
     }
 
     public function test_daily_summary_counts_closed_sales_for_the_date(): void
