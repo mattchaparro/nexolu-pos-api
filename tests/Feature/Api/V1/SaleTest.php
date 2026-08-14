@@ -133,6 +133,7 @@ class SaleTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->syncPermissions(['discounts.apply']);
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
         $discount = Discount::factory()->fixed()->itemScoped()->create(['business_id' => $business->id, 'value' => 2000]);
 
@@ -150,6 +151,7 @@ class SaleTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->syncPermissions(['discounts.apply']);
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
         $discount = Discount::factory()->create(['business_id' => $business->id, 'type' => 'percentage', 'scope' => 'cart', 'value' => 10]);
 
@@ -162,6 +164,47 @@ class SaleTest extends TestCase
         $response->assertCreated()
             ->assertJsonPath('total', '9000.00')
             ->assertJsonPath('cart_discount_amount', '1000.00');
+    }
+
+    public function test_item_discount_requires_discounts_apply_permission(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+        $discount = Discount::factory()->fixed()->itemScoped()->create(['business_id' => $business->id, 'value' => 2000]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
+            'payment_method' => 'cash',
+            'items' => [['product_id' => $product->id, 'quantity' => 1, 'discount_id' => $discount->id]],
+        ])->assertStatus(422)->assertJsonValidationErrors('items.0.discount_id');
+    }
+
+    public function test_cart_discount_requires_discounts_apply_permission(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+        $discount = Discount::factory()->create(['business_id' => $business->id, 'type' => 'percentage', 'scope' => 'cart', 'value' => 10]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
+            'payment_method' => 'cash',
+            'cart_discount_id' => $discount->id,
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->assertStatus(422)->assertJsonValidationErrors('cart_discount_id');
+    }
+
+    public function test_admin_can_apply_discounts_without_explicit_permission(): void
+    {
+        $business = Business::factory()->create();
+        $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+        $discount = Discount::factory()->fixed()->itemScoped()->create(['business_id' => $business->id, 'value' => 2000]);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/v1/sales', [
+            'payment_method' => 'cash',
+            'items' => [['product_id' => $product->id, 'quantity' => 1, 'discount_id' => $discount->id]],
+        ])->assertCreated()->assertJsonPath('items.0.discount_amount', '2000.00');
     }
 
     public function test_service_charge_and_ipoconsumo_are_added_to_the_total(): void

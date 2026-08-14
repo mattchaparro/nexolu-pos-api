@@ -4,7 +4,6 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use Spatie\Permission\Exceptions\PermissionDoesNotExist;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -24,21 +23,9 @@ class EnsureBusinessPermission
 
         abort_if(! $user, 401);
 
-        if ($user->hasRole('admin')) {
-            return $next($request);
-        }
-
         foreach ($permissions as $permission) {
-            // hasPermissionTo() lanza PermissionDoesNotExist si el permiso
-            // todavia no existe en la base (p.ej. permissions:sync no corrio
-            // despues de un deploy que agrego uno al catalogo) - eso es
-            // "el empleado no lo tiene", no un error 500.
-            try {
-                if ($user->hasPermissionTo($permission, 'web')) {
-                    return $next($request);
-                }
-            } catch (PermissionDoesNotExist) {
-                continue;
+            if ($user->hasBusinessPermission($permission)) {
+                return $next($request);
             }
         }
 

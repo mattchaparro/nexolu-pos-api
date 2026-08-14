@@ -15,6 +15,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Exceptions\PermissionDoesNotExist;
 use Spatie\Permission\Traits\HasRoles;
 
 #[Fillable([
@@ -103,6 +104,29 @@ class User extends Authenticatable
     public function business(): BelongsTo
     {
         return $this->belongsTo(Business::class);
+    }
+
+    /**
+     * Chequeo de permiso granular del catalogo (ver App\Support\PermissionCatalog)
+     * que un admin siempre pasa (hereda todo por rol) y que no explota si el
+     * permiso todavia no existe en la tabla permissions (p.ej. permissions:sync
+     * no corrio despues de un deploy que agrego uno nuevo al catalogo) - eso es
+     * "el usuario no lo tiene", no un error 500. Unica logica de este tipo en
+     * la app: EnsureBusinessPermission (rutas) y cualquier FormRequest que
+     * necesite gatear un campo puntual (no toda la ruta) la reutilizan en vez
+     * de reimplementarla.
+     */
+    public function hasBusinessPermission(string $permission): bool
+    {
+        if ($this->hasRole('admin')) {
+            return true;
+        }
+
+        try {
+            return $this->hasPermissionTo($permission, 'web');
+        } catch (PermissionDoesNotExist) {
+            return false;
+        }
     }
 
     /**

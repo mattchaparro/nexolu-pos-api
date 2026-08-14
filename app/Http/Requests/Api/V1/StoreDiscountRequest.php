@@ -34,7 +34,12 @@ class StoreDiscountRequest extends FormRequest
                 Rule::unique('discounts', 'name')->where('business_id', $businessId),
             ],
             'type' => ['required', Rule::in(['percentage', 'fixed'])],
-            'value' => ['required', 'numeric', 'min:0.01'],
+            'value' => [
+                'required',
+                'numeric',
+                'min:0.01',
+                ...($this->input('type') === 'percentage' ? ['max:100'] : []),
+            ],
             'scope' => ['required', Rule::in(['item', 'cart'])],
             'product_id' => [
                 'sometimes',

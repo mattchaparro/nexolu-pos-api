@@ -56,6 +56,10 @@ class StoreOpenTabRequest extends FormRequest
         $validator->after(function (Validator $validator) {
             $this->validateSaleItemLines($validator);
 
+            if ($this->filled('cart_discount_id') && ! ($this->user()?->hasBusinessPermission('discounts.apply') ?? false)) {
+                $validator->errors()->add('cart_discount_id', 'No tienes permiso para aplicar descuentos.');
+            }
+
             $tableId = $this->input('table_id');
             if ($tableId && Sale::where('table_id', $tableId)->where('status', 'open')->exists()) {
                 $validator->errors()->add('table_id', 'Esta mesa ya tiene una cuenta abierta.');

@@ -96,6 +96,10 @@ class StoreSaleRequest extends FormRequest
                 );
             }
 
+            if ($this->filled('cart_discount_id') && ! ($this->user()?->hasBusinessPermission('discounts.apply') ?? false)) {
+                $validator->errors()->add('cart_discount_id', 'No tienes permiso para aplicar descuentos.');
+            }
+
             $this->validateSaleItemLines($validator);
         });
     }

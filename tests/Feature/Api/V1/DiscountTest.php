@@ -109,6 +109,55 @@ class DiscountTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_percentage_discount_value_cannot_exceed_100(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/discounts', [
+                'name' => 'Descuento invalido',
+                'type' => 'percentage',
+                'value' => 150,
+                'scope' => 'cart',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('value');
+    }
+
+    public function test_fixed_discount_value_can_exceed_100(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/discounts', [
+                'name' => 'Descuento fijo grande',
+                'type' => 'fixed',
+                'value' => 150000,
+                'scope' => 'cart',
+            ])
+            ->assertCreated();
+    }
+
+    public function test_updating_a_percentage_discount_value_above_100_is_rejected_using_stored_type(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $discount = Discount::factory()->create(['business_id' => $business->id, 'type' => 'percentage', 'value' => 20]);
+
+        // No manda "type" en el update - debe seguir usando el limite de 100
+        // basado en el type ya guardado en BD, no dejar pasar cualquier valor
+        // solo porque el campo no vino en este request puntual.
+        $this->actingAs($user, 'sanctum')
+            ->putJson("/api/v1/discounts/{$discount->id}", ['value' => 200])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('value');
+    }
+
     public function test_compute_amount_caps_percentage_discount_at_the_subtotal(): void
     {
         $discount = Discount::factory()->create(['type' => 'percentage', 'value' => 200]);

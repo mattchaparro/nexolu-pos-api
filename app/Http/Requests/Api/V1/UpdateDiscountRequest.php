@@ -36,7 +36,12 @@ class UpdateDiscountRequest extends FormRequest
                     ->ignore($this->route('discount')),
             ],
             'type' => ['sometimes', Rule::in(['percentage', 'fixed'])],
-            'value' => ['sometimes', 'numeric', 'min:0.01'],
+            'value' => [
+                'sometimes',
+                'numeric',
+                'min:0.01',
+                ...($this->input('type', $this->route('discount')?->type) === 'percentage' ? ['max:100'] : []),
+            ],
             'scope' => ['sometimes', Rule::in(['item', 'cart'])],
             'product_id' => [
                 'sometimes',

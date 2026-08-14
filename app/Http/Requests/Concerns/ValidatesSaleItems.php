@@ -54,6 +54,8 @@ trait ValidatesSaleItems
             ->get()
             ->keyBy('id');
 
+        $canApplyDiscounts = $this->user()?->hasBusinessPermission('discounts.apply') ?? false;
+
         foreach ($items as $i => $item) {
             $product = $products->get($item['product_id'] ?? null);
             if (! $product) {
@@ -73,6 +75,10 @@ trait ValidatesSaleItems
                     "items.{$i}.quantity",
                     'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $product->stock.').'
                 );
+            }
+
+            if (! empty($item['discount_id']) && ! $canApplyDiscounts) {
+                $validator->errors()->add("items.{$i}.discount_id", 'No tienes permiso para aplicar descuentos.');
             }
         }
     }

@@ -4,6 +4,7 @@ namespace Tests\Feature\Api\V1;
 
 use App\Models\Business;
 use App\Models\BusinessTable;
+use App\Models\Discount;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SalePartialPayment;
@@ -32,6 +33,33 @@ class OpenTabTest extends TestCase
             ->assertJsonPath('total', '20000.00');
 
         $this->assertSame(8, $product->fresh()->stock);
+    }
+
+    public function test_opening_a_tab_with_cart_discount_requires_discounts_apply_permission(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+        $discount = Discount::factory()->create(['business_id' => $business->id, 'type' => 'percentage', 'scope' => 'cart', 'value' => 10]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'cart_discount_id' => $discount->id,
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->assertStatus(422)->assertJsonValidationErrors('cart_discount_id');
+    }
+
+    public function test_opening_a_tab_with_cart_discount_applies_it_when_permitted(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->syncPermissions(['discounts.apply']);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+        $discount = Discount::factory()->create(['business_id' => $business->id, 'type' => 'percentage', 'scope' => 'cart', 'value' => 10]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'cart_discount_id' => $discount->id,
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->assertCreated()->assertJsonPath('total', '9000.00');
     }
 
     public function test_cannot_open_a_second_tab_on_a_table_that_already_has_one(): void
