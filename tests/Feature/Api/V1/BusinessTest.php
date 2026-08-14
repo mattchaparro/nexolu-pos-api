@@ -4,6 +4,7 @@ namespace Tests\Feature\Api\V1;
 
 use App\Models\Business;
 use App\Models\User;
+use App\Support\BusinessFeaturePresets;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
@@ -80,6 +81,64 @@ class BusinessTest extends TestCase
             ->getJson('/api/v1/business')
             ->assertOk()
             ->assertJsonPath('can_access_layaways', false);
+    }
+
+    public function test_business_resource_exposes_the_full_resolved_features_map(): void
+    {
+        $business = Business::factory()->create([
+            'subscription_plan' => 'basic',
+            'feature_flags' => BusinessFeaturePresets::basic(),
+        ]);
+        $owner = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+
+        $response = $this->actingAs($owner, 'sanctum')->getJson('/api/v1/business')->assertOk();
+
+        $resolved = $response->json('resolved_features');
+        $this->assertCount(20, $resolved);
+        // Basico: encendidas por defecto.
+        $this->assertTrue($resolved['inventory']);
+        $this->assertTrue($resolved['expenses']);
+        // Basico: apagadas por defecto (exclusivas de Full).
+        $this->assertFalse($resolved['open_tabs']);
+        $this->assertFalse($resolved['services']);
+        $this->assertFalse($resolved['scheduling']);
+        $this->assertFalse($resolved['clients']);
+    }
+
+    public function test_resolved_features_falls_back_to_the_plan_default_for_a_key_missing_from_feature_flags(): void
+    {
+        // Simula un negocio Basico al que feature_flags le falta una clave
+        // (ej. porque se agrego al catalogo despues de crearlo) - la clave
+        // ausente debe resolver al default del plan Basico (apagada, ya que
+        // 'open_tabs' es exclusiva de Full), NO asumirse encendida.
+        $business = Business::factory()->create([
+            'subscription_plan' => 'basic',
+            'feature_flags' => ['inventory' => true],
+        ]);
+        $owner = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+
+        $resolved = $this->actingAs($owner, 'sanctum')
+            ->getJson('/api/v1/business')
+            ->assertOk()
+            ->json('resolved_features');
+
+        $this->assertTrue($resolved['inventory']);
+        $this->assertFalse($resolved['open_tabs']);
+    }
+
+    public function test_resolved_features_enables_everything_only_for_a_business_without_any_flags(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => null]);
+        $owner = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+
+        $resolved = $this->actingAs($owner, 'sanctum')
+            ->getJson('/api/v1/business')
+            ->assertOk()
+            ->json('resolved_features');
+
+        $this->assertTrue($resolved['open_tabs']);
+        $this->assertTrue($resolved['clients']);
+        $this->assertCount(20, $resolved);
     }
 
     public function test_owner_can_update_their_business(): void

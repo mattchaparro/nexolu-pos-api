@@ -391,6 +391,27 @@ class Business extends Model
     }
 
     /**
+     * Las 20 banderas del catalogo, cada una ya resuelta para este negocio
+     * (mismo criterio de 3 ramas que hasFeature() para cada clave: valor
+     * explicito -> default del plan si falta -> todo habilitado solo para
+     * negocios muy antiguos sin JSON). Unica fuente que el frontend debe
+     * leer para "que tiene encendido este negocio" (ver BusinessResource) -
+     * exponer solo el feature_flags crudo obligaba al frontend a replicar
+     * esta misma logica de resolucion, con el riesgo real de que se
+     * desincronice (bug encontrado: una clave ausente en un feature_flags
+     * no vacio se asumia habilitada del lado del frontend, cuando el
+     * backend la resuelve con el default del plan).
+     *
+     * @return array<string, bool>
+     */
+    public function resolvedFeatures(): array
+    {
+        return collect(array_keys(BusinessFeaturePresets::basic()))
+            ->mapWithKeys(fn (string $feature) => [$feature => $this->hasFeature($feature)])
+            ->all();
+    }
+
+    /**
      * Compras y proveedores: alineado con el hub de catalogo (inventario basico, avanzado o recetas).
      */
     public function canAccessPurchases(): bool

@@ -1027,3 +1027,50 @@ inicial, ya verificado): el límite de clientes por plan
 (`Client::LIMIT_PER_BUSINESS`) sí se aplica - `ClientService::create()`
 lo valida antes de crear, igual que `ClientsController::store()` en
 legacy.
+
+### Control de acceso por plan (api + front)
+- ~~**Bug real: un negocio Básico veía todas las opciones en el menú**~~ ✅
+  Corregido (2026-08-14). Reporte real de un usuario que se registró en
+  plan Básico y vio el menú completo (incluyendo módulos exclusivos de
+  Full). Causa raíz: `hasFeature()` del frontend (`utils/hasFeature.ts`)
+  reimplementaba a mano las 3 ramas de `Business::hasFeature()` del
+  backend, y la rama de "clave ausente en un `feature_flags` no vacío" se
+  resolvía como **habilitada** en vez de consultar el default del plan (lo
+  que el backend sí hace) - documentado en su momento como limitación
+  conocida ("`BusinessResource` no expone los defaults del plan"), pero en
+  la práctica era un fail-open real: cualquier negocio cuyo
+  `feature_flags` no tuviera las 20 claves completas (un registro viejo, o
+  un bug futuro que dejara una clave sin escribir) terminaba viendo
+  encendida cualquier función ausente.
+
+  La corrección no fue "arreglar la rama que fallaba" sino eliminar la
+  clase entera de bug: `Business::resolvedFeatures()` (nuevo, en el
+  modelo) resuelve las 20 banderas del catálogo llamando a
+  `hasFeature()` una vez por clave - la misma lógica autoritativa que ya
+  gatea cada endpoint, ahora expuesta completa. `BusinessResource` la
+  expone como `resolved_features`. El frontend `hasFeature()` pasó de
+  reimplementar 3 ramas a una sola línea: leer
+  `business.resolved_features[feature]`. Ya no hay dos implementaciones
+  de la misma lógica que se puedan desincronizar - solo el backend
+  resuelve, el frontend solo lee.
+
+  De paso, con esta corrección se re-auditó toda la cobertura de
+  middleware `feature:` en `routes/api.php` contra las 20 banderas: no se
+  encontraron huecos nuevos más allá de los 3 ya cerrados en el módulo
+  "Planes y Funciones" (ver sección SuperAdmin) - `discounts` y `charges`
+  se aplican en el punto de uso real (`SaleService::applyItemDiscount()`/
+  `applyCartDiscount()`, no solo en el CRUD de `DiscountController`),
+  `inventory_advanced` se gatea vía el middleware `can-access-purchases`
+  (más preciso que `feature:`, ya que es un OR de 3 banderas), y
+  `audit_logs`/`low_stock_alert` no tienen endpoint de negocio que
+  proteger todavía (el primero no tiene módulo construido, el segundo se
+  gatea en el propio comando `inventory:send-low-stock-alerts`, no en una
+  ruta). Verificado con curl directo contra la API (no solo la UI): un
+  negocio Básico recibe 403 en `/open-tabs` y `/clients`, 200 en `/sales`.
+
+  Tests: `BusinessTest::test_business_resource_exposes_the_full_resolved_features_map`,
+  `test_resolved_features_falls_back_to_the_plan_default_for_a_key_missing_from_feature_flags`
+  (reproduce exactamente el bug real) y
+  `test_resolved_features_enables_everything_only_for_a_business_without_any_flags`
+  (confirma que el fallback legacy para negocios muy antiguos sigue
+  intacto).

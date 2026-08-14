@@ -45,6 +45,16 @@ class BusinessResource extends JsonResource
             'service_orders_show_catalog' => $this->service_orders_show_catalog,
             'service_orders_default_service_name' => $this->service_orders_default_service_name,
             'feature_flags' => $this->feature_flags,
+            // Las 20 banderas del catalogo YA resueltas (ver
+            // Business::resolvedFeatures()) - la fuente que el frontend debe
+            // leer para "que tiene encendido este negocio" en vez de
+            // replicar la logica de resolucion de feature_flags/plan por su
+            // cuenta (bug real encontrado: el frontend asumia habilitada
+            // cualquier clave ausente en un feature_flags no vacio, en vez
+            // de resolverla con el default del plan como hace el backend).
+            // feature_flags crudo se conserva arriba solo para las
+            // pantallas de SuperAdmin que lo editan directamente.
+            'resolved_features' => $this->resolvedFeatures(),
             // Computado en el modelo (ver Business::hasFeature()) en vez de
             // que el frontend replique la logica de flags/plan por su
             // cuenta - un negocio con feature_flags=null habilita todo por
