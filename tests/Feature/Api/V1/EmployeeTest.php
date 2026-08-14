@@ -192,6 +192,42 @@ class EmployeeTest extends TestCase
             ->assertForbidden();
     }
 
+    /**
+     * Bug real: toggle()/destroy() usaban Request llano sin chequear
+     * hasRole('admin') (a diferencia de store/update/updatePermissions, que
+     * lo exigen via su FormRequest) - cualquier empleado autenticado podia
+     * desactivar o borrar a un companero.
+     */
+    public function test_a_regular_employee_cannot_toggle_a_coworker(): void
+    {
+        [$owner, $business] = $this->actingAdmin();
+        $employee = User::factory()->create(['business_id' => $business->id]);
+        $employee->assignRole('employee');
+        $coworker = User::factory()->create(['business_id' => $business->id]);
+        $coworker->assignRole('employee');
+
+        $this->actingAs($employee, 'sanctum')
+            ->patchJson("/api/v1/employees/{$coworker->id}/toggle")
+            ->assertForbidden();
+
+        $this->assertTrue($coworker->fresh()->is_active);
+    }
+
+    public function test_a_regular_employee_cannot_delete_a_coworker(): void
+    {
+        [$owner, $business] = $this->actingAdmin();
+        $employee = User::factory()->create(['business_id' => $business->id]);
+        $employee->assignRole('employee');
+        $coworker = User::factory()->create(['business_id' => $business->id, 'is_active' => false]);
+        $coworker->assignRole('employee');
+
+        $this->actingAs($employee, 'sanctum')
+            ->deleteJson("/api/v1/employees/{$coworker->id}")
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('users', ['id' => $coworker->id]);
+    }
+
     // --- Feature flag permissions_management: gatea solo la edicion de
     // permisos granulares, no el alta/baja basica de empleados. ---
 

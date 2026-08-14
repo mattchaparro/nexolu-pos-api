@@ -138,6 +138,7 @@ class EmployeeController extends Controller
     public function toggle(Request $request, User $employee): EmployeeResource
     {
         $this->assertBelongsToSameBusiness($request, $employee);
+        $this->assertIsAdmin($request);
 
         $employee->update(['is_active' => ! $employee->is_active]);
 
@@ -147,6 +148,7 @@ class EmployeeController extends Controller
     public function destroy(Request $request, User $employee): Response
     {
         $this->assertBelongsToSameBusiness($request, $employee);
+        $this->assertIsAdmin($request);
 
         if ($employee->is_business_owner) {
             throw ValidationException::withMessages(['employee' => 'No puedes eliminar al dueño del negocio.']);
@@ -166,6 +168,17 @@ class EmployeeController extends Controller
     private function assertBelongsToSameBusiness(Request $request, User $employee): void
     {
         abort_unless((int) $employee->business_id === (int) $request->user()->business_id, 404);
+    }
+
+    /**
+     * store/update/updatePermissions ya exigen rol admin via su FormRequest
+     * (authorize()); toggle/destroy usan Request llano (ver la nota de clase
+     * sobre "index lista pero no expone acciones a un employee") y por eso
+     * necesitan el mismo chequeo aca en vez de heredarlo gratis.
+     */
+    private function assertIsAdmin(Request $request): void
+    {
+        abort_unless($request->user()->hasRole('admin'), 403, 'No tienes permiso para esta accion.');
     }
 
     /**
