@@ -382,6 +382,48 @@ CREATE TABLE `appointments` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `business_pos_payment_methods`
+--
+-- NOTA: tabla nueva (no viene del dump original de produccion), agregada
+-- para el catalogo normalizado de medios de pago del POS. Pivote entre
+-- `businesses` y `pos_payment_methods` (ver esa tabla mas abajo) - que
+-- medios de pago del catalogo global tiene habilitados cada negocio.
+-- `is_enabled` es la unica forma de "quitar" un medio de pago: la fila
+-- nunca se borra, para que el historial de ventas/fiados/etc que ya uso
+-- ese medio siga resolviendo su label sin importar si el negocio lo
+-- deshabilito despues (ver App\Support\RevenueByPaymentMethod). El nombre
+-- "pos_payment_methods" (no "payment_methods" a secas) es a proposito:
+-- ya existe una tabla `payment_methods` en este mismo schema, pero es del
+-- sistema de cobro de la SUSCRIPCION de Nexolu al negocio (pasarelas de
+-- pago tipo Wompi/Stripe via `payment_providers`), completamente
+-- independiente de con que le paga un CLIENTE al negocio - no hay que
+-- confundirlas. El legacy monolito no lee ni escribe estas tablas nuevas,
+-- asi que agregarlas aca no viola la regla de "nunca migrar una tabla que
+-- el legacy ya usa" (CLAUDE.md). Aplicada a mano via `mysql` CLI contra
+-- pos_saas y testing (nunca via `php artisan migrate`), no existe archivo
+-- en database/migrations/ para esto - ver ese mismo directorio, vacio a
+-- proposito.
+--
+
+DROP TABLE IF EXISTS `business_pos_payment_methods`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `business_pos_payment_methods` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `business_id` bigint unsigned NOT NULL,
+  `pos_payment_method_id` bigint unsigned NOT NULL,
+  `is_enabled` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `bppm_business_payment_unique` (`business_id`,`pos_payment_method_id`),
+  KEY `bppm_pos_payment_method_id_index` (`pos_payment_method_id`),
+  CONSTRAINT `bppm_business_id_foreign` FOREIGN KEY (`business_id`) REFERENCES `businesses` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `bppm_pos_payment_method_id_foreign` FOREIGN KEY (`pos_payment_method_id`) REFERENCES `pos_payment_methods` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `business_service_workflows`
 --
 
@@ -1245,6 +1287,46 @@ CREATE TABLE `personal_access_tokens` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `personal_access_tokens_token_unique` (`token`),
   KEY `personal_access_tokens_tokenable_type_tokenable_id_index` (`tokenable_type`,`tokenable_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `pos_payment_methods`
+--
+-- NOTA: tabla nueva (no viene del dump original de produccion). Catalogo
+-- global de medios de pago del POS, administrado por SuperAdmin - cada
+-- negocio elige cuales usar via `business_pos_payment_methods` (ver esa
+-- tabla). `key` es el id estable que ya usan `sales.payment_method`,
+-- `receivables.payment_method`, etc (cash/transfer/nequi/...) - esta tabla
+-- no cambia ese vocabulario, solo lo centraliza para que un negocio no
+-- pueda escribir uno nuevo a mano sin normalizar (ver App\Models\Business::
+-- normalizePaymentMethodId()). `is_active`=false saca un metodo de la
+-- lista que SuperAdmin ofrece para nuevos negocios, pero no lo borra (los
+-- negocios que ya lo tienen asignado en business_pos_payment_methods lo
+-- conservan). El nombre "pos_payment_methods" es a proposito: ya existe
+-- una tabla `payment_methods` en este mismo schema, pero es del sistema de
+-- cobro de la SUSCRIPCION de Nexolu al negocio (pasarelas de pago via
+-- `payment_providers`), nada que ver con esto. El legacy monolito no lee
+-- ni escribe esta tabla, asi que agregarla aca no viola la regla de "nunca
+-- migrar una tabla que el legacy ya usa" (CLAUDE.md). Aplicada a mano via
+-- `mysql` CLI contra pos_saas y testing (nunca via `php artisan migrate`),
+-- no existe archivo en database/migrations/ para esto - ver ese mismo
+-- directorio, vacio a proposito.
+--
+
+DROP TABLE IF EXISTS `pos_payment_methods`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `pos_payment_methods` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `key` varchar(60) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `label` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `sort_order` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `pos_payment_methods_key_unique` (`key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 

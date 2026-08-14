@@ -45,7 +45,6 @@ class UpdateBusinessRequest extends FormRequest
             'service_charge_rate' => ['sometimes', 'numeric', 'min:0', 'max:100'],
             'ipoconsumo_enabled' => ['sometimes', 'boolean'],
             'ipoconsumo_rate' => ['sometimes', 'numeric', 'min:0', 'max:100'],
-            'payment_methods' => ['sometimes', 'array'],
             'low_stock_alert_threshold' => ['sometimes', 'integer', 'min:0'],
             'low_stock_email_enabled' => ['sometimes', 'boolean'],
             'low_stock_email' => ['sometimes', 'nullable', 'email'],

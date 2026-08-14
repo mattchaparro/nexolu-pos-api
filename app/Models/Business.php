@@ -6,6 +6,7 @@ use App\Support\BusinessFeaturePresets;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -197,8 +198,52 @@ class Business extends Model
         );
     }
 
+    /**
+     * Catalogo normalizado (App\Models\PosPaymentMethod) que este negocio
+     * eligio via Ajustes - ver PosPaymentMethod para por que no se llama
+     * simplemente "paymentMethods" a nivel de relacion (paymentMethods() ya
+     * es el metodo publico estable que usa toda la app, ver mas abajo).
+     *
+     * @return BelongsToMany<PosPaymentMethod, $this>
+     */
+    public function posPaymentMethods(): BelongsToMany
+    {
+        return $this->belongsToMany(PosPaymentMethod::class, 'business_pos_payment_methods')
+            ->withPivot('is_enabled')
+            ->withTimestamps();
+    }
+
+    /**
+     * Negocios que ya migraron a Ajustes > Medios de pago (tienen al menos
+     * una fila en business_pos_payment_methods) leen su catalogo normalizado
+     * de ahi - los que no, siguen con el JSON libre de siempre
+     * (`payment_methods`) hasta que un admin abra esa pantalla y guarde
+     * (ver PosPaymentMethodController::update()), momento en el que se
+     * crean sus filas de pivote por primera vez. Ningun negocio se migra en
+     * bloque aca - es deliberado, ver la nota de docs/CUTOVER_TODO.md sobre
+     * por que normalizar TODOS los negocios existentes es un paso aparte,
+     * con sus propias pruebas, no algo que este refactor deba forzar.
+     *
+     * `enabled` es opcional en el shape de retorno (ausente = true) para no
+     * romper a quienes ya leen ['id']/['label'] de paymentMethods() - solo
+     * los negocios ya migrados al catalogo distinguen habilitado/deshabilitado.
+     */
     public function paymentMethods(): array
     {
+        $this->loadMissing('posPaymentMethods');
+
+        if ($this->posPaymentMethods->isNotEmpty()) {
+            return $this->posPaymentMethods
+                ->sortBy('sort_order')
+                ->map(fn (PosPaymentMethod $method) => [
+                    'id' => $method->key,
+                    'label' => $method->label,
+                    'enabled' => (bool) $method->pivot->is_enabled,
+                ])
+                ->values()
+                ->all();
+        }
+
         $methods = $this->payment_methods;
         if (! is_array($methods) || empty($methods)) {
             return self::DEFAULT_PAYMENT_METHODS;
@@ -244,9 +289,18 @@ class Business extends Model
      *
      * @return list<string>
      */
+    /**
+     * Solo los medios HABILITADOS para transacciones nuevas - los negocios
+     * en el JSON legacy (sin fila 'enabled') se consideran todos habilitados,
+     * como siempre. Los que ya migraron al catalogo (ver paymentMethods())
+     * excluyen aca los que desactivaron, pero paymentMethods() los sigue
+     * devolviendo igual para que resolveCashPaymentMethodId()/labels de
+     * transacciones historicas no se rompan.
+     */
     public function allowedPaymentMethodIds(): array
     {
         return collect($this->paymentMethods())
+            ->filter(fn (array $method) => ($method['enabled'] ?? true) !== false)
             ->pluck('id')
             ->map(fn ($id) => strtolower((string) $id))
             ->filter()

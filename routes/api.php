@@ -36,6 +36,7 @@ use App\Http\Controllers\Api\V1\KitchenBoardController;
 use App\Http\Controllers\Api\V1\LayawayController;
 use App\Http\Controllers\Api\V1\OpenTabController;
 use App\Http\Controllers\Api\V1\PlanCatalogController;
+use App\Http\Controllers\Api\V1\PosPaymentMethodController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\PurchaseController;
@@ -129,6 +130,11 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::put('/business', [BusinessController::class, 'update'])->name('business.update');
         Route::put('/business/notifications', [BusinessController::class, 'updateNotifications'])->name('business.notifications.update');
         Route::delete('/business/low-stock-snooze', [BusinessController::class, 'clearLowStockSnooze'])->name('business.low-stock-snooze.clear');
+        Route::get('/business/payment-methods', [PosPaymentMethodController::class, 'index'])->name('business.payment-methods.index');
+        Route::put('/business/payment-methods', [PosPaymentMethodController::class, 'update'])->name('business.payment-methods.update');
+        Route::post('/business/payment-methods/support-request', [PosPaymentMethodController::class, 'requestSupport'])
+            ->middleware('throttle:5,1')
+            ->name('business.payment-methods.support-request');
 
         Route::get('/dashboard/summary', [DashboardController::class, 'summary'])->name('dashboard.summary');
         Route::get('/dashboard/whatsapp-onboarding', [DashboardController::class, 'whatsappOnboarding'])->name('dashboard.whatsapp-onboarding');

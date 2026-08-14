@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call(RoleSeeder::class);
         $this->call(StockMovementReasonSeeder::class);
+        $this->call(PosPaymentMethodSeeder::class);
 
         // User::factory(10)->create();
 

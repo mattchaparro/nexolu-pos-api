@@ -115,4 +115,18 @@ return [
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Support Address
+    |--------------------------------------------------------------------------
+    |
+    | Buzon interno de Nexolu al que llegan las solicitudes que un negocio
+    | manda desde la app (ej. "no esta el medio de pago que necesito" en
+    | Ajustes > Medios de pago) - no es un negocio ni un superadmin, es el
+    | correo del equipo.
+    |
+    */
+
+    'support_address' => env('SUPPORT_EMAIL', 'general@nexolu.co'),
+
 ];

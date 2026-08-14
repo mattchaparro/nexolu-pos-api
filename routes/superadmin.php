@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\SuperAdmin\EmailController;
 use App\Http\Controllers\Api\V1\SuperAdmin\FeatureCatalogController;
 use App\Http\Controllers\Api\V1\SuperAdmin\FinanceController;
 use App\Http\Controllers\Api\V1\SuperAdmin\ImpersonateController;
+use App\Http\Controllers\Api\V1\SuperAdmin\PosPaymentMethodController;
 use App\Http\Controllers\Api\V1\SuperAdmin\ServiceWorkflowController;
 use App\Http\Controllers\Api\V1\SuperAdmin\SubscriptionTransactionController;
 use App\Http\Controllers\Api\V1\SuperAdmin\SupportGuideController;
@@ -59,6 +60,11 @@ Route::apiResource('users', UserController::class)->only(['index', 'store']);
 Route::post('/impersonate/{user}', [ImpersonateController::class, 'start'])->name('impersonate.start');
 
 Route::apiResource('announcements', AnnouncementController::class)->only(['index', 'store', 'update', 'destroy']);
+
+// Sin destroy - ver la nota en PosPaymentMethodController.
+Route::apiResource('pos-payment-methods', PosPaymentMethodController::class)
+    ->only(['index', 'store', 'update'])
+    ->parameters(['pos-payment-methods' => 'posPaymentMethod']);
 
 // parameters(): mismo bug de siempre - 'service-workflows' derivaria
 // 'service_workflow', que no coincide con ServiceWorkflow $serviceWorkflow.

@@ -266,3 +266,66 @@ nuevos escritos desde esta API.
 - [ ] Pendiente. Requiere coordinar con el retiro/parcheo del legacy antes del
   `ALTER TABLE`. Mientras tanto, `ClientQuickAssociate.vue` ya cubre el caso de
   uso real (que quede un `Client` correcto) sin la columna.
+
+---
+
+## 5. Migrar negocios existentes del JSON `payment_methods` al catálogo normalizado
+
+**Origen:** 2026-08-14, a pedido del usuario — "esto va de la mano con la
+normalizacion del cutover que tenemos para medios de pago... me pareciera ser
+una bola de nieve que necesitamos cerrar para negocios existentes."
+
+**El problema:** este refactor agregó el catálogo global (`pos_payment_methods`,
+gestionado por SuperAdmin) y el pivote por negocio (`business_pos_payment_methods`,
+`Business::posPaymentMethods()`), pero **ningún negocio existente se migró en
+bloque** — es deliberado (ver la nota en `Business::paymentMethods()`). Cada
+negocio sigue leyendo del JSON libre (`businesses.payment_methods`) hasta que
+un admin abre Ajustes > Medios de pago y guarda al menos una vez
+(`PosPaymentMethodController::update()`), momento en el que se crean sus filas
+de pivote por primera vez y deja de leer el JSON.
+
+**Por qué no se fuerza ahora:** el JSON de cada negocio es texto libre sin
+normalizar (`Business::normalizePaymentMethodsInput()` ya le pone un `id`
+slugificado, pero el label puede ser cualquier cosa que el dueño haya escrito
+— typos, sinónimos, "Efectivo " con espacio, "Transferencia bancaria" vs
+"Transferencia", etc.). Migrar esto en bloque con un `UPDATE`/comando masivo
+sin revisión arriesga:
+
+- Crear entradas de catálogo duplicadas o mal etiquetadas si el matching por
+  label falla (ej. "Nequi " con espacio no matchea `key='nequi'`).
+- Dejar negocios con medios de pago históricos que usaron un id que ya no
+  queda "seleccionado" tras la migración, rompiendo `resolveCashPaymentMethodId()`/
+  `resolveTransferPaymentMethodId()` para ventas viejas si el matching es
+  incorrecto.
+
+El usuario fue explícito en que este paso es posterior y requiere pruebas
+extensas contra un dump real de producción (SG) antes de tocar negocios
+reales — no es parte de este refactor, que solo construye la infraestructura
+y el camino de migración perezoso (uno por uno, cuando el admin guarda).
+
+**Fix cuando sea seguro:** comando Artisan (no migración) que, para cada
+negocio sin filas en `business_pos_payment_methods`:
+
+1. Lea `Business::paymentMethods()` (ya resuelve el fallback JSON).
+2. Para cada método, intente matchear contra `pos_payment_methods` por alias
+   conocido (mismo criterio que `Business::normalizePaymentMethodId()`:
+   cash↔efectivo, transfer↔transferencia, credit↔fiado↔credito) y por label
+   normalizado (minúsculas, sin tildes, sin espacios extra).
+3. Si matchea sin ambigüedad: crear la fila de pivote (`is_enabled = true`).
+4. Si NO matchea (label desconocido, ej. un medio que el negocio escribió a
+   mano y no existe en el catálogo): **no migrar ese negocio automáticamente**
+   — listarlo en un reporte para revisión manual (o usar el mismo flujo de
+   "Contacta a soporte" para agregarlo al catálogo primero).
+5. Correrlo primero en modo `--dry-run` contra un dump de producción, revisar
+   el reporte de no-matches, y solo entonces correrlo real — nunca directo a
+   producción sin ese paso, tal como pidió el usuario.
+
+Este ítem también depende de resolver el ítem 1 (vocabulario de
+`payment_method` inconsistente): una vez los negocios migren al catálogo, los
+`id` que `sales.payment_method`/`receivables.payment_method`/etc. usan pasan a
+ser el `key` de `pos_payment_methods`, así que conviene resolver ambos cutovers
+en el mismo esfuerzo coordinado, no por separado.
+
+- [ ] Pendiente. Requiere el comando con `--dry-run` + revisión manual descrita
+  arriba, probado contra un dump real de producción, antes de correr contra
+  negocios reales.
