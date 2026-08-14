@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Models\AiChannelIdentity;
 use App\Models\Business;
+use App\Models\ProductCategory;
 use App\Models\User;
 use App\Support\BusinessFeaturePresets;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -195,5 +197,115 @@ class BusinessTest extends TestCase
         $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/business')
             ->assertNotFound();
+    }
+
+    public function test_owner_can_restrict_layaway_categories_to_ids_owned_by_their_business(): void
+    {
+        $business = Business::factory()->create();
+        $owner = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+        $category = ProductCategory::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($owner, 'sanctum')
+            ->putJson('/api/v1/business', ['layaway_allowed_category_ids' => [$category->id]])
+            ->assertOk()
+            ->assertJsonPath('layaway_allowed_category_ids', [$category->id]);
+
+        $this->assertSame([$category->id], $business->fresh()->layaway_allowed_category_ids);
+    }
+
+    public function test_owner_cannot_restrict_layaway_categories_to_a_category_from_another_business(): void
+    {
+        $business = Business::factory()->create();
+        $owner = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+        $foreignCategory = ProductCategory::factory()->create();
+
+        $this->actingAs($owner, 'sanctum')
+            ->putJson('/api/v1/business', ['layaway_allowed_category_ids' => [$foreignCategory->id]])
+            ->assertStatus(422);
+    }
+
+    public function test_owner_can_update_email_branding_which_is_stored_inside_email_config(): void
+    {
+        $business = Business::factory()->create(['email_config' => ['header_color' => '#000000', 'footer_text' => 'Old']]);
+        $owner = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+
+        $this->actingAs($owner, 'sanctum')
+            ->putJson('/api/v1/business', [
+                'email_header_color' => '#ff0000',
+                'email_footer_text' => 'Gracias por tu compra',
+                'email_whatsapp_cta' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('email_header_color', '#ff0000')
+            ->assertJsonPath('email_footer_text', 'Gracias por tu compra')
+            ->assertJsonPath('email_whatsapp_cta', true);
+
+        $business->refresh();
+        $this->assertSame(['header_color' => '#ff0000', 'footer_text' => 'Gracias por tu compra'], $business->email_config);
+        $this->assertTrue($business->email_whatsapp_cta);
+    }
+
+    public function test_notifications_require_the_saving_user_to_have_whatsapp_linked(): void
+    {
+        $business = Business::factory()->create();
+        $owner = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+
+        $this->actingAs($owner, 'sanctum')
+            ->putJson('/api/v1/business/notifications', ['preferences' => ['resumen_diario' => true]])
+            ->assertStatus(422)
+            ->assertJsonPath('ok', false);
+
+        $this->assertNull($business->fresh()->notification_preferences);
+    }
+
+    public function test_owner_with_whatsapp_linked_can_save_notification_preferences(): void
+    {
+        $business = Business::factory()->create();
+        $owner = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+        AiChannelIdentity::create([
+            'business_id' => $business->id,
+            'user_id' => $owner->id,
+            'channel' => AiChannelIdentity::CHANNEL_WHATSAPP,
+            'external_id' => '573001234567',
+            'verified_at' => now(),
+        ]);
+
+        $this->actingAs($owner, 'sanctum')
+            ->putJson('/api/v1/business/notifications', [
+                'preferences' => ['resumen_diario' => true, 'inventario_bajo' => true, 'unknown_key' => true],
+            ])
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $prefs = $business->fresh()->notification_preferences;
+        $this->assertTrue($prefs['resumen_diario']);
+        $this->assertTrue($prefs['inventario_bajo']);
+        $this->assertFalse($prefs['recordatorios']);
+        $this->assertArrayNotHasKey('unknown_key', $prefs);
+    }
+
+    public function test_owner_can_clear_the_low_stock_snooze_early(): void
+    {
+        $business = Business::factory()->create(['low_stock_snoozed_until' => now()->addDays(15)]);
+        $owner = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+
+        $this->actingAs($owner, 'sanctum')
+            ->deleteJson('/api/v1/business/low-stock-snooze')
+            ->assertOk()
+            ->assertJsonPath('ok', true);
+
+        $this->assertNull($business->fresh()->low_stock_snoozed_until);
+    }
+
+    public function test_regular_employee_cannot_clear_the_low_stock_snooze(): void
+    {
+        $business = Business::factory()->create(['low_stock_snoozed_until' => now()->addDays(15)]);
+        $employee = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => false]);
+
+        $this->actingAs($employee, 'sanctum')
+            ->deleteJson('/api/v1/business/low-stock-snooze')
+            ->assertForbidden();
+
+        $this->assertNotNull($business->fresh()->low_stock_snoozed_until);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -50,6 +51,14 @@ class UpdateBusinessRequest extends FormRequest
             'low_stock_email' => ['sometimes', 'nullable', 'email'],
             'service_orders_show_catalog' => ['sometimes', 'boolean'],
             'service_orders_default_service_name' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'layaway_allowed_category_ids' => ['sometimes', 'nullable', 'array'],
+            'layaway_allowed_category_ids.*' => [
+                'integer',
+                BusinessScopedExists::for('product_categories', $this->user()?->business_id),
+            ],
+            'email_header_color' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'email_footer_text' => ['sometimes', 'nullable', 'string', 'max:200'],
+            'email_whatsapp_cta' => ['sometimes', 'boolean'],
         ];
     }
 }

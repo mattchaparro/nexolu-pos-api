@@ -38,6 +38,14 @@ class BusinessResource extends JsonResource
             'low_stock_alert_threshold' => $this->low_stock_alert_threshold,
             'low_stock_email_enabled' => $this->low_stock_email_enabled,
             'low_stock_email' => $this->low_stock_email,
+            'low_stock_snoozed_until' => $this->low_stock_snoozed_until,
+            // null = todas las categorias; array de ids = lista restringida
+            // (ver Product::forLayaway() y ProductController::sellable()).
+            'layaway_allowed_category_ids' => $this->layaway_allowed_category_ids,
+            'email_header_color' => $this->email_config['header_color'] ?? null,
+            'email_footer_text' => $this->email_config['footer_text'] ?? null,
+            'email_whatsapp_cta' => $this->email_whatsapp_cta,
+            'notification_preferences' => $this->notification_preferences,
             // Configuracion del formulario de "Nueva orden de servicio" (ver
             // ServiceOrderFormView.vue en el frontend) - si el negocio quiere
             // que se pueda elegir un servicio del catalogo, y con que nombre

@@ -125,6 +125,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::get('/business', [BusinessController::class, 'show'])->name('business.show');
         Route::put('/business', [BusinessController::class, 'update'])->name('business.update');
+        Route::put('/business/notifications', [BusinessController::class, 'updateNotifications'])->name('business.notifications.update');
+        Route::delete('/business/low-stock-snooze', [BusinessController::class, 'clearLowStockSnooze'])->name('business.low-stock-snooze.clear');
 
         Route::get('/dashboard/summary', [DashboardController::class, 'summary'])->name('dashboard.summary');
         Route::get('/dashboard/whatsapp-onboarding', [DashboardController::class, 'whatsappOnboarding'])->name('dashboard.whatsapp-onboarding');
