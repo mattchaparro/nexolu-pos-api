@@ -17,6 +17,21 @@ class AiChannelLinkController extends Controller
 
     public function __construct(private ChannelLinkService $links, private MessagingChannel $client) {}
 
+    /**
+     * Estado del vinculo del usuario autenticado - a diferencia de
+     * DashboardController::whatsappOnboarding(), no se apaga por
+     * whatsapp_onboarding_dismissed_at ni ai_chat_blocked: eso solo decide
+     * si se muestra la tarjeta de onboarding, no si el canal esta
+     * realmente vinculado (lo usa, ej., la pestaña de notificaciones de
+     * Ajustes, que necesita el estado real sin esas excepciones).
+     */
+    public function status(Request $request): JsonResponse
+    {
+        return response()->json([
+            'linked' => $this->links->identityFor($request->user(), self::CHANNEL) !== null,
+        ]);
+    }
+
     /** Pide el OTP para el numero que el usuario escribio. */
     public function start(Request $request): JsonResponse
     {

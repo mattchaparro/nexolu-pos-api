@@ -186,6 +186,33 @@ class AiChannelLinkTest extends TestCase
             && $request['template']['name'] === 'welcome_whatsapp_linked');
     }
 
+    public function test_status_reports_not_linked_when_there_is_no_identity(): void
+    {
+        $admin = $this->adminUser();
+
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/ai/channels/whatsapp/status')
+            ->assertOk()
+            ->assertJsonPath('linked', false);
+    }
+
+    public function test_status_reports_linked_when_an_identity_exists(): void
+    {
+        $admin = $this->adminUser();
+        AiChannelIdentity::create([
+            'business_id' => $admin->business_id,
+            'user_id' => $admin->id,
+            'channel' => 'whatsapp',
+            'external_id' => '573001234567',
+            'verified_at' => now(),
+        ]);
+
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/ai/channels/whatsapp/status')
+            ->assertOk()
+            ->assertJsonPath('linked', true);
+    }
+
     public function test_unlink_removes_the_identity(): void
     {
         $admin = $this->adminUser();

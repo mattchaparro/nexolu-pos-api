@@ -118,6 +118,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::post('/insights/{type}/refresh', [AiInsightController::class, 'refresh'])->name('insights.refresh');
 
         Route::middleware('permission:ai_chat.use')->prefix('ai/channels/whatsapp')->name('ai.channels.whatsapp.')->group(function () {
+            Route::get('/status', [AiChannelLinkController::class, 'status'])->name('status');
             Route::post('/start', [AiChannelLinkController::class, 'start'])->middleware('throttle:5,1')->name('start');
             Route::post('/confirm', [AiChannelLinkController::class, 'confirm'])->middleware('throttle:10,1')->name('confirm');
             Route::delete('/', [AiChannelLinkController::class, 'unlink'])->name('unlink');
