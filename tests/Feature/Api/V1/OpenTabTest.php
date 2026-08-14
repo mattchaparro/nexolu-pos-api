@@ -454,10 +454,24 @@ class OpenTabTest extends TestCase
             ->assertJsonPath('total', '16000.00');
     }
 
+    public function test_cancelling_a_tab_requires_sales_reverse_permission(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $tab = Sale::factory()->create(['business_id' => $business->id, 'status' => 'open']);
+
+        $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/v1/open-tabs/{$tab->id}")
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('sales', ['id' => $tab->id]);
+    }
+
     public function test_cancelling_a_tab_restores_stock_and_deletes_it(): void
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->syncPermissions(['sales.reverse']);
         $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 10]);
 
         $tab = $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
@@ -483,6 +497,7 @@ class OpenTabTest extends TestCase
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->syncPermissions(['sales.reverse']);
         $tab = Sale::factory()->create(['business_id' => $business->id, 'status' => 'open', 'total' => 10000]);
         SalePartialPayment::factory()->create(['sale_id' => $tab->id, 'amount' => 3000]);
 

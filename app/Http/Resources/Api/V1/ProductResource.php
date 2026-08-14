@@ -23,7 +23,11 @@ class ProductResource extends JsonResource
             'description' => $this->description,
             'how_to_use' => $this->how_to_use,
             'price' => $this->price,
-            'cost_price' => $this->cost_price,
+            // Oculto a quien no tenga inventory.view: /products/sellable y
+            // /product-categories (index/show) estan abiertos a cualquier
+            // empleado que vende (ver routes/api.php), pero eso no debe
+            // filtrar el margen del negocio a un cajero sin ese permiso.
+            'cost_price' => $this->when($request->user()?->hasBusinessPermission('inventory.view') === true, $this->cost_price),
             'stock' => $this->displayStock(),
             'low_stock_alert_threshold' => $this->low_stock_alert_threshold,
             'track_stock' => $this->track_stock,

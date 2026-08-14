@@ -439,10 +439,29 @@ class SaleTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_reversing_a_sale_requires_sales_reverse_permission(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 5000, 'stock' => 10]);
+
+        $sale = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
+            'payment_method' => 'cash',
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->json();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/sales/{$sale['id']}/reverse")
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('sales', ['id' => $sale['id']]);
+    }
+
     public function test_reversing_a_sale_restores_stock_and_deletes_it(): void
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
+        $user->syncPermissions(['sales.reverse']);
         $product = Product::factory()->create(['business_id' => $business->id, 'price' => 5000, 'stock' => 10]);
 
         $sale = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [

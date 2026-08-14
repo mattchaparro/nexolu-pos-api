@@ -154,16 +154,23 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::patch('/employees/{employee}/toggle', [EmployeeController::class, 'toggle'])->name('employees.toggle');
         Route::apiResource('employees', EmployeeController::class)->only(['index', 'store', 'update', 'destroy']);
 
-        // inventory.view para leer el catalogo, inventory.add para tocarlo -
-        // ver PermissionCatalog. apiResource se parte en dos registros con
-        // ->only() distinto en vez de uno solo, para poder colgar cada mitad
-        // de un middleware de permiso diferente.
+        // Catalogo de productos/categorias para VENDER: sin permission, igual
+        // que crear una venta (POST /sales) - cualquier empleado que puede
+        // vender necesita poder ver que vender, sin que el admin tenga que
+        // otorgarle "Ver existencias" (que es sobre reportes/stock, no sobre
+        // el catalogo de venta). ProductResource oculta cost_price a quien
+        // no tenga inventory.view, asi que abrir esto no filtra margenes.
+        Route::apiResource('product-categories', ProductCategoryController::class)->only(['index', 'show']);
+        Route::get('/products/sellable', [ProductController::class, 'sellable'])->name('products.sellable');
+
+        // inventory.view para leer el catalogo/reportes de inventario,
+        // inventory.add para tocarlo - ver PermissionCatalog. apiResource se
+        // parte en dos registros con ->only() distinto en vez de uno solo,
+        // para poder colgar cada mitad de un middleware de permiso diferente.
         Route::middleware('permission:inventory.view')->group(function () {
-            Route::apiResource('product-categories', ProductCategoryController::class)->only(['index', 'show']);
             // Antes del apiResource: /products/summary no debe caer en la
             // ruta show (/products/{product}) del resource de abajo.
             Route::get('/products/summary', [ProductController::class, 'summary'])->name('products.summary');
-            Route::get('/products/sellable', [ProductController::class, 'sellable'])->name('products.sellable');
             Route::middleware('feature:services')->group(function () {
                 Route::get('/products/services-summary', [ProductController::class, 'servicesSummary'])->name('products.services-summary');
             });
@@ -263,7 +270,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::apiResource('discounts', DiscountController::class);
         });
 
-        Route::post('/sales/{sale}/reverse', [SaleController::class, 'reverse'])->name('sales.reverse');
+        Route::middleware('permission:sales.reverse')->group(function () {
+            Route::post('/sales/{sale}/reverse', [SaleController::class, 'reverse'])->name('sales.reverse');
+        });
         Route::get('/sales/{sale}/receipt/print', [SaleController::class, 'printReceipt'])->name('sales.receipt.print');
         Route::middleware('feature:cash_receipts_pdf')->group(function () {
             Route::get('/sales/{sale}/receipt', [SaleController::class, 'receipt'])->name('sales.receipt');
@@ -280,12 +289,20 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             // nombre de parametro distinto rompe el binding implicito (el
             // mismo bug que ya encontramos y arreglamos en BusinessTableController).
             Route::apiResource('open-tabs', OpenTabController::class)
-                ->only(['index', 'show', 'store', 'destroy'])
+                ->only(['index', 'show', 'store'])
                 ->parameters(['open-tabs' => 'sale']);
             Route::post('/open-tabs/{sale}/items', [OpenTabController::class, 'addItems'])->name('open-tabs.items.add');
             Route::put('/open-tabs/{sale}/items', [OpenTabController::class, 'syncItems'])->name('open-tabs.items.sync');
             Route::post('/open-tabs/{sale}/partial-payments', [OpenTabController::class, 'recordPartialPayment'])->name('open-tabs.partial-payments.store');
             Route::post('/open-tabs/{sale}/close', [OpenTabController::class, 'close'])->name('open-tabs.close');
+
+            // Cancelar una cuenta abierta revierte stock igual que anular una
+            // venta cerrada - misma gate que sales.reverse, no una nueva.
+            Route::middleware('permission:sales.reverse')->group(function () {
+                Route::apiResource('open-tabs', OpenTabController::class)
+                    ->only(['destroy'])
+                    ->parameters(['open-tabs' => 'sale']);
+            });
         });
 
         // Sin permission: middleware a proposito, igual que legacy (comandera
@@ -406,7 +423,16 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
                 // parameters(): mismo bug de siempre - 'cash-shifts' derivaria el
                 // parametro 'cash_shift', que no coincide con CashShift $cashShift.
                 Route::apiResource('cash-shifts', CashShiftController::class)
-                    ->only(['index', 'store', 'update', 'destroy'])
+                    ->only(['index', 'store'])
+                    ->parameters(['cash-shifts' => 'cashShift']);
+            });
+
+            // update() (correccion administrativa de un turno ya guardado,
+            // incluso de otro empleado) y destroy() no son "abrir/cerrar mi
+            // propio turno" - necesitan su propio permiso, no cash_shift.manage.
+            Route::middleware('permission:cash_shift.correct')->group(function () {
+                Route::apiResource('cash-shifts', CashShiftController::class)
+                    ->only(['update', 'destroy'])
                     ->parameters(['cash-shifts' => 'cashShift']);
             });
 

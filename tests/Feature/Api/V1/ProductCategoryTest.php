@@ -29,6 +29,25 @@ class ProductCategoryTest extends TestCase
             ->assertJsonCount(2);
     }
 
+    /**
+     * Vender necesita filtrar por categoria sin pedirle a un cajero el
+     * permiso de inventario (ver routes/api.php).
+     */
+    public function test_index_and_show_are_reachable_without_the_inventory_view_permission(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $category = ProductCategory::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/product-categories')
+            ->assertOk();
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/product-categories/{$category->id}")
+            ->assertOk();
+    }
+
     public function test_user_can_create_a_category_scoped_to_their_business(): void
     {
         $business = Business::factory()->create();

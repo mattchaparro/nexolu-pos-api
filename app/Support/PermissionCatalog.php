@@ -65,6 +65,13 @@ class PermissionCatalog
             'description' => 'Permite gestionar los descuentos disponibles en el sistema.',
         ],
         [
+            'name' => 'sales.reverse',
+            'category' => 'ventas',
+            'label' => 'Anular ventas y cuentas abiertas',
+            'description' => 'Permite revertir una venta cerrada o cancelar una cuenta abierta, restaurando el stock. Otorgar con cuidado.',
+            'warning' => true,
+        ],
+        [
             'name' => 'inventory.view',
             'category' => 'inventario',
             'label' => 'Ver existencias',
@@ -169,10 +176,10 @@ class PermissionCatalog
             'warning' => true,
         ],
         [
-            'name' => 'permissions.manage',
+            'name' => 'cash_shift.correct',
             'category' => 'administracion',
-            'label' => 'Gestionar permisos de empleados',
-            'description' => 'Permite configurar los permisos de otros empleados. Otorgar con cuidado.',
+            'label' => 'Corregir y eliminar turnos de caja',
+            'description' => 'Permite editar valores ya guardados de un turno de cualquier empleado y eliminar registros de turno. No hace falta para abrir/cerrar el turno propio - eso ya lo cubre "Abrir y cerrar turno de caja". Otorgar con cuidado.',
             'warning' => true,
         ],
     ];

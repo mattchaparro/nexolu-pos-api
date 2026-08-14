@@ -78,6 +78,48 @@ class ProductTest extends TestCase
             ->assertJsonCount(210);
     }
 
+    /**
+     * Vender no debe requerir inventory.view - un cajero sin ese permiso
+     * igual necesita ver el catalogo para vender (ver routes/api.php).
+     */
+    public function test_sellable_is_reachable_without_the_inventory_view_permission(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        Product::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products/sellable')
+            ->assertOk();
+    }
+
+    public function test_cost_price_is_hidden_from_a_user_without_inventory_view(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        Product::factory()->create(['business_id' => $business->id, 'cost_price' => 1000]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products/sellable')
+            ->assertOk();
+
+        $this->assertArrayNotHasKey('cost_price', $response->json('0'));
+    }
+
+    public function test_cost_price_is_visible_to_a_user_with_inventory_view(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->syncPermissions(['inventory.view']);
+        Product::factory()->create(['business_id' => $business->id, 'cost_price' => 1000]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?per_page=10')
+            ->assertOk();
+
+        $this->assertArrayHasKey('cost_price', $response->json('data.0'));
+    }
+
     public function test_sellable_excludes_inactive_products(): void
     {
         $business = Business::factory()->create(['feature_flags' => ['ingredients' => false]]);

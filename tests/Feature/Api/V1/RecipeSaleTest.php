@@ -92,6 +92,7 @@ class RecipeSaleTest extends TestCase
     public function test_reversing_a_sale_of_a_recipe_product_restores_ingredient_stock(): void
     {
         [$business, $user] = $this->businessAndUser();
+        $user->syncPermissions(['sales.reverse']);
         $bread = Ingredient::factory()->create(['business_id' => $business->id, 'stock' => 20]);
         $burger = $this->recipeProduct($business, [[$bread, 2]]);
 
@@ -180,6 +181,7 @@ class RecipeSaleTest extends TestCase
     public function test_cancelling_a_tab_with_a_recipe_product_restores_ingredient_stock(): void
     {
         [$business, $user] = $this->businessAndUser();
+        $user->syncPermissions(['sales.reverse']);
         $ingredient = Ingredient::factory()->create(['business_id' => $business->id, 'stock' => 20]);
         $pizza = $this->recipeProduct($business, [[$ingredient, 3]]);
 

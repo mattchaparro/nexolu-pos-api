@@ -312,6 +312,60 @@ class CashShiftAndClosingTest extends TestCase
             ->assertJsonPath('difference', '0.00');
     }
 
+    /**
+     * Bug real: update()/destroy() de un turno de caja vivian bajo el mismo
+     * cash_shift.manage que abrir/cerrar el turno propio - un cajero con ese
+     * unico permiso podia reescribir o borrar el historial de caja de
+     * cualquier compañero. Ahora requieren cash_shift.correct aparte.
+     */
+    public function test_updating_a_shift_requires_cash_shift_correct_permission(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->syncPermissions(['cash_shift.manage']);
+        $shift = CashShift::factory()->closed()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson("/api/v1/cash-shifts/{$shift->id}", ['opening_cash' => 60000])
+            ->assertForbidden();
+    }
+
+    public function test_deleting_a_shift_requires_cash_shift_correct_permission(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->syncPermissions(['cash_shift.manage']);
+        $shift = CashShift::factory()->closed()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/v1/cash-shifts/{$shift->id}")
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('cash_shifts', ['id' => $shift->id]);
+    }
+
+    public function test_a_user_with_cash_shift_correct_can_update_and_delete_any_shift(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->syncPermissions(['cash_shift.correct']);
+        $shift = CashShift::factory()->closed()->create([
+            'business_id' => $business->id,
+            'opening_cash' => 50000,
+            'total_cash' => 20000,
+            'total_expenses' => 5000,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson("/api/v1/cash-shifts/{$shift->id}", ['opening_cash' => 60000, 'counted_cash' => 75000])
+            ->assertOk()
+            ->assertJsonPath('expected_cash', '75000.00');
+
+        $this->actingAs($user, 'sanctum')
+            ->deleteJson("/api/v1/cash-shifts/{$shift->id}")
+            ->assertNoContent();
+    }
+
     public function test_operational_expenses_reduce_expected_cash(): void
     {
         $business = Business::factory()->create();

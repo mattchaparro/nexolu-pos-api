@@ -109,7 +109,7 @@ class AuthTest extends TestCase
         $response->assertOk();
         $permissions = $response->json('permissions');
         $this->assertContains('cash_shift.manage', $permissions);
-        $this->assertContains('permissions.manage', $permissions);
+        $this->assertContains('sales.reverse', $permissions);
     }
 
     public function test_me_returns_only_direct_permissions_for_an_employee(): void
@@ -125,6 +125,6 @@ class AuthTest extends TestCase
         $response->assertOk();
         $permissions = $response->json('permissions');
         $this->assertContains('cash_shift.manage', $permissions);
-        $this->assertNotContains('permissions.manage', $permissions);
+        $this->assertNotContains('sales.reverse', $permissions);
     }
 }
