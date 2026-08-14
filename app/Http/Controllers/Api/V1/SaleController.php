@@ -9,6 +9,7 @@ use App\Http\Resources\Api\V1\SaleResource;
 use App\Models\Sale;
 use App\Services\ReceiptPdfService;
 use App\Services\SaleService;
+use App\Support\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -35,6 +36,12 @@ class SaleController extends Controller
     {
         $sale = $this->saleService->createSale($request->user(), $request->validated());
 
+        AuditLogger::log($request->user()->hasRole('admin') ? 'sale.created' : 'sale.created.employee', [
+            'sale_id' => $sale->id,
+            'total' => $sale->total,
+            'payment_method' => $sale->payment_method,
+        ]);
+
         return new SaleResource($sale);
     }
 
@@ -45,6 +52,12 @@ class SaleController extends Controller
 
     public function reverse(Request $request, Sale $sale): Response
     {
+        AuditLogger::log('sale.reversed', [
+            'sale_id' => $sale->id,
+            'invoice_number' => $sale->invoice_number,
+            'total' => $sale->total,
+        ]);
+
         $this->saleService->reverseSale($request->user(), $sale);
 
         return response()->noContent();

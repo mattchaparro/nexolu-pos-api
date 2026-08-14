@@ -10,6 +10,7 @@ use App\Http\Requests\Api\V1\StoreOpenTabRequest;
 use App\Http\Resources\Api\V1\SaleResource;
 use App\Models\Sale;
 use App\Services\OpenTabService;
+use App\Support\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -32,6 +33,8 @@ class OpenTabController extends Controller
     {
         $sale = $this->openTabService->openTab($request->user(), $request->validated());
 
+        AuditLogger::log('tab.opened', ['sale_id' => $sale->id, 'table_id' => $sale->table_id]);
+
         return new SaleResource($sale);
     }
 
@@ -44,12 +47,16 @@ class OpenTabController extends Controller
     {
         $sale = $this->openTabService->addItems($request->user(), $sale, $request->validated('items'));
 
+        AuditLogger::log('tab.items_added', ['sale_id' => $sale->id, 'items' => $request->validated('items')]);
+
         return new SaleResource($sale);
     }
 
     public function syncItems(OpenTabItemsRequest $request, Sale $sale): SaleResource
     {
         $sale = $this->openTabService->syncItems($request->user(), $sale, $request->validated('items'));
+
+        AuditLogger::log('tab.items_synced', ['sale_id' => $sale->id, 'items' => $request->validated('items'), 'total' => $sale->total]);
 
         return new SaleResource($sale);
     }
@@ -64,6 +71,12 @@ class OpenTabController extends Controller
             $request->validated('payer_label'),
         );
 
+        AuditLogger::log('tab.partial_payment', [
+            'sale_id' => $sale->id,
+            'amount' => $request->validated('amount'),
+            'payment_method' => $request->validated('payment_method'),
+        ]);
+
         return new SaleResource($sale->load('items.product', 'partialPayments', 'paymentSplits'));
     }
 
@@ -71,11 +84,15 @@ class OpenTabController extends Controller
     {
         $sale = $this->openTabService->close($request->user(), $sale, $request->validated());
 
+        AuditLogger::log('tab.closed', ['sale_id' => $sale->id, 'payment_method' => $sale->payment_method]);
+
         return new SaleResource($sale);
     }
 
     public function destroy(Request $request, Sale $sale): Response
     {
+        AuditLogger::log('tab.cancelled', ['sale_id' => $sale->id]);
+
         $this->openTabService->cancelOpenTab($request->user(), $sale);
 
         return response()->noContent();

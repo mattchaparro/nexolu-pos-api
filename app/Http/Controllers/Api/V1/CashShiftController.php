@@ -10,6 +10,7 @@ use App\Http\Resources\Api\V1\CashShiftResource;
 use App\Models\CashShift;
 use App\Services\CashClosingService;
 use App\Services\CashShiftService;
+use App\Support\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -69,6 +70,8 @@ class CashShiftController extends Controller
             $request->validated('opening_note')
         );
 
+        AuditLogger::log('cash_shift.opened', ['cash_shift_id' => $shift->id, 'opening_cash' => $shift->opening_cash]);
+
         return new CashShiftResource($shift);
     }
 
@@ -80,6 +83,12 @@ class CashShiftController extends Controller
             (float) $request->validated('counted_cash'),
             $request->validated('closing_note')
         );
+
+        AuditLogger::log('cash_shift.closed', [
+            'cash_shift_id' => $shift->id,
+            'expected_cash' => $shift->expected_cash,
+            'counted_cash' => $shift->counted_cash,
+        ]);
 
         return new CashShiftResource($shift);
     }
@@ -107,11 +116,19 @@ class CashShiftController extends Controller
 
         $cashShift->update($payload);
 
+        AuditLogger::log('cash_shift.updated', ['cash_shift_id' => $cashShift->id, 'changes' => $payload]);
+
         return new CashShiftResource($cashShift->fresh(['user', 'closedByUser']));
     }
 
     public function destroy(CashShift $cashShift): Response
     {
+        AuditLogger::log('cash_shift.deleted', [
+            'cash_shift_id' => $cashShift->id,
+            'was_open' => $cashShift->isOpen(),
+            'opened_at' => $cashShift->opened_at?->toDateTimeString(),
+        ]);
+
         $cashShift->delete();
 
         return response()->noContent();

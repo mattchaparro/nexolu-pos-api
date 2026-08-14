@@ -7,6 +7,7 @@ use App\Http\Requests\Api\V1\CollectReceivableRequest;
 use App\Http\Resources\Api\V1\ReceivableResource;
 use App\Models\Receivable;
 use App\Services\ReceivableService;
+use App\Support\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
@@ -49,6 +50,12 @@ class ReceivableController extends Controller
             $data['payment_method'],
             $data
         );
+
+        AuditLogger::log('receivable.collected', [
+            'receivable_id' => $receivable->id,
+            'sale_id' => $receivable->sale_id,
+            'amount' => $receivable->amount,
+        ]);
 
         return new ReceivableResource($receivable);
     }

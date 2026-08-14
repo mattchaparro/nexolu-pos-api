@@ -7,6 +7,7 @@ use App\Http\Requests\Api\V1\CloseAccountingMonthRequest;
 use App\Http\Resources\Api\V1\AccountingPeriodClosingResource;
 use App\Models\AccountingPeriodClosing;
 use App\Services\ManagerialAccountingService;
+use App\Support\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -57,6 +58,12 @@ class AccountingController extends Controller
             (int) $request->validated('month'),
             $request->validated('notes'),
         );
+
+        AuditLogger::log('accounting.month_closed', [
+            'accounting_period_closing_id' => $closing->id,
+            'year' => $closing->year,
+            'month' => $closing->month,
+        ]);
 
         return new AccountingPeriodClosingResource($closing->load('closedByUser'));
     }

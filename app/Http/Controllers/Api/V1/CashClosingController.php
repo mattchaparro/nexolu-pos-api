@@ -10,6 +10,7 @@ use App\Http\Resources\Api\V1\CashShiftResource;
 use App\Models\CashClosing;
 use App\Models\CashShift;
 use App\Services\CashClosingService;
+use App\Support\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -67,6 +68,12 @@ class CashClosingController extends Controller
     {
         $closing = $this->cashClosingService->closeCash($request->user(), $request->validated());
 
+        AuditLogger::log($request->user()->hasRole('admin') ? 'cash_closing.created' : 'cash_closing.created.employee', [
+            'cash_closing_id' => $closing->id,
+            'date' => $closing->date?->format('Y-m-d'),
+            'expected_cash' => $closing->expected_cash,
+        ]);
+
         return new CashClosingResource($closing->load('closedByUser'));
     }
 
@@ -79,11 +86,22 @@ class CashClosingController extends Controller
     {
         $updated = $this->cashClosingService->updateCashClosing($cashClosing, $request->validated());
 
+        AuditLogger::log('cash_closing.updated', [
+            'cash_closing_id' => $updated->id,
+            'date' => $updated->date?->format('Y-m-d'),
+            'expected_cash' => $updated->expected_cash,
+        ]);
+
         return new CashClosingResource($updated);
     }
 
     public function undo(CashClosing $cashClosing): Response
     {
+        AuditLogger::log('cash_closing.undone', [
+            'cash_closing_id' => $cashClosing->id,
+            'date' => $cashClosing->date?->format('Y-m-d'),
+        ]);
+
         $this->cashClosingService->undoCashClosing($cashClosing);
 
         return response()->noContent();

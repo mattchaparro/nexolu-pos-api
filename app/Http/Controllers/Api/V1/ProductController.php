@@ -9,6 +9,7 @@ use App\Http\Resources\Api\V1\ProductResource;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Services\ProductService;
+use App\Support\AuditLogger;
 use App\Support\ProductAvailability;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -185,6 +186,8 @@ class ProductController extends Controller
     {
         $product = $this->productService->create($request->user()->business, $request->validated());
 
+        AuditLogger::log('product.created', ['product_id' => $product->id, 'name' => $product->name, 'price' => $product->price]);
+
         return new ProductResource($product);
     }
 
@@ -199,11 +202,15 @@ class ProductController extends Controller
     {
         $product = $this->productService->update($request->user()->business, $product, $request->validated());
 
+        AuditLogger::log('product.updated', ['product_id' => $product->id, 'name' => $product->name, 'price' => $product->price]);
+
         return new ProductResource($product);
     }
 
     public function destroy(Product $product): Response
     {
+        AuditLogger::log('product.deleted', ['product_id' => $product->id, 'name' => $product->name]);
+
         $product->delete();
 
         return response()->noContent();
@@ -212,6 +219,8 @@ class ProductController extends Controller
     public function duplicate(Request $request, Product $product): ProductResource
     {
         $copy = $this->productService->duplicate($request->user()->business, $product);
+
+        AuditLogger::log('product.duplicated', ['original_id' => $product->id, 'copy_id' => $copy->id, 'name' => $copy->name]);
 
         return new ProductResource($copy);
     }

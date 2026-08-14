@@ -9,6 +9,7 @@ use App\Http\Resources\Api\V1\ExpenseResource;
 use App\Models\Expense;
 use App\Services\ExpenseService;
 use App\Services\ReminderService;
+use App\Support\AuditLogger;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -73,6 +74,12 @@ class ExpenseController extends Controller
             ]);
         }
 
+        AuditLogger::log('expense.created', [
+            'expense_id' => $expense->id,
+            'description' => $expense->description,
+            'value' => $expense->value,
+        ]);
+
         return new ExpenseResource($expense->load('type'));
     }
 
@@ -85,11 +92,23 @@ class ExpenseController extends Controller
     {
         $expense = $this->expenseService->update($expense, $request->validated());
 
+        AuditLogger::log('expense.updated', [
+            'expense_id' => $expense->id,
+            'description' => $expense->description,
+            'value' => $expense->value,
+        ]);
+
         return new ExpenseResource($expense);
     }
 
     public function destroy(Expense $expense): Response
     {
+        AuditLogger::log('expense.deleted', [
+            'expense_id' => $expense->id,
+            'description' => $expense->description,
+            'value' => $expense->value,
+        ]);
+
         $expense->delete();
 
         return response()->noContent();
