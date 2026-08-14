@@ -143,6 +143,12 @@ class SalesReportService
             'user_name' => $s->user?->name,
             'created_at' => ($s->closed_at ?? $s->created_at)->format($sameDay ? 'H:i' : 'd/m · H:i'),
             'items_preview' => $this->briefItemsLabel($s),
+            'items' => $s->items->map(fn ($i) => [
+                'name' => $i->product?->name ?? 'Eliminado',
+                'is_deleted' => ! $i->product,
+                'quantity' => (float) $i->quantity,
+                'subtotal' => (float) $i->subtotal,
+            ])->all(),
         ];
 
         $recentLayaways = $layawayPaymentsToday
