@@ -272,6 +272,25 @@ class Business extends Model
     }
 
     /**
+     * El id que este negocio usa para el metodo de pago por transferencia.
+     * Soporta 'transfer' (default/legacy) y 'transferencia'/'transferencias'
+     * (configs en espanol) - mismo criterio que resolveCashPaymentMethodId().
+     */
+    public function resolveTransferPaymentMethodId(): string
+    {
+        foreach ($this->paymentMethods() as $method) {
+            $id = strtolower((string) ($method['id'] ?? ''));
+            $label = strtolower((string) ($method['label'] ?? ''));
+            if (in_array($id, ['transfer', 'transferencia', 'transferencias'], true)
+                || in_array($label, ['transfer', 'transferencia', 'transferencias'], true)) {
+                return (string) ($method['id'] ?? 'transfer');
+            }
+        }
+
+        return 'transfer';
+    }
+
+    /**
      * Normaliza un payment_method id al id que este negocio tiene configurado.
      * Resuelve aliases legacy <-> espanol (cash<->efectivo, transfer<->transferencia, credit<->fiado).
      * Si el id ya esta configurado o no hay alias aplicable, lo retorna tal cual.

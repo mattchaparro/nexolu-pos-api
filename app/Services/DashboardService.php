@@ -5,11 +5,13 @@ namespace App\Services;
 use App\Models\AiChannelIdentity;
 use App\Models\Business;
 use App\Models\Expense;
+use App\Models\LayawayPayment;
 use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\ServicePayment;
 use App\Models\User;
 use App\Services\WhatsApp\ChannelLinkService;
+use App\Support\RevenueByPaymentMethod;
 use Illuminate\Support\Carbon;
 
 class DashboardService
@@ -22,15 +24,21 @@ class DashboardService
      *
      * `today_sales` es lo efectivamente recibido hoy, no solo ventas: suma
      * ventas cerradas (sin fiados ni no-revenue) + fiados cobrados hoy +
-     * pagos de servicios de hoy. `open_tabs_total` son las cuentas
+     * pagos de servicios de hoy + abonos a apartados de hoy (las "3+1
+     * fuentes de ingreso", igual que CashClosingService/SalesReportService -
+     * antes esta funcion se quedaba en 3, el mismo BUG que el legacy nunca
+     * corrigio en su DashboardController). `open_tabs_total` son las cuentas
      * ABIERTAS HOY (no todas las que siguen abiertas), y `pending_receivables`
      * es el saldo pendiente historico completo, no solo el de hoy.
      *
      * `today_cash`/`today_transfer` reparten ese mismo ingreso por medio de
      * pago (solo efectivo/transferencia, igual que legacy - el resto de
-     * metodos no se desglosan) usando Sale::allocatedRevenueByPaymentMethod()
-     * (ya existe, compartido con cierre de caja/turnos) + el payment_method
-     * de cada Receivable cobrado hoy.
+     * metodos no se desglosan) usando RevenueByPaymentMethod::combined()
+     * (fuente unica compartida con cierre de caja/turnos y el resumen del
+     * dia) + Business::resolveCashPaymentMethodId()/resolveTransferPaymentMethodId()
+     * para resolver el id real configurado en vez de asumir literalmente
+     * 'cash'/'transfer' (otro BUG heredado del legacy: negocios con
+     * id='efectivo' no se contaban en ningun lado).
      *
      * @return array{
      *     today_sales: float,
@@ -62,22 +70,23 @@ class DashboardService
             ->whereDate('paid_at', $today)
             ->get();
 
-        $servicePaymentsTotal = ServicePayment::query()
+        $servicePaymentsToday = ServicePayment::query()
             ->where('business_id', $business->id)
             ->whereDate('created_at', $today)
-            ->sum('amount');
+            ->get();
+        $servicePaymentsTotal = (float) $servicePaymentsToday->sum('amount');
 
-        $todayCash = (float) $paidReceivablesToday->where('payment_method', 'cash')->sum('amount');
-        $todayTransfer = (float) $paidReceivablesToday->where('payment_method', 'transfer')->sum('amount');
-        foreach ($revenueSales as $sale) {
-            foreach ($sale->allocatedRevenueByPaymentMethod() as $methodId => $amount) {
-                if ($methodId === 'cash') {
-                    $todayCash += $amount;
-                } elseif ($methodId === 'transfer') {
-                    $todayTransfer += $amount;
-                }
-            }
-        }
+        $layawayPaymentsToday = LayawayPayment::query()
+            ->where('business_id', $business->id)
+            ->whereDate('created_at', $today)
+            ->get();
+        $layawayPaymentsTotal = (float) $layawayPaymentsToday->sum('amount');
+
+        $breakdown = RevenueByPaymentMethod::combined($business, $revenueSales, $paidReceivablesToday, $servicePaymentsToday, $layawayPaymentsToday);
+        $cashId = $business->resolveCashPaymentMethodId();
+        $transferId = $business->resolveTransferPaymentMethodId();
+        $todayCash = (float) ($breakdown->get($cashId)['total'] ?? 0);
+        $todayTransfer = (float) ($breakdown->get($transferId)['total'] ?? 0);
 
         $openTabsTotal = Sale::query()
             ->where('business_id', $business->id)
@@ -100,7 +109,7 @@ class DashboardService
             : 0;
 
         return [
-            'today_sales' => (float) $revenueSales->sum('total') + (float) $paidReceivablesToday->sum('amount') + (float) $servicePaymentsTotal,
+            'today_sales' => (float) $revenueSales->sum('total') + (float) $paidReceivablesToday->sum('amount') + $servicePaymentsTotal + $layawayPaymentsTotal,
             'today_count' => $revenueSales->count(),
             'today_cash' => $todayCash,
             'today_transfer' => $todayTransfer,

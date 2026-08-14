@@ -5,6 +5,8 @@ namespace Tests\Feature\Api\V1;
 use App\Models\AiChannelIdentity;
 use App\Models\Business;
 use App\Models\Expense;
+use App\Models\Layaway;
+use App\Models\LayawayPayment;
 use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\ServiceOrder;
@@ -40,6 +42,11 @@ class DashboardTest extends TestCase
         $order = ServiceOrder::factory()->for($business)->create();
         ServicePayment::factory()->for($order, 'order')->create(['business_id' => $business->id, 'amount' => 5000]);
 
+        // Cuenta: abono a apartado de hoy (antes de la correccion, esta
+        // fuente de ingreso no se contaba en ningun lado del resumen).
+        $layaway = Layaway::factory()->for($business)->create();
+        LayawayPayment::factory()->for($layaway, 'layaway')->create(['business_id' => $business->id, 'amount' => 3000]);
+
         // Cuenta: gasto operacional de hoy.
         Expense::factory()->for($business)->create(['value' => 7000, 'scope' => 'operacional', 'date' => now()->toDateString()]);
         // No cuenta: gasto administrativo (no operacional), aunque sea de hoy.
@@ -53,12 +60,13 @@ class DashboardTest extends TestCase
 
         // json_encode omite el ".0" de floats sin parte decimal, por eso se
         // comparan como enteros - el valor real ya es float en PHP (ver DashboardService).
-        $response->assertJsonPath('today_sales', 65000); // 50000 venta + 10000 fiado + 5000 servicio
+        $response->assertJsonPath('today_sales', 68000); // 50000 venta + 10000 fiado + 5000 servicio + 3000 apartado
         $response->assertJsonPath('today_count', 1);
-        // Venta y fiado por defecto de fabrica son 'cash' (ver SaleFactory/
-        // ReceivableFactory) - el pago de servicio no entra en el desglose
-        // efectivo/transferencia (legacy tampoco lo hace).
-        $response->assertJsonPath('today_cash', 60000); // 50000 venta + 10000 fiado
+        // Venta, fiado, servicio y apartado por defecto de fabrica son
+        // 'cash' (ver SaleFactory/ReceivableFactory/ServicePaymentFactory/
+        // LayawayPaymentFactory) - las 4 fuentes entran en el desglose
+        // efectivo/transferencia (fix: antes solo entraban ventas y fiados).
+        $response->assertJsonPath('today_cash', 68000);
         $response->assertJsonPath('today_transfer', 0);
         $response->assertJsonPath('open_tabs_total', 30000);
         $response->assertJsonPath('receivables_enabled', true);
@@ -83,6 +91,31 @@ class DashboardTest extends TestCase
             ->assertOk()
             ->assertJsonPath('today_cash', 40000)
             ->assertJsonPath('today_transfer', 30000); // 25000 venta + 5000 fiado
+    }
+
+    public function test_today_cash_and_transfer_resolve_the_business_configured_spanish_ids(): void
+    {
+        // Negocio con ids en espanol (los que usan los negocios nuevos) -
+        // antes del fix, 'efectivo'/'transferencia' caian silenciosamente
+        // fuera de today_cash/today_transfer porque el codigo asumia
+        // literalmente 'cash'/'transfer' (mismo BUG que el legacy nunca
+        // corrigio en su DashboardController).
+        $business = Business::factory()->create([
+            'payment_methods' => [
+                ['id' => 'efectivo', 'label' => 'Efectivo'],
+                ['id' => 'transferencia', 'label' => 'Transferencia'],
+            ],
+        ]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+
+        Sale::factory()->for($business)->create(['status' => 'closed', 'total' => 40000, 'payment_method' => 'efectivo']);
+        Sale::factory()->for($business)->create(['status' => 'closed', 'total' => 25000, 'payment_method' => 'transferencia']);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/dashboard/summary')
+            ->assertOk()
+            ->assertJsonPath('today_cash', 40000)
+            ->assertJsonPath('today_transfer', 25000);
     }
 
     public function test_disabled_features_zero_out_their_stats(): void

@@ -10,6 +10,7 @@ use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\ServicePayment;
+use App\Support\RevenueByPaymentMethod;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -17,15 +18,23 @@ use Illuminate\Support\Collection;
 class SalesReportService
 {
     /**
-     * Resumen financiero detallado de un día (o de hoy si no se especifica).
+     * Resumen financiero detallado de un día (o de un rango, para el modulo
+     * "Resumen del dia" - por defecto un solo dia si no se pasa $dateTo).
      * Porto de SaleService::getDailySummary() del legacy, adaptado al patrón
      * de esta API (sin dependencia de la request, recibe objetos de dominio).
      *
+     * Incluye `channels`: el ingreso desglosado por canal (ventas, servicios,
+     * apartados, fiados cobrados) x medio de pago - no existia ningun reporte
+     * asi en el legacy (solo el desglose plano `payment_breakdown`, que ya
+     * mezcla los 4 canales).
+     *
      * @return array<string, mixed>
      */
-    public function dailySummary(Business $business, string $date): array
+    public function dailySummary(Business $business, string $date, ?string $dateTo = null): array
     {
         $businessId = $business->id;
+        [$from, $to] = $this->normalizeDateRange($date, $dateTo ?? $date, 92);
+        $sameDay = $from->toDateString() === $to->toDateString();
 
         $eagerLoads = [
             'items.product:id,name',
@@ -36,14 +45,14 @@ class SalesReportService
 
         $closedSales = Sale::where('business_id', $businessId)
             ->where('status', 'closed')
-            ->whereDate('closed_at', $date)
+            ->whereBetween('closed_at', [$from, $to])
             ->with($eagerLoads)
             ->latest('closed_at')
             ->get();
 
         $openSales = Sale::where('business_id', $businessId)
             ->where('status', 'open')
-            ->whereDate('created_at', $date)
+            ->whereBetween('created_at', [$from, $to])
             ->with($eagerLoads)
             ->latest()
             ->get();
@@ -55,16 +64,16 @@ class SalesReportService
 
         $paidReceivables = Receivable::where('business_id', $businessId)
             ->where('status', 'paid')
-            ->whereDate('paid_at', $date)
+            ->whereBetween('paid_at', [$from, $to])
             ->get();
 
         $servicePaymentsToday = ServicePayment::where('business_id', $businessId)
-            ->whereDate('created_at', $date)
+            ->whereBetween('created_at', [$from, $to])
             ->with('order:id,service_name,client_id,total,amount_paid,status,created_at', 'order.client:id,name')
             ->get();
 
         $layawayPaymentsToday = LayawayPayment::where('business_id', $businessId)
-            ->whereDate('created_at', $date)
+            ->whereBetween('created_at', [$from, $to])
             ->with('layaway:id,customer_name,customer_phone,status')
             ->get();
 
@@ -76,7 +85,15 @@ class SalesReportService
             + $servicePaymentsTotal
             + $layawayPaymentsTotal;
 
-        $paymentBreakdown = $this->buildPaymentBreakdown(
+        $paymentBreakdown = RevenueByPaymentMethod::combined(
+            $business,
+            $revenueSales,
+            $paidReceivables,
+            $servicePaymentsToday,
+            $layawayPaymentsToday,
+        );
+
+        $channels = RevenueByPaymentMethod::perChannel(
             $business,
             $revenueSales,
             $paidReceivables,
@@ -92,7 +109,7 @@ class SalesReportService
 
         $topProducts = SaleItem::whereHas('sale', fn ($q) => $q
             ->where('business_id', $businessId)
-            ->whereDate('closed_at', $date)
+            ->whereBetween('closed_at', [$from, $to])
             ->where('status', 'closed')
         )
             ->selectRaw('product_id, SUM(quantity) as total_quantity, SUM(subtotal - COALESCE(discount_amount, 0)) as total_revenue')
@@ -124,7 +141,7 @@ class SalesReportService
             'customer_name' => $s->customer_name,
             'customer_phone' => $s->customer_phone,
             'user_name' => $s->user?->name,
-            'created_at' => ($s->closed_at ?? $s->created_at)->format('H:i'),
+            'created_at' => ($s->closed_at ?? $s->created_at)->format($sameDay ? 'H:i' : 'd/m · H:i'),
             'items_preview' => $this->briefItemsLabel($s),
         ];
 
@@ -160,12 +177,16 @@ class SalesReportService
         $courtesyTotal = (float) $closedSales->where('is_non_revenue', true)->sum('total');
         $totalExpenses = (float) Expense::where('business_id', $businessId)
             ->where('scope', 'operacional')
-            ->whereDate('date', $date)
+            ->whereBetween('date', [$from->toDateString(), $to->toDateString()])
             ->sum('value');
 
         return [
-            'date' => $date,
+            'date' => $from->toDateString(),
+            'date_from' => $from->toDateString(),
+            'date_to' => $to->toDateString(),
             'total_sales' => $totalSales,
+            'total_expenses' => $totalExpenses,
+            'net' => round($totalSales - $totalExpenses, 2),
             'closed_sales_revenue' => (float) $revenueSales->sum('total'),
             'collected_receivables_total' => (float) $paidReceivables->sum('amount'),
             'service_payments_total' => $servicePaymentsTotal,
@@ -175,6 +196,13 @@ class SalesReportService
             'total_cash' => $totalCash,
             'total_transfer' => $totalTransfer,
             'payment_breakdown' => $paymentBreakdown->values()->all(),
+            'channels' => $channels,
+            'channels_enabled' => [
+                'sales' => true,
+                'services' => $business->hasFeature('services'),
+                'layaways' => $business->hasFeature('layaway'),
+                'receivables' => $business->hasFeature('receivables'),
+            ],
             'sales_count' => $revenueSales->count(),
             'open_count' => $openSales->count(),
             'open_total' => (float) $openSales->sum('total'),
@@ -183,7 +211,6 @@ class SalesReportService
             'total_discounts_day' => (float) $closedSales->sum(
                 fn ($s) => $s->items->sum('discount_amount') + $s->cart_discount_amount
             ),
-            'total_expenses' => $totalExpenses,
             'top_products' => $topProducts,
             'recent_sales' => $closedSales->merge($openSales)
                 ->sortByDesc(fn ($s) => $s->closed_at ?? $s->created_at)
@@ -563,84 +590,6 @@ class SalesReportService
     }
 
     // ─── privados ──────────────────────────────────────────────────────────────
-
-    /**
-     * @param  Collection<int, Sale>  $revenueSales
-     * @param  Collection<int, Receivable>  $paidReceivables
-     * @param  Collection<int, ServicePayment>  $servicePayments
-     * @param  Collection<int, LayawayPayment>  $layawayPayments
-     */
-    private function buildPaymentBreakdown(
-        Business $business,
-        Collection $revenueSales,
-        Collection $paidReceivables,
-        Collection $servicePayments,
-        Collection $layawayPayments,
-    ): Collection {
-        $saleTotals = [];
-        foreach ($revenueSales as $sale) {
-            foreach ($sale->allocatedRevenueByPaymentMethod() as $methodId => $amount) {
-                $saleTotals[(string) $methodId] = ($saleTotals[(string) $methodId] ?? 0) + (float) $amount;
-            }
-        }
-        $spTotals = [];
-        foreach ($servicePayments as $sp) {
-            $pm = strtolower(trim((string) ($sp->payment_method ?? '')));
-            if ($pm !== '') {
-                $spTotals[$pm] = ($spTotals[$pm] ?? 0) + (float) $sp->amount;
-            }
-        }
-        $lpTotals = [];
-        foreach ($layawayPayments as $lp) {
-            $pm = strtolower(trim((string) ($lp->payment_method ?? '')));
-            if ($pm !== '') {
-                $lpTotals[$pm] = ($lpTotals[$pm] ?? 0) + (float) $lp->amount;
-            }
-        }
-
-        $configured = collect($business->paymentMethods())
-            ->filter(fn ($m) => ($m['id'] ?? null) !== 'credit')
-            ->values();
-
-        $totals = [];
-        foreach ($configured as $method) {
-            $id = (string) ($method['id'] ?? '');
-            if ($id === '') {
-                continue;
-            }
-            $totals[$id] = [
-                'id' => $id,
-                'label' => (string) ($method['label'] ?? ucfirst(str_replace('_', ' ', $id))),
-                'total' => (float) ($saleTotals[$id] ?? 0)
-                    + (float) $paidReceivables->where('payment_method', $id)->sum('amount')
-                    + (float) ($spTotals[$id] ?? 0)
-                    + (float) ($lpTotals[$id] ?? 0),
-            ];
-        }
-
-        $allUsed = collect(array_keys($saleTotals))
-            ->merge($paidReceivables->pluck('payment_method'))
-            ->merge(array_keys($spTotals))
-            ->merge(array_keys($lpTotals))
-            ->filter(fn ($m) => $m && $m !== 'credit')
-            ->unique();
-
-        foreach ($allUsed as $id) {
-            if (isset($totals[$id])) {
-                continue;
-            }
-            $totals[$id] = [
-                'id' => (string) $id,
-                'label' => ucfirst(str_replace('_', ' ', (string) $id)),
-                'total' => (float) ($saleTotals[$id] ?? 0)
-                    + (float) $paidReceivables->where('payment_method', $id)->sum('amount')
-                    + (float) ($spTotals[$id] ?? 0)
-                    + (float) ($lpTotals[$id] ?? 0),
-            ];
-        }
-
-        return collect($totals);
-    }
 
     private function briefItemsLabel(Sale $sale, int $max = 4): string
     {

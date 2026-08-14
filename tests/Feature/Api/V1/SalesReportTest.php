@@ -4,7 +4,13 @@ namespace Tests\Feature\Api\V1;
 
 use App\Models\Business;
 use App\Models\CashClosing;
+use App\Models\Expense;
+use App\Models\Layaway;
+use App\Models\LayawayPayment;
+use App\Models\Receivable;
 use App\Models\Sale;
+use App\Models\ServiceOrder;
+use App\Models\ServicePayment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
@@ -79,6 +85,96 @@ class SalesReportTest extends TestCase
         $this->actingAs($employee, 'sanctum')
             ->getJson('/api/v1/reports/sales/daily')
             ->assertForbidden();
+    }
+
+    public function test_daily_summary_breaks_down_income_by_channel_and_payment_method(): void
+    {
+        [$business, $admin] = $this->admin();
+        $date = today()->toDateString();
+
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed', 'total' => 40000,
+            'is_credit' => false, 'is_non_revenue' => false, 'payment_method' => 'cash',
+            'closed_at' => $date.' 09:00:00',
+        ]);
+
+        Receivable::factory()->for($business)->paid()->create(['amount' => 10000, 'payment_method' => 'transfer']);
+
+        $order = ServiceOrder::factory()->for($business)->create();
+        ServicePayment::factory()->for($order, 'order')->create(['business_id' => $business->id, 'amount' => 5000, 'payment_method' => 'cash']);
+
+        $layaway = Layaway::factory()->for($business)->create();
+        LayawayPayment::factory()->for($layaway, 'layaway')->create(['business_id' => $business->id, 'amount' => 7000, 'payment_method' => 'transfer']);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson("/api/v1/reports/sales/daily?date={$date}")
+            ->assertOk();
+
+        $channels = collect($response->json('channels'))->keyBy('key');
+
+        // json_decode devuelve int cuando el float no tiene parte decimal
+        // (mismo comportamiento documentado en DashboardTest).
+        $response->assertJsonPath('total_sales', 62000);
+        $this->assertSame(40000, $channels['sales']['total']);
+        $this->assertSame(1, $channels['sales']['count']);
+        $this->assertSame(5000, $channels['services']['total']);
+        $this->assertSame(7000, $channels['layaways']['total']);
+        $this->assertSame(10000, $channels['receivables']['total']);
+
+        // El canal "ventas" solo debe traer efectivo en su desglose; el de
+        // apartados solo transferencia - no deben mezclarse entre canales
+        // (esto no existia en ningun reporte del legacy).
+        $salesByMethod = collect($channels['sales']['by_payment_method'])->keyBy('id');
+        $this->assertSame(40000, $salesByMethod['cash']['total']);
+        $layawaysByMethod = collect($channels['layaways']['by_payment_method'])->keyBy('id');
+        $this->assertSame(7000, $layawaysByMethod['transfer']['total']);
+        $this->assertSame(0, $layawaysByMethod['cash']['total']);
+    }
+
+    public function test_daily_summary_supports_a_date_range_via_date_from_and_date_to(): void
+    {
+        [$business, $admin] = $this->admin();
+
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed', 'total' => 10000,
+            'is_credit' => false, 'is_non_revenue' => false, 'closed_at' => '2026-02-01 10:00:00',
+        ]);
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed', 'total' => 20000,
+            'is_credit' => false, 'is_non_revenue' => false, 'closed_at' => '2026-02-03 10:00:00',
+        ]);
+        // fuera del rango solicitado
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed', 'total' => 99999,
+            'is_credit' => false, 'is_non_revenue' => false, 'closed_at' => '2026-02-10 10:00:00',
+        ]);
+
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/sales/daily?date_from=2026-02-01&date_to=2026-02-03')
+            ->assertOk()
+            ->assertJsonPath('sales_count', 2)
+            ->assertJsonPath('closed_sales_revenue', 30000)
+            ->assertJsonPath('date_from', '2026-02-01')
+            ->assertJsonPath('date_to', '2026-02-03');
+    }
+
+    public function test_daily_summary_computes_net_as_income_minus_expenses(): void
+    {
+        [$business, $admin] = $this->admin();
+        $date = today()->toDateString();
+
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed', 'total' => 50000,
+            'is_credit' => false, 'is_non_revenue' => false, 'closed_at' => $date.' 09:00:00',
+        ]);
+        Expense::factory()->for($business)->create(['value' => 8000, 'scope' => 'operacional', 'date' => $date]);
+
+        $this->actingAs($admin, 'sanctum')
+            ->getJson("/api/v1/reports/sales/daily?date={$date}")
+            ->assertOk()
+            ->assertJsonPath('total_sales', 50000)
+            ->assertJsonPath('total_expenses', 8000)
+            ->assertJsonPath('net', 42000);
     }
 
     // ─── history ──────────────────────────────────────────────────────────────

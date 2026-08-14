@@ -11,6 +11,7 @@ use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\ServicePayment;
 use App\Models\User;
+use App\Support\RevenueByPaymentMethod;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -132,7 +133,7 @@ class CashClosingService
             + $servicePaymentsTotal
             + $layawayPaymentsTotal;
 
-        $breakdown = $this->buildPaymentBreakdown($business, $revenueSales, $paidReceivables, $servicePayments, $layawayPayments);
+        $breakdown = RevenueByPaymentMethod::combined($business, $revenueSales, $paidReceivables, $servicePayments, $layawayPayments);
 
         $cashId = $business ? $business->resolveCashPaymentMethodId() : 'cash';
         $totalCash = (float) ($breakdown->firstWhere('id', $cashId)['total'] ?? 0);
@@ -151,51 +152,6 @@ class CashClosingService
             'expected_cash' => $expectedCash,
             'payment_breakdown' => $breakdown->values()->all(),
         ];
-    }
-
-    /**
-     * Desglose por medio de pago de las "3+1 fuentes de ingreso". El fiado
-     * (credit) nunca aparece aqui: no es ingreso hasta que se cobra, momento
-     * en que ya entra como un Receivable pagado con su propio metodo real.
-     *
-     * @return Collection<string, array{id: string, label: string, total: float}>
-     */
-    private function buildPaymentBreakdown(?Business $business, Collection $revenueSales, Collection $paidReceivables, Collection $servicePayments, Collection $layawayPayments): Collection
-    {
-        $saleTotalsByMethod = [];
-        foreach ($revenueSales as $sale) {
-            foreach ($sale->allocatedRevenueByPaymentMethod() as $methodId => $amount) {
-                $saleTotalsByMethod[$methodId] = ($saleTotalsByMethod[$methodId] ?? 0) + (float) $amount;
-            }
-        }
-
-        $receivablesByMethod = $paidReceivables->groupBy('payment_method')
-            ->map(fn ($group) => (float) $group->sum('amount'));
-        $servicePaymentsByMethod = $servicePayments->groupBy('payment_method')
-            ->map(fn ($group) => (float) $group->sum('amount'));
-        $layawayPaymentsByMethod = $layawayPayments->groupBy('payment_method')
-            ->map(fn ($group) => (float) $group->sum('amount'));
-
-        $methodIds = collect($saleTotalsByMethod)->keys()
-            ->merge($receivablesByMethod->keys())
-            ->merge($servicePaymentsByMethod->keys())
-            ->merge($layawayPaymentsByMethod->keys())
-            ->filter(fn ($id) => $id && ! $business?->isCreditPaymentMethod($id))
-            ->unique()
-            ->values();
-
-        $configuredLabels = collect($business?->paymentMethods() ?? [])->keyBy('id');
-
-        return $methodIds->mapWithKeys(function ($id) use ($saleTotalsByMethod, $receivablesByMethod, $servicePaymentsByMethod, $layawayPaymentsByMethod, $configuredLabels) {
-            $total = (float) ($saleTotalsByMethod[$id] ?? 0)
-                + (float) ($receivablesByMethod[$id] ?? 0)
-                + (float) ($servicePaymentsByMethod[$id] ?? 0)
-                + (float) ($layawayPaymentsByMethod[$id] ?? 0);
-
-            $label = $configuredLabels[$id]['label'] ?? ucfirst(str_replace('_', ' ', (string) $id));
-
-            return [$id => ['id' => (string) $id, 'label' => $label, 'total' => round($total, 2)]];
-        });
     }
 
     public function closeCash(User $user, array $data): CashClosing

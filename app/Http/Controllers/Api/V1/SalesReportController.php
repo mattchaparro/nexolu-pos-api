@@ -13,20 +13,29 @@ class SalesReportController extends Controller
 {
     public function __construct(private SalesReportService $service) {}
 
-    /** @return array<string, mixed> */
+    /**
+     * Acepta `date` (un solo dia, retrocompatible) o `date_from`/`date_to`
+     * (rango, usado por el modulo "Resumen del dia" del frontend).
+     *
+     * @return array<string, mixed>
+     */
     public function daily(Request $request): array
     {
         $business = Business::findOrFail($request->user()->business_id);
-        $date = $request->string('date', today()->toDateString())->toString();
+        $date = $this->parseDate($request->string('date', today()->toDateString())->toString());
+        $dateFrom = $request->filled('date_from') ? $this->parseDate($request->string('date_from')->toString()) : $date;
+        $dateTo = $request->filled('date_to') ? $this->parseDate($request->string('date_to')->toString()) : null;
 
+        return $this->service->dailySummary($business, $dateFrom, $dateTo);
+    }
+
+    private function parseDate(string $date): string
+    {
         try {
-            $parsed = Carbon::createFromFormat('Y-m-d', $date);
-            $date = $parsed->toDateString();
+            return Carbon::createFromFormat('Y-m-d', $date)->toDateString();
         } catch (\Throwable) {
-            $date = today()->toDateString();
+            return today()->toDateString();
         }
-
-        return $this->service->dailySummary($business, $date);
     }
 
     /** @return array<string, mixed> */
