@@ -245,6 +245,43 @@ class ReceivableTest extends TestCase
             ->assertJsonCount(1, 'data');
     }
 
+    public function test_receivables_can_be_filtered_by_a_creation_date_range(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $inRange = Receivable::factory()->create(['business_id' => $business->id, 'customer_name' => 'En rango']);
+        $inRange->forceFill(['created_at' => '2026-03-15'])->save();
+        $outOfRange = Receivable::factory()->create(['business_id' => $business->id, 'customer_name' => 'Fuera de rango']);
+        $outOfRange->forceFill(['created_at' => '2026-01-01'])->save();
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/receivables?date_from=2026-03-01&date_to=2026-03-31')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.customer_name', 'En rango');
+    }
+
+    public function test_summary_reports_pending_and_collected_this_month_totals(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        Receivable::factory()->create(['business_id' => $business->id, 'amount' => 50000, 'balance' => 50000]);
+        Receivable::factory()->create(['business_id' => $business->id, 'amount' => 30000, 'balance' => 30000]);
+        Receivable::factory()->paid()->create(['business_id' => $business->id, 'amount' => 20000]);
+        // Cobrado el mes pasado: no debe contar en "este mes".
+        Receivable::factory()->paid()->create(['business_id' => $business->id, 'amount' => 99999])
+            ->forceFill(['paid_at' => now()->subMonthNoOverflow()])->save();
+
+        $response = $this->actingAs($user, 'sanctum')->getJson('/api/v1/receivables/summary')->assertOk();
+
+        $response->assertJsonPath('pending_count', 2)
+            ->assertJsonPath('pending_amount', 80000)
+            ->assertJsonPath('collected_this_month_count', 1)
+            ->assertJsonPath('collected_this_month_amount', 20000);
+    }
+
     public function test_receivables_module_is_blocked_when_the_feature_flag_is_disabled(): void
     {
         $business = Business::factory()->create(['feature_flags' => ['receivables' => false]]);

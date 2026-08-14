@@ -8,6 +8,7 @@ use App\Http\Resources\Api\V1\ReceivableResource;
 use App\Models\Receivable;
 use App\Services\ReceivableService;
 use App\Support\AuditLogger;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
@@ -32,12 +33,43 @@ class ReceivableController extends Controller
             });
         }
 
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->string('date_from'));
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->string('date_to'));
+        }
+
         return ReceivableResource::collection($query->paginate(20)->withQueryString());
     }
 
     public function show(Receivable $receivable): ReceivableResource
     {
         return new ReceivableResource($receivable->load('sale'));
+    }
+
+    /**
+     * Cards de resumen (Pendientes, Cobrados este mes) - sobre el conjunto
+     * completo del negocio, no solo la pagina visible del listado paginado.
+     * Mismo criterio que ProductController::summary().
+     */
+    public function summary(Request $request): JsonResponse
+    {
+        $businessId = $request->user()->business_id;
+
+        $pending = Receivable::where('business_id', $businessId)->where('status', 'pending');
+
+        $collectedThisMonth = Receivable::where('business_id', $businessId)
+            ->where('status', 'paid')
+            ->whereBetween('paid_at', [now()->startOfMonth(), now()->endOfMonth()]);
+
+        return response()->json([
+            'pending_count' => (clone $pending)->count(),
+            'pending_amount' => (float) (clone $pending)->sum('balance'),
+            'collected_this_month_count' => (clone $collectedThisMonth)->count(),
+            'collected_this_month_amount' => (float) (clone $collectedThisMonth)->sum('amount'),
+        ]);
     }
 
     public function collect(CollectReceivableRequest $request, Receivable $receivable): ReceivableResource

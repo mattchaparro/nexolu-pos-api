@@ -28,6 +28,7 @@ class ReceivableResource extends JsonResource
             'paid_at' => $this->paid_at?->toIso8601String(),
             'collected_by_user_id' => $this->collected_by_user_id,
             'notes' => $this->notes,
+            'created_at' => $this->created_at?->toIso8601String(),
         ];
     }
 }

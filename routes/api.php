@@ -324,6 +324,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         });
 
         Route::middleware(['feature:receivables', 'permission:receivables.manage'])->group(function () {
+            // Antes del apiResource, mismo motivo que /products/summary.
+            Route::get('/receivables/summary', [ReceivableController::class, 'summary'])->name('receivables.summary');
             Route::post('/receivables/{receivable}/collect', [ReceivableController::class, 'collect'])->name('receivables.collect');
             Route::apiResource('receivables', ReceivableController::class)->only(['index', 'show']);
         });
