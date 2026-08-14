@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\V1\FixedExpenseTemplateController;
 use App\Http\Controllers\Api\V1\IngredientBulkStockUpdateController;
 use App\Http\Controllers\Api\V1\IngredientController;
 use App\Http\Controllers\Api\V1\IngredientStockMovementController;
+use App\Http\Controllers\Api\V1\InventoryReportController;
 use App\Http\Controllers\Api\V1\KitchenBoardController;
 use App\Http\Controllers\Api\V1\LayawayController;
 use App\Http\Controllers\Api\V1\OpenTabController;
@@ -40,12 +41,14 @@ use App\Http\Controllers\Api\V1\PurchaseController;
 use App\Http\Controllers\Api\V1\ReceivableController;
 use App\Http\Controllers\Api\V1\ReminderController;
 use App\Http\Controllers\Api\V1\SaleController;
+use App\Http\Controllers\Api\V1\SalesReportController;
 use App\Http\Controllers\Api\V1\ServiceOrderController;
 use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\StockMovementReasonController;
 use App\Http\Controllers\Api\V1\SubscriptionController;
 use App\Http\Controllers\Api\V1\SupplierController;
+use App\Http\Controllers\Api\V1\SupplierReportController;
 use App\Http\Controllers\Api\V1\SupportTicketController;
 use App\Http\Controllers\Api\WhatsappWebhookController;
 use App\Services\ReceiptPdfService;
@@ -350,6 +353,38 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::post('/appointments/{appointment}/reschedule', [AppointmentController::class, 'reschedule'])->name('appointments.reschedule');
             Route::put('/appointments/{appointment}/status', [AppointmentController::class, 'updateStatus'])->name('appointments.status.update');
             Route::apiResource('appointments', AppointmentController::class)->only(['index', 'show', 'store', 'update', 'destroy']);
+        });
+
+        // Reportes de ventas - permission:reports.sales requerido para
+        // todos los sub-endpoints. El reporte de cierres de caja ademas
+        // requiere feature:cash_closing + permission:cash_closing.manage
+        // (mismo criterio que las rutas de cash-closings de gestion).
+        Route::middleware('permission:reports.sales')->prefix('reports/sales')->name('reports.sales.')->group(function () {
+            Route::get('/daily', [SalesReportController::class, 'daily'])->name('daily');
+            Route::get('/history', [SalesReportController::class, 'history'])->name('history');
+            Route::get('/history/export', [SalesReportController::class, 'historyExport'])->name('history.export');
+            Route::get('/by-seller', [SalesReportController::class, 'bySeller'])->name('by-seller');
+            Route::get('/by-seller/export', [SalesReportController::class, 'bySellerExport'])->name('by-seller.export');
+        });
+        Route::middleware(['feature:cash_closing', 'permission:cash_closing.manage'])->prefix('reports')->name('reports.')->group(function () {
+            Route::get('/cash-closings', [SalesReportController::class, 'cashClosings'])->name('cash-closings');
+            Route::get('/cash-closings/export', [SalesReportController::class, 'cashClosingsExport'])->name('cash-closings.export');
+        });
+
+        // Reportes de inventario - el gate OR (inventory_advanced || ingredients)
+        // lo aplica el controlador porque el middleware solo soporta una feature.
+        Route::middleware('permission:reports.inventory')->prefix('reports/inventory')->name('reports.inventory.')->group(function () {
+            Route::get('/summary', [InventoryReportController::class, 'summary'])->name('summary');
+            Route::get('/movements', [InventoryReportController::class, 'movements'])->name('movements');
+            Route::get('/movements/export', [InventoryReportController::class, 'movementsExport'])->name('movements.export');
+            Route::get('/margins', [InventoryReportController::class, 'margins'])->name('margins');
+            Route::get('/margins/export', [InventoryReportController::class, 'marginsExport'])->name('margins.export');
+        });
+
+        // Reportes de proveedores - misma gate que la gestion de compras.
+        Route::middleware(['can-access-purchases', 'permission:purchases.manage'])->prefix('reports')->name('reports.')->group(function () {
+            Route::get('/suppliers', [SupplierReportController::class, 'index'])->name('suppliers');
+            Route::get('/suppliers/export', [SupplierReportController::class, 'export'])->name('suppliers.export');
         });
 
         Route::prefix('superadmin')->name('superadmin.')->middleware('superadmin')->group(function () {

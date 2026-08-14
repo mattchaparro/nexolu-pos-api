@@ -483,17 +483,27 @@ falta migración, solo el código.
   **Pendiente para cuando se mejoren los reportes en general** (a proposito
   fuera de esta pasada, ver items de abajo): esta pasada no toca
   `Admin/ReportsController`/`InventoryReportsController`/`SupplierReportsController`.
-- **Reportes de ventas/inventario/proveedores**: 3 controladores grandes de
-  legacy sin equivalente:
-  - `Admin/ReportsController` (516 líneas): resumen diario, historial de
-    ventas, ventas por vendedor + exports CSV/PDF. Las capabilities de IA ya
-    cubren un subconjunto (`sales summary/by-day`), pero no hay endpoint de
-    reporte dedicado ni exports.
-  - `Admin/InventoryReportsController` (486 líneas): márgenes por producto,
-    valorización de inventario + exports.
-  - `Admin/SupplierReportsController`: historial de compras filtrable por
-    proveedor/producto con totales - los datos crudos ya están en
-    `GET /v1/purchases`, pero no el endpoint de reporte agregado.
+- ~~**Reportes de ventas/inventario/proveedores**~~ ✅ Migrado. Los 3
+  controladores de legacy tienen equivalente en `Api\V1\SalesReportController`,
+  `InventoryReportController` y `SupplierReportController` (+
+  `SalesReportService`/`InventoryReportService`), todos con exports CSV:
+  - Ventas: resumen diario (`GET /reports/sales/daily`), historial
+    (`/reports/sales/history` + export), ventas por vendedor
+    (`/reports/sales/by-seller` + export) y cierres de caja
+    (`/reports/cash-closings` + export, gateado por `feature:cash_closing` +
+    `cash_closing.manage`), todo bajo `permission:reports.sales`.
+  - Inventario: valorización (`/reports/inventory/summary`), movimientos
+    (`/reports/inventory/movements` + export) y márgenes por producto
+    (`/reports/inventory/margins` + export), bajo `permission:reports.inventory`;
+    el gate `inventory_advanced || ingredients` lo aplica el controlador porque
+    el middleware de features solo soporta una clave a la vez.
+  - Proveedores: historial de compras filtrable con totales agregados
+    (`/reports/suppliers` + export), bajo `can-access-purchases` +
+    `permission:purchases.manage` (misma gate que gestión de compras).
+  **Bug de aislamiento multi-tenant corregido en el porteo**: la valorización
+  de inventario del legacy (`Product::sumInventoryRetailValueCop()`) no
+  filtraba por `business_id`; `InventoryReportService::summary()` ahora
+  escopa explícitamente por negocio.
 - ~~**Silenciar alertas de inventario bajo (`NotificationSnoozeController`)**~~
   ✅ Migrado. `GET /notifications/low-stock/{business}/snooze?days=N` (fuera
   del prefijo `/v1`, público, sin login - la firma de la URL, middleware
