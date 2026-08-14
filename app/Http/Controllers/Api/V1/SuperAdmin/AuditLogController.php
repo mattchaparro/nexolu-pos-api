@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\V1\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\SuperAdmin\LogActionResource;
-use App\Models\LogAction;
+use App\Support\AuditLogQuery;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -13,13 +13,15 @@ class AuditLogController extends Controller
 {
     public function index(Request $request): AnonymousResourceCollection
     {
-        return LogActionResource::collection($this->filtered($request)->latest()->paginate(30)->withQueryString());
+        return LogActionResource::collection(
+            AuditLogQuery::forSuperadmin($request)->latest()->paginate(30)->withQueryString()
+        );
     }
 
     public function export(Request $request): StreamedResponse
     {
         $filename = 'auditoria-global-'.now()->format('Y-m-d-His').'.csv';
-        $query = $this->filtered($request)->orderBy('created_at')->orderBy('id')->limit(10000);
+        $query = AuditLogQuery::forSuperadmin($request)->orderBy('created_at')->orderBy('id')->limit(10000);
 
         return response()->streamDownload(function () use ($query) {
             $handle = fopen('php://output', 'w');
@@ -42,19 +44,5 @@ class AuditLogController extends Controller
             }
             fclose($handle);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
-    }
-
-    private function filtered(Request $request)
-    {
-        $query = LogAction::with(['user', 'business']);
-
-        if ($request->filled('business_id')) {
-            $query->where('business_id', $request->integer('business_id'));
-        }
-        if ($request->filled('search')) {
-            $query->where('action', 'like', '%'.$request->string('search').'%');
-        }
-
-        return $query;
     }
 }

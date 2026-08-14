@@ -182,6 +182,12 @@ class PermissionCatalog
             'description' => 'Permite editar valores ya guardados de un turno de cualquier empleado y eliminar registros de turno. No hace falta para abrir/cerrar el turno propio - eso ya lo cubre "Abrir y cerrar turno de caja". Otorgar con cuidado.',
             'warning' => true,
         ],
+        [
+            'name' => 'audit_logs.view',
+            'category' => 'administracion',
+            'label' => 'Ver auditoría',
+            'description' => 'Permite ver y exportar el historial de acciones sensibles del negocio (ventas anuladas, cierres de caja, gastos, productos, etc.).',
+        ],
     ];
 
     /** @return list<string> */

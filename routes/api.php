@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\AiDraftController;
 use App\Http\Controllers\Api\V1\AiInsightController;
 use App\Http\Controllers\Api\V1\AiMessagePackController;
 use App\Http\Controllers\Api\V1\AppointmentController;
+use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BulkStockUpdateController;
 use App\Http\Controllers\Api\V1\BusinessController;
@@ -143,6 +144,12 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');
         Route::put('/settings/{setting}', [SettingController::class, 'update'])->name('settings.update');
+
+        Route::middleware(['feature:audit_logs', 'permission:audit_logs.view'])->prefix('audit-logs')->name('audit-logs.')->group(function () {
+            Route::get('/', [AuditLogController::class, 'index'])->name('index');
+            Route::get('/actions', [AuditLogController::class, 'actions'])->name('actions');
+            Route::get('/export', [AuditLogController::class, 'export'])->name('export');
+        });
 
         Route::apiResource('support-tickets', SupportTicketController::class)->only(['index', 'store']);
 
