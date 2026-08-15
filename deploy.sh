@@ -18,6 +18,12 @@ cd ../nexolu-infra
 docker compose build pos-web
 docker compose up -d pos-web pos-queue pos-scheduler
 
+echo "==> Aplicando schema patches pendientes (tablas nuevas desde el ultimo deploy, ver database/legacy-schema/patches/README.md)"
+docker compose exec -T pos-web php artisan schema:apply-patches
+
+echo "==> Sincronizando permisos del catalogo (idempotente, no borra nada)"
+docker compose exec -T pos-web php artisan permissions:sync
+
 echo "==> Confirmando que el worker de cola quedo arriba (no queue:listen)"
 docker compose logs --tail=5 pos-queue
 

@@ -181,4 +181,18 @@ return [
 
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Schema Patches Path
+    |--------------------------------------------------------------------------
+    |
+    | Carpeta que lee `php artisan schema:apply-patches` (ver
+    | database/legacy-schema/patches/README.md). Configurable solo para que
+    | los tests puedan apuntar a un directorio temporal sin tocar los
+    | patches reales.
+    |
+    */
+
+    'schema_patches_path' => database_path('legacy-schema/patches'),
+
 ];
