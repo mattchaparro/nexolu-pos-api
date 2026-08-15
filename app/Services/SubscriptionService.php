@@ -33,9 +33,9 @@ class SubscriptionService
      * confirmacion despues, y no depende de que la llamada al Core tenga
      * exito para existir.
      *
-     * @return array{order_key: string, amount_cop: int, checkout: array<string, mixed>}
+     * @return array{order_key: string, amount_cop: int, checkout: array<string, mixed>, payment_init: array<string, mixed>|null}
      */
-    public function initiateCheckout(Business $business, User $user, string $redirectUrl): array
+    public function initiateCheckout(Business $business, User $user, string $redirectUrl, string $flow = 'widget'): array
     {
         $amount = $this->pricing->totalCop($business);
 
@@ -63,6 +63,7 @@ class SubscriptionService
                 customer: ['email' => $user->email, 'full_name' => $user->name],
                 redirectUrl: $redirectUrl,
                 metadata: ['business_id' => $business->id, 'subscription_days' => self::SUBSCRIPTION_DAYS],
+                flow: $flow,
             );
         } catch (\Throwable $e) {
             // El Core nunca llego a registrar este intent: no queda nada que
@@ -81,7 +82,33 @@ class SubscriptionService
             'order_key' => $reference,
             'amount_cop' => $amount,
             'checkout' => $intent['checkout'] ?? [],
+            // Solo viene poblado si se pidio flow="api" - lo necesita el
+            // frontend para tokenizar tarjeta directo con Wompi (nunca con
+            // este backend) antes de llamar chargeCheckout().
+            'payment_init' => $intent['payment_init'] ?? null,
         ];
+    }
+
+    /**
+     * API directa: reenvia al Core el cobro de una orden ya creada con
+     * flow="api" (tarjeta ya tokenizada por el frontend, o Nequi/PSE/Boton
+     * Bancolombia). Verifica que la orden le pertenezca a este negocio y
+     * siga pendiente ANTES de reenviar - mismo criterio de scoping que
+     * checkoutStatus(). El resultado del Core es solo el ACK inmediato del
+     * proveedor; la confirmacion real sigue llegando por
+     * PaymentsCoreWebhookController.
+     *
+     * @param  array<string, mixed>  $paymentMethod
+     * @return array<string, mixed>
+     */
+    public function chargeCheckout(Business $business, string $reference, array $paymentMethod): array
+    {
+        SubscriptionCheckoutOrder::where('business_id', $business->id)
+            ->where('order_key', $reference)
+            ->where('status', 'pending')
+            ->firstOrFail();
+
+        return $this->paymentsCore->charge($reference, $paymentMethod);
     }
 
     /**

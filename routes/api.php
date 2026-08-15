@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BulkStockUpdateController;
 use App\Http\Controllers\Api\V1\BusinessController;
+use App\Http\Controllers\Api\V1\BusinessPaymentSourceController;
 use App\Http\Controllers\Api\V1\BusinessServiceWorkflowController;
 use App\Http\Controllers\Api\V1\BusinessTableController;
 use App\Http\Controllers\Api\V1\CashClosingController;
@@ -35,6 +36,7 @@ use App\Http\Controllers\Api\V1\InventoryReportController;
 use App\Http\Controllers\Api\V1\KitchenBoardController;
 use App\Http\Controllers\Api\V1\LayawayController;
 use App\Http\Controllers\Api\V1\OpenTabController;
+use App\Http\Controllers\Api\V1\PaymentMethodsController;
 use App\Http\Controllers\Api\V1\PlanCatalogController;
 use App\Http\Controllers\Api\V1\PosPaymentMethodController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
@@ -143,6 +145,21 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('/subscription/status', [SubscriptionController::class, 'status'])->name('subscription.status');
         Route::post('/subscription/checkout', [SubscriptionController::class, 'initiate'])->name('subscription.checkout');
         Route::get('/subscription/checkout/{reference}', [SubscriptionController::class, 'checkoutStatus'])->name('subscription.checkout.status');
+        Route::post('/subscription/checkout/{reference}/charge', [SubscriptionController::class, 'charge'])->name('subscription.checkout.charge');
+
+        // Catalogo de metodos de pago (API directa via Payments Core) -
+        // ver docs/PLAN_METODOS_PAGO_ALTERNOS.md seccion 5.4. No es
+        // /business/payment-methods (eso es el catalogo de etiquetas
+        // manuales del POS de venta en tienda, PosPaymentMethodController).
+        Route::get('/payment-methods', [PaymentMethodsController::class, 'index'])->name('payment-methods.index');
+        Route::get('/pse/financial-institutions', [PaymentMethodsController::class, 'pseFinancialInstitutions'])->name('pse.financial-institutions');
+
+        // "Metodos de pago guardados" del negocio (tarjeta/Nequi tokenizados
+        // para reuso, Fuentes de Pago) - ver docs/PLAN_METODOS_PAGO_ALTERNOS.md
+        // seccion 9. Distinto de /payment-methods (catalogo, sin estado).
+        Route::get('/payment-sources', [BusinessPaymentSourceController::class, 'index'])->name('payment-sources.index');
+        Route::post('/payment-sources', [BusinessPaymentSourceController::class, 'store'])->name('payment-sources.store');
+        Route::delete('/payment-sources/{paymentSource}', [BusinessPaymentSourceController::class, 'destroy'])->name('payment-sources.destroy');
 
         Route::get('/ai/message-packs/state', [AiMessagePackController::class, 'state'])->name('ai.message-packs.state');
         Route::post('/ai/message-packs/checkout', [AiMessagePackController::class, 'initiate'])->name('ai.message-packs.checkout');
