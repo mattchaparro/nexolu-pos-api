@@ -166,12 +166,10 @@ docker compose exec -T pos-web php artisan db:seed --class=PosPaymentMethodSeede
 ```
 
 Esto solo crea el catálogo global (`pos_payment_methods`) — los negocios
-importados **no quedan migrados automáticamente** a él, siguen leyendo su
-JSON libre (`businesses.payment_methods`) hasta que un admin lo guarda
-desde Ajustes (o hasta un cutover masivo, si se decide construirlo — ver
-ítem 5 de `docs/CUTOVER_TODO.md`, todavía no construido a propósito).
+importados **no quedan migrados automáticamente** a él todavía en este
+paso; eso es 4.6.
 
-### 4.4. Normalizar vocabulario de payment_method (item 1 de CUTOVER_TODO)
+### 4.4. Normalizar vocabulario de payment_method (ítem 1 de CUTOVER_TODO)
 
 Ya construido: `php artisan legacy:normalize-payment-methods` (con
 `--dry-run`) — ver el docblock de
@@ -185,18 +183,53 @@ aparte con su propio guard — no relajar el actual sin discutirlo, es la
 única barrera hoy entre este comando y correr contra datos reales por
 accidente.
 
-Esto es **distinto** de "migrar el catálogo" (§ 4.3/ítem 5) - este comando
+Esto es **distinto** de "migrar el catálogo" (§ 4.6/ítem 5) - este comando
 unifica el vocabulario dentro de las tablas ya compartidas
 (`sales`/`receivables`/`expenses`/`service_payments`), no crea filas en
 `business_pos_payment_methods`.
 
-### 4.5. Decisiones abiertas (bloquean terminar esta sección)
+**Verificado contra un dump real de producción (2026-08-15):** 49% de las
+ventas (8,988 de 18,363) necesitan normalizarse — el problema es real y
+grande, no cosmético. Correr esto antes de 4.6 (migrar al catálogo), para
+que el catálogo se construya sobre datos históricos ya consistentes.
 
-- **¿SG es una copia de la producción real, o un ambiente independiente?**
-  Si es una copia periódica, el ensayo contra SG predice bien lo que pasará
-  contra producción. Si es independiente (datos de prueba propios, no
-  sincronizados), el ensayo contra SG no dice nada confiable sobre el
-  cutover real — hay que probar aparte contra un dump de producción.
+### 4.5. Contexto sobre SG vs. producción real
+
+**Verificado empíricamente (2026-08-15):** SG **no tiene la misma
+profundidad histórica** que producción real. Comparando negocio por negocio
+entre un dump de "producción" y un snapshot local derivado de SG, varios
+negocios tenían miles de ventas menos en SG (ej. negocio 6: 6,802 en SG vs.
+9,507 en producción — faltan 2,705). La config y los negocios coinciden
+(mismo `id`, mismo `created_at`), pero SG parece no conservar el historial
+completo. **Conclusión: un ensayo que da "0 filas a normalizar" contra SG
+no es evidencia de que producción esté limpia** — hay que verificar contra
+un dump de producción real antes de confiar en un resultado de SG.
+
+### 4.6. Migrar negocios al catálogo (ítem 5 de CUTOVER_TODO)
+
+Ya construido: `php artisan payment-methods:migrate-catalog` (con
+`--dry-run`, y `--business=ID` para uno solo) — ver el docblock de
+`App\Console\Commands\MigratePaymentMethodsCatalog`. Matchea cada negocio
+sin catálogo todavía contra `pos_payment_methods` por alias fijo
+(cash↔efectivo, transfer↔transferencia, credit↔fiado/credito, y las demás
+keys directas). Un negocio con **algún** método sin match migra los que sí
+matchean y reporta el resto; un negocio **sin ningún** match se deja
+intacto por completo. Nunca toca un negocio que ya tenga alguna fila de
+pivote (no pisa una migración manual hecha desde Ajustes).
+
+**No está bloqueado a `local`** (a diferencia de 4.4): las tablas que
+escribe son 100% nuevas, el legacy nunca las lee, así que no hay riesgo de
+esquema compartido. El riesgo es de negocio, no de esquema — por eso sigue
+recomendándose `--dry-run` primero.
+
+**Verificado contra un dump real de producción (2026-08-15):** 18 negocios,
+9 activos (los otros 9 estaban soft-deleted, correctamente excluidos sin
+necesidad de código especial). Los 9 activos migran limpio, 0 sin match —
+el único hueco real (`datafono`, en 2 de los 9) se cerró agregándolo al
+catálogo base (`PosPaymentMethodSeeder`) en vez de ampliar el matching.
+
+### 4.7. Decisiones abiertas (bloquean terminar esta sección)
+
 - **¿Todos los negocios de una vez, o gradual?** Un "big bang" (todos los
   negocios migran el mismo día) es más simple de razonar pero concentra el
   downtime/riesgo. Gradual (negocio por negocio, DNS o credenciales
@@ -214,11 +247,13 @@ unifica el vocabulario dentro de las tablas ya compartidas
   "volver a apuntar a `pos.nexolu.co`" es el rollback — pero solo si el
   negocio no generó transacciones nuevas en la API nueva durante la
   ventana migrada, que quedarían huérfanas.
+- **¿Cuándo se relaja el guard `APP_ENV=local` de 4.4** (o se construye una
+  variante aparte) para poder correr la normalización de vocabulario contra
+  el droplet real?
 
-No se avanza en construir un comando de migración masiva del catálogo
-(ítem 5) hasta que al menos la primera de estas preguntas tenga respuesta,
-porque su diseño (¿corre una vez para todos, o se puede correr
-negocio-por-negocio bajo demanda?) depende directamente de la respuesta.
+Los comandos de 4.4 y 4.6 ya están construidos y probados — lo que falta
+para cerrar el cutover real es resolver estas decisiones operativas, no
+más código.
 
 ## 5. Verificación post-deploy (cualquier escenario)
 

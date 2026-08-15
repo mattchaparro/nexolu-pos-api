@@ -110,7 +110,19 @@ Ese `LOWER()` es una simplificación — usar `Business::normalizePaymentMethodI
 no un `UPDATE` masivo, porque resuelve alias (`efectivo`↔`cash`) correctamente
 por negocio.
 
-- [ ] Pendiente. No tocar hasta confirmar que el monolito ya no escribe estas tablas.
+**El comando ya existe** (`legacy:normalize-payment-methods`, ver más abajo en
+este documento y `docs/LOCAL_DATA_IMPORT.md`) y se verificó contra un dump
+real de producción completo (2026-08-15, 18 negocios, 18,363 ventas): **49%
+de las ventas** (8,988 de 18,363) tienen `payment_method` en un vocabulario
+distinto al que el negocio tiene configurado hoy — la mayoría `cash`/`transfer`
+(inglés) en negocios ya configurados en español. Confirma que el problema es
+real y grande, no cosmético — una muestra más chica revisada antes había dado
+0 filas a cambiar, mostrando que hay que verificar contra el dump completo,
+no una muestra parcial.
+
+- [ ] Pendiente correr contra producción real. El comando solo corre con
+  `APP_ENV=local` (se niega en cualquier otro ambiente) — no tocar este guard
+  sin decidir explícitamente cómo se corre para el cutover real.
 
 ---
 
@@ -326,6 +338,28 @@ Este ítem también depende de resolver el ítem 1 (vocabulario de
 ser el `key` de `pos_payment_methods`, así que conviene resolver ambos cutovers
 en el mismo esfuerzo coordinado, no por separado.
 
-- [ ] Pendiente. Requiere el comando con `--dry-run` + revisión manual descrita
-  arriba, probado contra un dump real de producción, antes de correr contra
-  negocios reales.
+**Construido y verificado (2026-08-15):** `php artisan payment-methods:migrate-catalog`
+(`--dry-run` disponible, `--business=ID` para uno solo) — matchea por alias
+fijo (cash↔efectivo, transfer↔transferencia, credit↔fiado/credito,
+nequi/bold/daviplata/datafono directos), nunca toca un negocio que ya tenga
+alguna fila de pivote (no sobreescribe una migración manual desde Ajustes), y
+un negocio sin ningún método con match se deja intacto y se reporta para
+revisión manual — nunca se migra parcial en silencio.
+
+A diferencia de `legacy:normalize-payment-methods` (ítem 1), este comando
+**no está bloqueado a `local`**: `business_pos_payment_methods`/
+`pos_payment_methods` son tablas 100% nuevas que el legacy nunca lee, así que
+no hay riesgo de esquema compartido. El riesgo es de negocio (una vez migra,
+`Business::paymentMethods()` deja de leer el JSON), por eso sigue
+recomendándose `--dry-run` primero.
+
+Verificado contra un dump real de producción (2026-08-15, 18 negocios, 9
+activos tras excluir soft-deleted): **los 9 negocios activos migran limpio,
+0 sin match** — el único método sin match inicial (`datafono`, en 2 de los 9)
+se resolvió agregándolo al catálogo base (`PosPaymentMethodSeeder`), no
+ampliando el matching — confirma que el diseño "reportar y no forzar" es
+suficiente en la práctica, no solo en teoría.
+
+- [x] Comando construido y probado. Queda pendiente solo la decisión de
+  **cuándo/cómo correrlo contra producción real** (no una copia aislada) —
+  ver `docs/PRODUCTION_CUTOVER.md` § 4.5, todavía sin resolver.
