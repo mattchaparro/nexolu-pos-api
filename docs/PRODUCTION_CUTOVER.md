@@ -1,4 +1,4 @@
-# Runbook de despliegue a producción (SG)
+# Runbook de despliegue a producción
 
 Documento vivo — se va completando a medida que se resuelven las
 "Decisiones abiertas" de la sección 4. No es una guía de un solo repo: cruza
@@ -7,13 +7,28 @@ y `docs/CUTOVER_TODO.md` (la deuda técnica que bloquea algunos pasos).
 
 ## 0. Vocabulario
 
+**Corrección (2026-08-15):** la primera versión de este documento definía
+"SG" como la base de producción real del monolito legacy. Es incorrecto —
+`docs/LOCAL_DATA_IMPORT.md` (y `scripts/import-sg-data.sh`) dejan claro que
+**SG es staging** (`pos-sg.nexolu.co`), no producción. Corregido abajo, pero
+queda una pregunta abierta real sobre dónde vive la producción de verdad
+(ver § 4.5).
+
 - **Droplet nuevo**: el DigitalOcean droplet que corre `api.nexolu.co` (ver
   `nexolu-infra/README.md`) — infraestructura **separada** de donde vive hoy
   el monolito legacy (`pos.nexolu.co`). No comparten servidor ni, hoy, base
   de datos.
-- **SG**: la base de datos de producción real del monolito legacy — los
-  negocios que hoy usan `pos.nexolu.co`, con datos reales (ventas, clientes,
-  medios de pago configurados, etc).
+- **SG (staging)**: `pos-sg.nexolu.co` — un ambiente de staging del monolito
+  legacy con datos "reales" (no sintéticos, pero tampoco necesariamente el
+  tráfico productivo en vivo). Es lo que `scripts/import-sg-data.sh` trae a
+  local para desarrollar/probar, y lo que el usuario pidió normalizar
+  primero como ensayo ("antes de pasar los clientes a esta nueva api vamos
+  a probar normalizando la base de datos de SG") antes de tocar producción
+  real.
+- **Producción real**: `pos.nexolu.co`, la que sirve a los negocios que
+  hoy pagan y usan el sistema en vivo. Su relación exacta con SG (¿SG es
+  una copia periódica de esta, o es independiente?) y con el droplet nuevo
+  no está confirmada todavía — ver § 4.5.
 - **Cutover**: el momento en que uno o más negocios reales pasan de ser
   servidos por el monolito legacy a ser servidos por `api.nexolu.co` /
   `nexolu-pos-front`.
@@ -24,9 +39,9 @@ separado porque tienen riesgo muy diferente:
 1. **Desplegar el droplet nuevo** (secciones 1-2) — infraestructura vacía,
    sin datos reales de negocios todavía. Bajo riesgo, ya bastante
    automatizado.
-2. **Traer los negocios reales de SG** (sección 4) — datos de producción
-   reales, clientes reales. Alto riesgo, requiere pruebas primero, varias
-   decisiones sin tomar todavía (ver 4.5).
+2. **Traer negocios reales** (sección 4) — datos de negocios reales,
+   clientes reales, ensayado primero contra SG (staging). Alto riesgo,
+   requiere pruebas primero, varias decisiones sin tomar todavía (ver 4.5).
 
 ## 1. Deploy nuevo (droplet fresco, primera vez)
 
@@ -106,34 +121,38 @@ vez.
   base de datos nueva — son bases separadas hasta que la sección 4 se
   ejecute deliberadamente.
 
-## 4. Cutover de negocios reales (SG → droplet nuevo)
+## 4. Cutover de negocios reales (legacy → droplet nuevo)
 
-Esto es lo que falta decidir y construir antes de que un negocio real de
-SG pueda operar desde `api.nexolu.co`. Orden propuesto:
+Esto es lo que falta decidir y construir antes de que un negocio real
+pueda operar desde `api.nexolu.co`. La rehearsal completa (pasos 4.1-4.4)
+ya se puede ensayar hoy contra **SG (staging)**, sin tocar producción —
+eso es justo lo que `scripts/import-sg-data.sh` +
+`legacy:normalize-payment-methods` ya permiten hacer en local (ver
+`docs/LOCAL_DATA_IMPORT.md`). Lo que falta es repetir ese mismo ensayo
+contra el droplet nuevo (no solo en un laptop) y, después, definir cómo se
+hace la vez que sí sea con la producción real (§ 4.5).
 
-### 4.1. Importar los datos de SG
+### 4.1. Importar los datos (SG para ensayo; producción real cuando se decida 4.5)
 
 ```bash
-# En el servidor de SG (o desde donde se pueda alcanzar su MySQL):
-mysqldump -h<host-sg> -u<user> -p<db-sg> > sg-dump-$(date +%F).sql
+# mysqldump --no-create-info, mismo patron que scripts/import-sg-data.sh
+# (ver ese script para el detalle completo: tablas excluidas, etc.)
+mysqldump -h<host> -u<user> -p<db> --no-create-info > dump-$(date +%F).sql
 
-# En el droplet nuevo, contra una base VACIA (nunca contra pos_saas con
-# datos ya cargados de schema.sql - restaurar el dump real ES la carga):
+# En el droplet nuevo, contra una base ya con la estructura de schema.sql
+# cargada (nunca --no-create-info sobre una base vacia sin estructura):
 docker compose exec -T mysql mysql -unexolu -p<MYSQL_APP_PASSWORD> pos_saas \
-  < sg-dump-$(date +%F).sql
+  < dump-$(date +%F).sql
 ```
-
-El dump real de SG **reemplaza** la carga de `schema.sql` (no se hacen las
-dos) — es exactamente lo mismo que `database/legacy-schema/schema.sql`
-representa (un dump de esa misma base, capturado 2026-08-03), solo que más
-reciente y con los datos reales completos.
 
 ### 4.2. Poner al día el esquema
 
-El dump de SG **no tiene** las tablas agregadas después de cualquier
-captura anterior (`whatsapp_logs`, `pos_payment_methods`,
-`business_pos_payment_methods`, y las que se sumen). Por eso existe
-`schema:apply-patches` — correrlo aquí es obligatorio, no opcional:
+El dump (de SG o de producción real) **no tiene** las tablas agregadas
+después de cualquier captura anterior (`whatsapp_logs`,
+`pos_payment_methods`, `business_pos_payment_methods`, y las que se
+sumen) — ninguna de las dos las tiene, porque son 100% nuevas de esta API,
+el monolito legacy nunca las crea. Por eso existe `schema:apply-patches` —
+correrlo aquí es obligatorio, no opcional:
 
 ```bash
 docker compose exec -T pos-web php artisan schema:apply-patches
@@ -147,43 +166,59 @@ docker compose exec -T pos-web php artisan db:seed --class=PosPaymentMethodSeede
 ```
 
 Esto solo crea el catálogo global (`pos_payment_methods`) — los negocios
-importados de SG **no quedan migrados automáticamente** a él, siguen
-leyendo su JSON libre (`businesses.payment_methods`) hasta el paso 4.4.
+importados **no quedan migrados automáticamente** a él, siguen leyendo su
+JSON libre (`businesses.payment_methods`) hasta que un admin lo guarda
+desde Ajustes (o hasta un cutover masivo, si se decide construirlo — ver
+ítem 5 de `docs/CUTOVER_TODO.md`, todavía no construido a propósito).
 
-### 4.4. Normalizar medios de pago por negocio
+### 4.4. Normalizar vocabulario de payment_method (item 1 de CUTOVER_TODO)
 
-**No construido todavía** — es el ítem 5 de `docs/CUTOVER_TODO.md`. Antes
-de construirlo, correrlo en modo `--dry-run` contra una copia real del
-dump de SG (no contra datos sintéticos) y revisar el reporte de negocios
-sin match automático, tal como se acordó explícitamente. Diseño propuesto
-en `CUTOVER_TODO.md` § 5 — no repetido aquí, esa es la fuente de verdad
-para ese paso.
+Ya construido: `php artisan legacy:normalize-payment-methods` (con
+`--dry-run`) — ver el docblock de
+`App\Console\Commands\LegacyNormalizePaymentMethods` y
+`docs/LOCAL_DATA_IMPORT.md`. **Corre solo con `APP_ENV=local`** — se niega
+a ejecutarse contra cualquier otro ambiente, así que **no sirve tal cual
+para el droplet de producción/staging** (que corren con `APP_ENV=production`
+o similar). Si se necesita para el droplet, hay que decidir primero si ese
+guard se relaja (y bajo qué condición) o si se construye una variante
+aparte con su propio guard — no relajar el actual sin discutirlo, es la
+única barrera hoy entre este comando y correr contra datos reales por
+accidente.
+
+Esto es **distinto** de "migrar el catálogo" (§ 4.3/ítem 5) - este comando
+unifica el vocabulario dentro de las tablas ya compartidas
+(`sales`/`receivables`/`expenses`/`service_payments`), no crea filas en
+`business_pos_payment_methods`.
 
 ### 4.5. Decisiones abiertas (bloquean terminar esta sección)
 
+- **¿SG es una copia de la producción real, o un ambiente independiente?**
+  Si es una copia periódica, el ensayo contra SG predice bien lo que pasará
+  contra producción. Si es independiente (datos de prueba propios, no
+  sincronizados), el ensayo contra SG no dice nada confiable sobre el
+  cutover real — hay que probar aparte contra un dump de producción.
 - **¿Todos los negocios de una vez, o gradual?** Un "big bang" (todos los
-  negocios de SG migran el mismo día) es más simple de razonar pero para
-  el downtime/riesgo a la vez. Gradual (negocio por negocio, DNS o
-  credenciales cambiadas uno a uno) es más seguro pero exige que el
-  legacy y esta API convivan por un tiempo — lo cual reabre el ítem 1 de
-  `CUTOVER_TODO.md` (vocabulario de `payment_method` divergente) si ambas
-  apps siguen escribiendo las mismas tablas compartidas en paralelo.
+  negocios migran el mismo día) es más simple de razonar pero concentra el
+  downtime/riesgo. Gradual (negocio por negocio, DNS o credenciales
+  cambiadas uno a uno) es más seguro pero exige que el legacy y esta API
+  convivan por un tiempo — lo cual reabre el ítem 1 de `CUTOVER_TODO.md`
+  si ambas apps siguen escribiendo las mismas tablas compartidas en
+  paralelo.
 - **¿Corte de tráfico o solo de escritura?** Si es gradual, ¿el legacy
   queda en modo solo-lectura para un negocio ya migrado, o se apaga su
   acceso por completo?
 - **Ventana de mantenimiento**: ¿se avisa a los negocios, se corre de
   noche, cuánto downtime es aceptable durante el import del dump?
 - **Rollback**: si algo sale mal después de migrar un negocio (o todos),
-  ¿cómo se revierte? El dump de SG sigue intacto en el droplet legacy
-  mientras no se apague, así que en teoría "volver a apuntar a
-  `pos.nexolu.co`" es el rollback — pero solo si el negocio no generó
-  transacciones nuevas en la API nueva durante la ventana migrada, que
-  quedarían huérfanas.
+  ¿cómo se revierte? Mientras el droplet legacy no se apague, en teoría
+  "volver a apuntar a `pos.nexolu.co`" es el rollback — pero solo si el
+  negocio no generó transacciones nuevas en la API nueva durante la
+  ventana migrada, que quedarían huérfanas.
 
-No se avanza en construir el comando de normalización (4.4) hasta que al
-menos la primera de estas preguntas tenga respuesta, porque el diseño del
-comando (¿corre una vez para todos, o se puede correr negocio-por-negocio
-bajo demanda?) depende directamente de la respuesta.
+No se avanza en construir un comando de migración masiva del catálogo
+(ítem 5) hasta que al menos la primera de estas preguntas tenga respuesta,
+porque su diseño (¿corre una vez para todos, o se puede correr
+negocio-por-negocio bajo demanda?) depende directamente de la respuesta.
 
 ## 5. Verificación post-deploy (cualquier escenario)
 
@@ -202,5 +237,9 @@ lista el catálogo sembrado.
 
 - `nexolu-infra/README.md` — infraestructura del droplet completa.
 - `docs/CUTOVER_TODO.md` — deuda técnica que bloquea partes de la sección 4.
+- `docs/LOCAL_DATA_IMPORT.md` + `scripts/import-sg-data.sh` — el ensayo de
+  4.1-4.4 contra SG (staging), ya construido y usable hoy en local.
+- `App\Console\Commands\LegacyNormalizePaymentMethods` — normaliza el
+  vocabulario de `payment_method` (ítem 1 de CUTOVER_TODO), solo `local`.
 - `database/legacy-schema/patches/README.md` — convención de patches.
 - `deploy.sh` (este repo) — automatización del deploy de este servicio.
