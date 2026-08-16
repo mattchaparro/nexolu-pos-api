@@ -56,12 +56,13 @@ class AiMessagePackTest extends TestCase
         Http::fake([
             'payments-core.test/*' => Http::response([
                 'transaction_id' => 'core-tx-1',
+                'reference' => 'pay_core_generated_2',
                 'provider' => 'wompi',
                 'status' => 'pending',
                 'checkout' => [
                     'public_key' => 'pub_test',
                     'amount_in_cents' => 1500000,
-                    'reference' => 'NEXPACK-1-xxx',
+                    'reference' => 'pay_core_generated_2',
                     'integrity_signature' => 'sig',
                 ],
             ], 201),
@@ -77,14 +78,13 @@ class AiMessagePackTest extends TestCase
 
         $response->assertCreated()
             ->assertJsonPath('amount_cop', 15000)
-            ->assertJsonPath('checkout.public_key', 'pub_test');
-
-        $reference = $response->json('order_key');
-        $this->assertNotEmpty($reference);
+            ->assertJsonPath('checkout.public_key', 'pub_test')
+            // La reference es la que devuelve el Core, no una que invente el POS.
+            ->assertJsonPath('order_key', 'pay_core_generated_2');
 
         $this->assertDatabaseHas('ai_message_pack_checkout_orders', [
             'business_id' => $business->id,
-            'order_key' => $reference,
+            'order_key' => 'pay_core_generated_2',
             'messages' => 1000,
             'price_cop' => 15000,
             'status' => 'pending',
@@ -92,9 +92,9 @@ class AiMessagePackTest extends TestCase
             'created_by_user_id' => $admin->id,
         ]);
 
-        Http::assertSent(function ($request) use ($reference, $business) {
+        Http::assertSent(function ($request) use ($business) {
             return $request->url() === 'http://payments-core.test/v1/payments/intents'
-                && $request['reference'] === $reference
+                && ! isset($request['reference'])
                 && $request['amount_cop'] === 15000
                 && $request['customer']['email'] === 'admin@nexolu.co'
                 && $request['metadata']['business_id'] === $business->id
