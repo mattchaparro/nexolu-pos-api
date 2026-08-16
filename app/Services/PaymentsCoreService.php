@@ -19,12 +19,17 @@ use RuntimeException;
 class PaymentsCoreService
 {
     /**
+     * El Core es quien genera y devuelve la `reference` (campo `reference`
+     * de la respuesta) - este metodo nunca la envia, el Core la rechaza
+     * silenciosamente si se manda (el schema no la acepta). El llamador
+     * debe persistir la reference devuelta antes de usarla para consultar
+     * estado o cobrar.
+     *
      * @param  array{email: string, full_name: string}  $customer
      * @param  array<string, mixed>  $metadata
      * @return array<string, mixed>
      */
     public function createIntent(
-        string $reference,
         int $amountCop,
         array $customer,
         string $redirectUrl,
@@ -33,7 +38,6 @@ class PaymentsCoreService
     ): array {
         try {
             $response = $this->client()->post('/v1/payments/intents', [
-                'reference' => $reference,
                 'amount_cop' => $amountCop,
                 'currency' => 'COP',
                 'redirect_url' => $redirectUrl,

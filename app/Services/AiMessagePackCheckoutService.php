@@ -21,17 +21,21 @@ class AiMessagePackCheckoutService
     public function __construct(private PaymentsCoreService $paymentsCore) {}
 
     /**
+     * Mismo criterio que SubscriptionService::initiateCheckout(): la orden
+     * arranca con un `order_key` placeholder porque el Core es quien genera
+     * la `reference` real, y se pisa apenas responde, antes de devolver
+     * nada al frontend.
+     *
      * @return array{order_key: string, amount_cop: int, checkout: array<string, mixed>}
      */
     public function initiateCheckout(Business $business, User $user, string $redirectUrl): array
     {
         $messages = AiQuotaSettings::packSize();
         $priceCop = AiQuotaSettings::packPriceCop();
-        $reference = 'NEXPACK-'.$business->id.'-'.now()->format('YmdHis').'-'.Str::upper(Str::random(4));
 
         $order = AiMessagePackCheckoutOrder::create([
             'business_id' => $business->id,
-            'order_key' => $reference,
+            'order_key' => 'pending-'.(string) Str::ulid(),
             'messages' => $messages,
             'price_cop' => $priceCop,
             'status' => 'pending',
@@ -41,7 +45,6 @@ class AiMessagePackCheckoutService
 
         try {
             $intent = $this->paymentsCore->createIntent(
-                reference: $reference,
                 amountCop: $priceCop,
                 customer: ['email' => $user->email, 'full_name' => $user->name],
                 redirectUrl: $redirectUrl,
@@ -55,12 +58,13 @@ class AiMessagePackCheckoutService
             throw $e;
         }
 
-        if (! empty($intent['provider']) && $intent['provider'] !== $order->provider) {
-            $order->update(['provider' => $intent['provider']]);
-        }
+        $order->update([
+            'order_key' => $intent['reference'],
+            'provider' => $intent['provider'] ?? $order->provider,
+        ]);
 
         return [
-            'order_key' => $reference,
+            'order_key' => $order->order_key,
             'amount_cop' => $priceCop,
             'checkout' => $intent['checkout'] ?? [],
         ];

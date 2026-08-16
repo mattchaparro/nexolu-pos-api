@@ -96,13 +96,13 @@ class SubscriptionTest extends TestCase
         Http::fake([
             'payments-core.test/*' => Http::response([
                 'transaction_id' => 'core-tx-1',
-                'reference' => 'ignored-here',
+                'reference' => 'pay_core_generated_1',
                 'provider' => 'wompi',
                 'status' => 'pending',
                 'checkout' => [
                     'public_key' => 'pub_test',
                     'amount_in_cents' => 6500000,
-                    'reference' => 'NEX-1-xxx',
+                    'reference' => 'pay_core_generated_1',
                     'integrity_signature' => 'sig',
                 ],
             ], 201),
@@ -119,24 +119,23 @@ class SubscriptionTest extends TestCase
 
         $response->assertCreated()
             ->assertJsonPath('amount_cop', 39000)
-            ->assertJsonPath('checkout.public_key', 'pub_test');
-
-        $reference = $response->json('order_key');
-        $this->assertNotEmpty($reference);
+            ->assertJsonPath('checkout.public_key', 'pub_test')
+            // La reference es la que devuelve el Core, no una que invente el POS.
+            ->assertJsonPath('order_key', 'pay_core_generated_1');
 
         $this->assertDatabaseHas('subscription_checkout_orders', [
             'business_id' => $business->id,
-            'order_key' => $reference,
+            'order_key' => 'pay_core_generated_1',
             'amount_cop' => 39000,
             'subscription_days' => 30,
             'status' => 'pending',
             'provider' => 'wompi',
         ]);
 
-        Http::assertSent(function ($request) use ($reference, $business) {
+        Http::assertSent(function ($request) use ($business) {
             return $request->url() === 'http://payments-core.test/v1/payments/intents'
                 && $request->hasHeader('Authorization', 'Bearer test-payments-core-key')
-                && $request['reference'] === $reference
+                && ! isset($request['reference'])
                 && $request['amount_cop'] === 39000
                 && $request['customer']['email'] === 'admin@nexolu.co'
                 && $request['metadata']['business_id'] === $business->id;

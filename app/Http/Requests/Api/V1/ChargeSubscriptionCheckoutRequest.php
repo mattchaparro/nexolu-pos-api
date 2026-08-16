@@ -25,11 +25,12 @@ class ChargeSubscriptionCheckoutRequest extends FormRequest
     {
         return [
             'payment_method' => ['required', 'array'],
-            'payment_method.type' => ['required', 'string', 'in:CARD,NEQUI,PSE,BANCOLOMBIA_TRANSFER'],
+            'payment_method.type' => ['required', 'string', 'in:CARD,NEQUI,PSE,BANCOLOMBIA_TRANSFER,PAYMENT_SOURCE'],
 
             // CARD: token ya generado por el frontend tokenizando directo
             // con Wompi (nunca con este backend).
             'payment_method.token' => ['required_if:payment_method.type,CARD', 'string'],
+            // Compartido por CARD y PAYMENT_SOURCE.
             'payment_method.installments' => ['sometimes', 'integer', 'min:1'],
 
             // NEQUI: celular colombiano de 10 digitos que empieza en 3.
@@ -50,7 +51,11 @@ class ChargeSubscriptionCheckoutRequest extends FormRequest
                 'max:64',
                 'not_regex:/\'/',
             ],
-            'payment_method.ecommerce_url' => ['sometimes', 'nullable', 'url'],
+            // El Core lo exige siempre para BANCOLOMBIA_TRANSFER, sin default.
+            'payment_method.ecommerce_url' => ['required_if:payment_method.type,BANCOLOMBIA_TRANSFER', 'url'],
+
+            // PAYMENT_SOURCE: fuente de pago guardada (ver BusinessPaymentSourceController).
+            'payment_method.payment_source_id' => ['required_if:payment_method.type,PAYMENT_SOURCE', 'string'],
         ];
     }
 }

@@ -27,11 +27,14 @@ class SubscriptionService
     ) {}
 
     /**
-     * Crea una orden pendiente y, con esa referencia, un intent de cobro en
-     * el Payments Core. La orden se crea ANTES de llamar al Core (igual que
-     * el legacy con Wompi): es lo que permite correlacionar el webhook de
-     * confirmacion despues, y no depende de que la llamada al Core tenga
-     * exito para existir.
+     * Crea una orden pendiente y, contra ella, un intent de cobro en el
+     * Payments Core. La orden se crea ANTES de llamar al Core: es lo que
+     * permite no depender de que la llamada al Core tenga exito para
+     * existir (si falla, se borra). La `order_key` real es la `reference`
+     * que devuelve el Core -- es quien la genera, no este servicio -- por
+     * eso la fila arranca con un placeholder unico y se pisa apenas
+     * responde el Core, antes de que el webhook de confirmacion pueda
+     * llegar.
      *
      * @return array{order_key: string, amount_cop: int, checkout: array<string, mixed>, payment_init: array<string, mixed>|null}
      */
@@ -45,11 +48,9 @@ class SubscriptionService
             ]);
         }
 
-        $reference = 'NEX-'.$business->id.'-'.now()->format('YmdHis').'-'.Str::upper(Str::random(4));
-
         $order = SubscriptionCheckoutOrder::create([
             'business_id' => $business->id,
-            'order_key' => $reference,
+            'order_key' => 'pending-'.(string) Str::ulid(),
             'amount_cop' => $amount,
             'subscription_days' => self::SUBSCRIPTION_DAYS,
             'status' => 'pending',
@@ -58,7 +59,6 @@ class SubscriptionService
 
         try {
             $intent = $this->paymentsCore->createIntent(
-                reference: $reference,
                 amountCop: $amount,
                 customer: ['email' => $user->email, 'full_name' => $user->name],
                 redirectUrl: $redirectUrl,
@@ -74,12 +74,13 @@ class SubscriptionService
             throw $e;
         }
 
-        if (! empty($intent['provider']) && $intent['provider'] !== $order->provider) {
-            $order->update(['provider' => $intent['provider']]);
-        }
+        $order->update([
+            'order_key' => $intent['reference'],
+            'provider' => $intent['provider'] ?? $order->provider,
+        ]);
 
         return [
-            'order_key' => $reference,
+            'order_key' => $order->order_key,
             'amount_cop' => $amount,
             'checkout' => $intent['checkout'] ?? [],
             // Solo viene poblado si se pidio flow="api" - lo necesita el

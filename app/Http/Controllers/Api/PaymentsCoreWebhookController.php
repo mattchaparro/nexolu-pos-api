@@ -30,10 +30,11 @@ use Throwable;
  * debe ser rapido e idempotente (ver approveSubscription()/approvePack()).
  *
  * Una referencia solo puede pertenecer a una de las dos tablas de ordenes
- * (subscription_checkout_orders o ai_message_pack_checkout_orders): cada
- * servicio de checkout genera la suya con un prefijo distinto
- * (NEX-/NEXPACK-), asi que basta con probar la de suscripcion primero y caer
- * a la de paquetes si no aparece.
+ * (subscription_checkout_orders o ai_message_pack_checkout_orders): el
+ * `order_key` de ambas es la `reference` que genera el Payments Core
+ * (globalmente unica alla), no algo que este repo arme, asi que nunca hay
+ * colision entre las dos tablas. Basta con probar la de suscripcion primero
+ * y caer a la de paquetes si no aparece.
  */
 class PaymentsCoreWebhookController extends Controller
 {

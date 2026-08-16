@@ -114,6 +114,25 @@ class SubscriptionChargeTest extends TestCase
             && $request['payment_method']['user_legal_id'] === '1099888777');
     }
 
+    public function test_charge_with_a_saved_payment_source_forwards_its_id(): void
+    {
+        Http::fake([
+            'payments-core.test/v1/payments/intents/*/charge' => Http::response(['status' => 'pending'], 200),
+        ]);
+
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $order = SubscriptionCheckoutOrder::factory()->for($business)->create(['status' => 'pending']);
+
+        $this->actingAs($user, 'sanctum')->postJson(
+            "/api/v1/subscription/checkout/{$order->order_key}/charge",
+            ['payment_method' => ['type' => 'PAYMENT_SOURCE', 'payment_source_id' => 'src_test_1', 'installments' => 3]],
+        )->assertOk();
+
+        Http::assertSent(fn ($request) => $request['payment_method']['payment_source_id'] === 'src_test_1'
+            && $request['payment_method']['installments'] === 3);
+    }
+
     public function test_charge_rejects_a_reference_from_another_business(): void
     {
         Http::fake();
@@ -195,6 +214,8 @@ class SubscriptionChargeTest extends TestCase
             'nequi with an invalid phone_number' => [['type' => 'NEQUI', 'phone_number' => '123']],
             'pse without payer data' => [['type' => 'PSE', 'financial_institution_code' => '1']],
             'bancolombia_transfer without payment_description' => [['type' => 'BANCOLOMBIA_TRANSFER']],
+            'bancolombia_transfer without ecommerce_url' => [['type' => 'BANCOLOMBIA_TRANSFER', 'payment_description' => 'Suscripcion Nexolu']],
+            'payment_source without payment_source_id' => [['type' => 'PAYMENT_SOURCE']],
             'unknown type' => [['type' => 'DAVIPLATA']],
         ];
     }
