@@ -26,7 +26,7 @@ class ProductProfitBreakdown
 {
     /**
      * @return array{
-     *     lines: list<array{product_id: int, name: string, qty_sold: int, revenue: float, cost_total: float, profit: float, margin_pct: float|null}>,
+     *     lines: list<array{product_id: int, name: string, sku: string|null, qty_sold: int, revenue: float, cost_total: float, profit: float, margin_pct: float|null}>,
      *     total_profit: float, total_revenue: float, total_cost: float, margin_pct: float|null,
      *     uncosted: array{lines: list<array<string, mixed>>, total_revenue: float, products_count: int},
      * }
@@ -39,6 +39,7 @@ class ProductProfitBreakdown
             ->select([
                 'p.id',
                 'p.name',
+                'p.sku',
                 DB::raw('SUM(si.quantity) as qty_sold'),
                 DB::raw('SUM(si.subtotal - COALESCE(si.discount_amount, 0)) as revenue'),
                 DB::raw('SUM(si.quantity * COALESCE(si.unit_cost_at_sale, p.cost_price, 0)) as cost_total'),
@@ -54,7 +55,7 @@ class ProductProfitBreakdown
             // detras.
             ->where('s.is_credit', false)
             ->whereBetween('s.closed_at', [$start, $end])
-            ->groupBy('p.id', 'p.name')
+            ->groupBy('p.id', 'p.name', 'p.sku')
             ->get();
 
         $costedRows = $rows->filter(fn ($row) => (float) $row->cost_total > 0.009)->sortByDesc('profit')->values();
@@ -82,7 +83,7 @@ class ProductProfitBreakdown
         ];
     }
 
-    /** @return array{product_id: int, name: string, qty_sold: int, revenue: float, cost_total: float, profit: float, margin_pct: float|null} */
+    /** @return array{product_id: int, name: string, sku: string|null, qty_sold: int, revenue: float, cost_total: float, profit: float, margin_pct: float|null} */
     private static function line(object $row): array
     {
         $revenue = round((float) $row->revenue, 2);
@@ -91,6 +92,7 @@ class ProductProfitBreakdown
         return [
             'product_id' => (int) $row->id,
             'name' => (string) $row->name,
+            'sku' => $row->sku,
             'qty_sold' => (int) $row->qty_sold,
             'revenue' => $revenue,
             'cost_total' => round((float) $row->cost_total, 2),

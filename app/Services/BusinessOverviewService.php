@@ -299,7 +299,7 @@ class BusinessOverviewService
      * @return array{
      *   revenue: float, cost: float, profit: float, margin_pct: float|null,
      *   uncosted_products_count: int, uncosted_revenue: float,
-     *   top_products: list<array{product_id: int, name: string, qty_sold: int, revenue: float, cost_total: float, profit: float, margin_pct: float|null}>,
+     *   top_products: list<array{product_id: int, name: string, sku: string|null, qty_sold: int, revenue: float, cost_total: float, profit: float, margin_pct: float|null}>,
      * }
      */
     private function profitSummary(int $businessId, Carbon $start, Carbon $end): array

@@ -269,6 +269,8 @@ class BusinessOverviewServiceTest extends TestCase
         $bestSeller = Product::factory()->create(['business_id' => $business->id, 'name' => 'Rentable']);
         $lowMargin = Product::factory()->create(['business_id' => $business->id, 'name' => 'Justo']);
 
+        $bestSeller->update(['sku' => 'PROD-RENT']);
+
         $sale = $this->closedSale($business, 90000, now());
         // Rentable: 2 x $10000 (subtotal 20000), costo 1000 c/u -> utilidad 18000
         SaleItem::factory()->create([
@@ -289,6 +291,7 @@ class BusinessOverviewServiceTest extends TestCase
         $this->assertSame(63.3, $profit['margin_pct']);
         $this->assertCount(2, $profit['top_products']);
         $this->assertSame('Rentable', $profit['top_products'][0]['name']);
+        $this->assertSame('PROD-RENT', $profit['top_products'][0]['sku']);
         $this->assertSame(18000.0, $profit['top_products'][0]['profit']);
         $this->assertSame(90.0, $profit['top_products'][0]['margin_pct']);
         $this->assertSame('Justo', $profit['top_products'][1]['name']);
