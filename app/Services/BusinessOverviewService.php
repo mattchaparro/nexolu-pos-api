@@ -9,6 +9,7 @@ use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\ServicePayment;
+use App\Support\ProductProfitBreakdown;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -23,18 +24,19 @@ use Illuminate\Support\Facades\DB;
  *   fiados/servicios no reflejan cuando entra gente a comprar, asi que quedan
  *   fuera de estas dos vistas especificas, no del resto del reporte).
  * - period: el mes elegido (year/month) - resumen, descuentos entregados,
- *   fiado pendiente, y rotacion de productos/servicios con su impacto en el
- *   ingreso del mes.
+ *   fiado pendiente, rotacion de productos/servicios con su impacto en el
+ *   ingreso del mes, y margen de ganancia (solo si el usuario tiene
+ *   accounting.manage - expone rentabilidad real, no solo reportes de venta).
  */
 class BusinessOverviewService
 {
-    public function overview(Business $business, int $year, int $month): array
+    public function overview(Business $business, int $year, int $month, bool $canViewProfit = false): array
     {
         return [
             'pulse' => $this->pulse($business),
             'trend' => $this->trend($business),
             'heatmap' => $this->heatmap($business),
-            'period' => $this->period($business, $year, $month),
+            'period' => $this->period($business, $year, $month, $canViewProfit),
             'channels_enabled' => [
                 'services' => $business->hasFeature('services'),
                 'receivables' => $business->hasFeature('receivables'),
@@ -209,7 +211,7 @@ class BusinessOverviewService
     /**
      * @return array<string, mixed>
      */
-    private function period(Business $business, int $year, int $month): array
+    private function period(Business $business, int $year, int $month, bool $canViewProfit): array
     {
         $businessId = $business->id;
         $start = Carbon::create($year, $month)->startOfMonth()->startOfDay();
@@ -283,6 +285,35 @@ class BusinessOverviewService
             'top_products' => $this->productRotation($businessId, $start, $end, 'desc', $current['revenue']),
             'bottom_products' => $this->productRotation($businessId, $start, $end, 'asc', $current['revenue']),
             'top_services' => $business->hasFeature('services') ? $this->topServices($businessId, $start, $end) : null,
+            'profit' => $canViewProfit ? $this->profitSummary($businessId, $start, $end) : null,
+        ];
+    }
+
+    /**
+     * Margen de ganancia real del mes: solo cuenta productos con costo
+     * configurado (ver ProductProfitBreakdown - asumir costo 0 inventaria un
+     * margen falso del 100%). Gateado en el controlador por accounting.manage,
+     * no por reports.sales: expone la rentabilidad real del negocio, el mismo
+     * criterio que ya usa ManagerialAccountingService.
+     *
+     * @return array{
+     *   revenue: float, cost: float, profit: float, margin_pct: float|null,
+     *   uncosted_products_count: int, uncosted_revenue: float,
+     *   top_products: list<array{product_id: int, name: string, qty_sold: int, revenue: float, cost_total: float, profit: float, margin_pct: float|null}>,
+     * }
+     */
+    private function profitSummary(int $businessId, Carbon $start, Carbon $end): array
+    {
+        $breakdown = ProductProfitBreakdown::forPeriod($businessId, $start, $end);
+
+        return [
+            'revenue' => $breakdown['total_revenue'],
+            'cost' => $breakdown['total_cost'],
+            'profit' => $breakdown['total_profit'],
+            'margin_pct' => $breakdown['margin_pct'],
+            'uncosted_products_count' => $breakdown['uncosted']['products_count'],
+            'uncosted_revenue' => $breakdown['uncosted']['total_revenue'],
+            'top_products' => array_slice($breakdown['lines'], 0, 10),
         ];
     }
 

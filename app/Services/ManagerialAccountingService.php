@@ -7,8 +7,8 @@ use App\Models\Expense;
 use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\ServicePayment;
+use App\Support\ProductProfitBreakdown;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Contabilidad gerencial: P&L mensual/anual de UN negocio cliente del POS
@@ -252,18 +252,10 @@ class ManagerialAccountingService
     }
 
     /**
-     * Ganancia bruta por producto vendido en el periodo.
-     *
-     * El costo usado es el que tenia el producto EN EL MOMENTO de cada venta
-     * (sale_items.unit_cost_at_sale, congelado al vender), no el costo actual:
-     * el costo promedio se mueve con cada compra, y recalcular con el costo de
-     * hoy haria que la utilidad de un mes ya cerrado cambiara sola cada vez
-     * que entra una compra nueva. Para ventas de antes de que existiera esa
-     * columna, cae a products.cost_price via COALESCE.
-     *
-     * Productos cuyo costo efectivo en el periodo fue $0 no entran a 'lines':
-     * asumir costo 0 les daria un margen falso del 100%. Van aparte en
-     * 'uncosted', solo con el ingreso, sin inventar una utilidad.
+     * Ganancia bruta por producto vendido en el periodo. Delega en
+     * App\Support\ProductProfitBreakdown (compartida con "Mi negocio") - ver
+     * esa clase para el detalle de como se calcula el costo y por que los
+     * productos sin costo configurado quedan aparte en 'uncosted'.
      *
      * @return array{
      *     lines: list<array<string, mixed>>, total_profit: float, total_revenue: float,
@@ -272,46 +264,6 @@ class ManagerialAccountingService
      */
     private function productProfitLines(int $businessId, Carbon $start, Carbon $end): array
     {
-        $rows = DB::table('sale_items as si')
-            ->join('sales as s', 's.id', '=', 'si.sale_id')
-            ->join('products as p', 'p.id', '=', 'si.product_id')
-            ->select([
-                'p.id',
-                'p.name',
-                DB::raw('SUM(si.quantity) as qty_sold'),
-                DB::raw('SUM(si.subtotal - COALESCE(si.discount_amount, 0)) as revenue'),
-                DB::raw('SUM(si.quantity * COALESCE(si.unit_cost_at_sale, p.cost_price, 0)) as cost_total'),
-                DB::raw('SUM(si.subtotal - COALESCE(si.discount_amount, 0) - si.quantity * COALESCE(si.unit_cost_at_sale, p.cost_price, 0)) as profit'),
-            ])
-            ->where('s.business_id', $businessId)
-            ->where('s.status', 'closed')
-            ->where('s.is_non_revenue', false)
-            ->whereBetween('s.closed_at', [$start, $end])
-            ->groupBy('p.id', 'p.name')
-            ->get();
-
-        $costedRows = $rows->filter(fn ($row) => (float) $row->cost_total > 0.009)->sortByDesc('profit')->values();
-        $uncostedRows = $rows->filter(fn ($row) => (float) $row->cost_total <= 0.009)->sortByDesc('revenue')->values();
-
-        return [
-            'lines' => $costedRows->map(fn ($row) => [
-                'name' => $row->name,
-                'qty_sold' => (int) $row->qty_sold,
-                'revenue' => round((float) $row->revenue, 2),
-                'cost_total' => round((float) $row->cost_total, 2),
-                'profit' => round((float) $row->profit, 2),
-            ])->all(),
-            'total_profit' => round((float) $costedRows->sum('profit'), 2),
-            'total_revenue' => round((float) $costedRows->sum('revenue'), 2),
-            'uncosted' => [
-                'lines' => $uncostedRows->map(fn ($row) => [
-                    'name' => $row->name,
-                    'qty_sold' => (int) $row->qty_sold,
-                    'revenue' => round((float) $row->revenue, 2),
-                ])->all(),
-                'total_revenue' => round((float) $uncostedRows->sum('revenue'), 2),
-                'products_count' => $uncostedRows->count(),
-            ],
-        ];
+        return ProductProfitBreakdown::forPeriod($businessId, $start, $end);
     }
 }

@@ -18,7 +18,8 @@ class BusinessOverviewController extends Controller
 
         $year = $request->integer('year', now()->year);
         $month = max(1, min(12, $request->integer('month', now()->month)));
+        $canViewProfit = $request->user()->hasBusinessPermission('accounting.manage');
 
-        return $this->service->overview($business, $year, $month);
+        return $this->service->overview($business, $year, $month, $canViewProfit);
     }
 }

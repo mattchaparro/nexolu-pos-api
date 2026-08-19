@@ -244,4 +244,112 @@ class BusinessOverviewServiceTest extends TestCase
         $this->assertSame(20000.0, $summary['revenue']);
         $this->assertSame(100.0, $summary['revenue_change_pct']);
     }
+
+    /**
+     * El margen expone la rentabilidad real del negocio (no solo cuanto se
+     * vendio) - se gatea aparte de reports.sales, con su propio flag que pasa
+     * el controlador segun accounting.manage. Sin el flag, la seccion ni se
+     * calcula.
+     */
+    public function test_profit_section_is_null_without_the_permission_flag(): void
+    {
+        $business = Business::factory()->create();
+        $product = Product::factory()->create(['business_id' => $business->id]);
+        $sale = $this->closedSale($business, 50000, now());
+        SaleItem::factory()->create(['sale_id' => $sale->id, 'product_id' => $product->id, 'quantity' => 1, 'unit_cost_at_sale' => 1000]);
+
+        $period = $this->service()->overview($business, (int) now()->year, (int) now()->month)['period'];
+
+        $this->assertNull($period['profit']);
+    }
+
+    public function test_profit_section_reports_overall_margin_and_top_products_when_permitted(): void
+    {
+        $business = Business::factory()->create();
+        $bestSeller = Product::factory()->create(['business_id' => $business->id, 'name' => 'Rentable']);
+        $lowMargin = Product::factory()->create(['business_id' => $business->id, 'name' => 'Justo']);
+
+        $sale = $this->closedSale($business, 90000, now());
+        // Rentable: 2 x $10000 (subtotal 20000), costo 1000 c/u -> utilidad 18000
+        SaleItem::factory()->create([
+            'sale_id' => $sale->id, 'product_id' => $bestSeller->id,
+            'quantity' => 2, 'unit_price' => 10000, 'subtotal' => 20000, 'discount_amount' => 0, 'unit_cost_at_sale' => 1000,
+        ]);
+        // Justo: 1 x $10000, costo 9000 -> utilidad 1000
+        SaleItem::factory()->create([
+            'sale_id' => $sale->id, 'product_id' => $lowMargin->id,
+            'quantity' => 1, 'unit_price' => 10000, 'subtotal' => 10000, 'discount_amount' => 0, 'unit_cost_at_sale' => 9000,
+        ]);
+
+        $profit = $this->service()->overview($business, (int) now()->year, (int) now()->month, canViewProfit: true)['period']['profit'];
+
+        $this->assertSame(30000.0, $profit['revenue']);
+        $this->assertSame(11000.0, $profit['cost']);
+        $this->assertSame(19000.0, $profit['profit']);
+        $this->assertSame(63.3, $profit['margin_pct']);
+        $this->assertCount(2, $profit['top_products']);
+        $this->assertSame('Rentable', $profit['top_products'][0]['name']);
+        $this->assertSame(18000.0, $profit['top_products'][0]['profit']);
+        $this->assertSame(90.0, $profit['top_products'][0]['margin_pct']);
+        $this->assertSame('Justo', $profit['top_products'][1]['name']);
+    }
+
+    public function test_profit_excludes_products_without_a_configured_cost(): void
+    {
+        $business = Business::factory()->create();
+        $costed = Product::factory()->create(['business_id' => $business->id, 'name' => 'Con costo']);
+        $uncosted = Product::factory()->create(['business_id' => $business->id, 'name' => 'Sin costo', 'cost_price' => 0]);
+
+        $sale = $this->closedSale($business, 30000, now());
+        SaleItem::factory()->create([
+            'sale_id' => $sale->id, 'product_id' => $costed->id,
+            'quantity' => 1, 'subtotal' => 10000, 'discount_amount' => 0, 'unit_cost_at_sale' => 4000,
+        ]);
+        SaleItem::factory()->create([
+            'sale_id' => $sale->id, 'product_id' => $uncosted->id,
+            'quantity' => 1, 'subtotal' => 20000, 'discount_amount' => 0, 'unit_cost_at_sale' => 0,
+        ]);
+
+        $profit = $this->service()->overview($business, (int) now()->year, (int) now()->month, canViewProfit: true)['period']['profit'];
+
+        $this->assertCount(1, $profit['top_products']);
+        $this->assertSame('Con costo', $profit['top_products'][0]['name']);
+        $this->assertSame(10000.0, $profit['revenue']); // no incluye los $20000 sin costo
+        $this->assertSame(1, $profit['uncosted_products_count']);
+        $this->assertSame(20000.0, $profit['uncosted_revenue']);
+    }
+
+    public function test_profit_excludes_credit_sales_not_yet_collected(): void
+    {
+        $business = Business::factory()->create();
+        $product = Product::factory()->create(['business_id' => $business->id]);
+        $creditSale = $this->closedSale($business, 50000, now(), ['is_credit' => true]);
+        SaleItem::factory()->create([
+            'sale_id' => $creditSale->id, 'product_id' => $product->id,
+            'quantity' => 1, 'subtotal' => 50000, 'discount_amount' => 0, 'unit_cost_at_sale' => 10000,
+        ]);
+
+        $profit = $this->service()->overview($business, (int) now()->year, (int) now()->month, canViewProfit: true)['period']['profit'];
+
+        $this->assertSame(0.0, $profit['revenue']);
+        $this->assertCount(0, $profit['top_products']);
+    }
+
+    public function test_profit_top_products_caps_at_ten(): void
+    {
+        $business = Business::factory()->create();
+        $sale = $this->closedSale($business, 999999, now());
+        foreach (range(1, 12) as $i) {
+            $product = Product::factory()->create(['business_id' => $business->id, 'name' => "Producto {$i}"]);
+            SaleItem::factory()->create([
+                'sale_id' => $sale->id, 'product_id' => $product->id,
+                'quantity' => 1, 'subtotal' => 1000 * $i, 'discount_amount' => 0, 'unit_cost_at_sale' => 100,
+            ]);
+        }
+
+        $profit = $this->service()->overview($business, (int) now()->year, (int) now()->month, canViewProfit: true)['period']['profit'];
+
+        $this->assertCount(10, $profit['top_products']);
+        $this->assertSame('Producto 12', $profit['top_products'][0]['name']); // el de mayor utilidad primero
+    }
 }
