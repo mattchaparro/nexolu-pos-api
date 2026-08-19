@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\AiMessagePackController;
 use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\BillingProfileController;
 use App\Http\Controllers\Api\V1\BulkStockUpdateController;
 use App\Http\Controllers\Api\V1\BusinessController;
 use App\Http\Controllers\Api\V1\BusinessPaymentSourceController;
@@ -130,6 +131,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::get('/business', [BusinessController::class, 'show'])->name('business.show');
         Route::put('/business', [BusinessController::class, 'update'])->name('business.update');
+        Route::get('/business/billing-profile', [BillingProfileController::class, 'show'])->name('business.billing-profile.show');
+        Route::put('/business/billing-profile', [BillingProfileController::class, 'update'])->name('business.billing-profile.update');
         Route::put('/business/notifications', [BusinessController::class, 'updateNotifications'])->name('business.notifications.update');
         Route::delete('/business/low-stock-snooze', [BusinessController::class, 'clearLowStockSnooze'])->name('business.low-stock-snooze.clear');
         Route::get('/business/payment-methods', [PosPaymentMethodController::class, 'index'])->name('business.payment-methods.index');

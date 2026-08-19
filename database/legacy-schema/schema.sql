@@ -382,6 +382,45 @@ CREATE TABLE `appointments` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `billing_profiles`
+--
+-- NOTA: tabla nueva (no viene del dump original de produccion). Un unico
+-- perfil de facturacion por negocio (no por usuario): la suscripcion se
+-- factura al negocio, sin importar que persona del negocio este pagando
+-- ese dia. Hoy lo consume PseModal.vue (nexolu-pos-front) para prellenar
+-- documento/nombre/telefono en vez de pedirlos de cero en cada pago, y el
+-- paso opcional de facturacion del wizard de registro. Todos los campos
+-- son nullable a proposito: completar esto nunca bloquea el registro ni
+-- el pago, se pide la primera vez que hace falta (ver
+-- BillingProfileController). El legacy monolito no lee ni escribe esta
+-- tabla, mismo criterio que `business_payment_sources` arriba. Aplicada a
+-- mano via `mysql` CLI contra pos_saas y testing (nunca via `php artisan
+-- migrate`), no existe archivo en database/migrations/ para esto - ver
+-- ese mismo directorio, vacio a proposito.
+--
+
+DROP TABLE IF EXISTS `billing_profiles`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `billing_profiles` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `business_id` bigint unsigned NOT NULL,
+  `document_type` varchar(10) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `document_number` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `full_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `phone` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `address` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `city` varchar(120) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `billing_profiles_business_id_unique` (`business_id`),
+  CONSTRAINT `billing_profiles_business_id_foreign` FOREIGN KEY (`business_id`) REFERENCES `businesses` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `business_payment_sources`
 --
 -- NOTA: tabla nueva (no viene del dump original de produccion). Guarda,
