@@ -3,6 +3,7 @@
 use App\Http\Middleware\EnsureBusinessCanAccessPurchases;
 use App\Http\Middleware\EnsureBusinessFeatureEnabled;
 use App\Http\Middleware\EnsureBusinessPermission;
+use App\Http\Middleware\EnsureCashShiftOpenForSales;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\EnsureValidIaCoreKey;
 use Illuminate\Foundation\Application;
@@ -29,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'superadmin' => EnsureSuperAdmin::class,
             'ia-core.key' => EnsureValidIaCoreKey::class,
             'permission' => EnsureBusinessPermission::class,
+            'cash-shift.required-for-sales' => EnsureCashShiftOpenForSales::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

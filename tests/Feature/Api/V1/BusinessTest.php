@@ -96,7 +96,7 @@ class BusinessTest extends TestCase
         $response = $this->actingAs($owner, 'sanctum')->getJson('/api/v1/business')->assertOk();
 
         $resolved = $response->json('resolved_features');
-        $this->assertCount(20, $resolved);
+        $this->assertCount(21, $resolved);
         // Basico: encendidas por defecto.
         $this->assertTrue($resolved['inventory']);
         $this->assertTrue($resolved['expenses']);
@@ -140,7 +140,7 @@ class BusinessTest extends TestCase
 
         $this->assertTrue($resolved['open_tabs']);
         $this->assertTrue($resolved['clients']);
-        $this->assertCount(20, $resolved);
+        $this->assertCount(21, $resolved);
     }
 
     public function test_owner_can_update_their_business(): void

@@ -12,6 +12,7 @@ use App\Models\Sale;
 use App\Models\ServicePayment;
 use App\Models\User;
 use App\Support\RevenueByPaymentMethod;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -152,6 +153,74 @@ class CashClosingService
             'expected_cash' => $expectedCash,
             'payment_breakdown' => $breakdown->values()->all(),
         ];
+    }
+
+    /**
+     * Dias anteriores a hoy con actividad de ingresos/turnos que todavia no
+     * tienen cierre de caja - la cola que le mostramos al dueño cuando se le
+     * acumularon dias sin cerrar, para que los cierre en orden en vez de
+     * adivinar que fecha usar. Hoy nunca aparece: el dia todavia esta en
+     * curso y cerrarlo es una decision explicita del dueño, no algo atrasado.
+     *
+     * @return list<string> fechas Y-m-d en orden ascendente
+     */
+    public function pendingDates(int $businessId, int $maxLookbackDays = 60): array
+    {
+        $lastClosingDate = CashClosing::where('business_id', $businessId)->max('date');
+        $end = now()->subDay()->endOfDay();
+
+        if ($lastClosingDate) {
+            $start = Carbon::parse($lastClosingDate)->addDay()->startOfDay();
+        } else {
+            $earliest = collect([
+                Sale::where('business_id', $businessId)->where('status', 'closed')->min('closed_at'),
+                Receivable::where('business_id', $businessId)->where('status', 'paid')->min('paid_at'),
+                ServicePayment::where('business_id', $businessId)->min('created_at'),
+                LayawayPayment::where('business_id', $businessId)->min('created_at'),
+                CashShift::where('business_id', $businessId)->min('opened_at'),
+            ])->filter()->map(fn ($value) => Carbon::parse($value))->sort()->first();
+
+            if (! $earliest) {
+                return [];
+            }
+
+            $start = $earliest->startOfDay();
+        }
+
+        if ($start->gt($end)) {
+            return [];
+        }
+
+        // Cota de seguridad: un negocio que nunca ha cerrado caja no debe
+        // forzar a iterar años de historial dia por dia.
+        $oldestAllowed = now()->subDays($maxLookbackDays)->startOfDay();
+        if ($start->lt($oldestAllowed)) {
+            $start = $oldestAllowed;
+        }
+
+        return collect()
+            ->merge($this->distinctDates(Sale::where('business_id', $businessId)->where('status', 'closed'), 'closed_at', $start, $end))
+            ->merge($this->distinctDates(Receivable::where('business_id', $businessId)->where('status', 'paid'), 'paid_at', $start, $end))
+            ->merge($this->distinctDates(ServicePayment::where('business_id', $businessId), 'created_at', $start, $end))
+            ->merge($this->distinctDates(LayawayPayment::where('business_id', $businessId), 'created_at', $start, $end))
+            ->merge($this->distinctDates(CashShift::where('business_id', $businessId), 'opened_at', $start, $end))
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  Builder<*>  $query
+     * @return list<string>
+     */
+    private function distinctDates(Builder $query, string $column, Carbon $start, Carbon $end): array
+    {
+        return $query
+            ->whereBetween($column, [$start, $end])
+            ->selectRaw("DISTINCT DATE({$column}) as d")
+            ->pluck('d')
+            ->all();
     }
 
     public function closeCash(User $user, array $data): CashClosing

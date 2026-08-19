@@ -314,7 +314,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::get('/sales/{sale}/receipt', [SaleController::class, 'receipt'])->name('sales.receipt');
             Route::post('/sales/{sale}/receipt/send', [SaleController::class, 'sendReceipt'])->name('sales.receipt.send');
         });
-        Route::apiResource('sales', SaleController::class)->only(['index', 'show', 'store']);
+        Route::apiResource('sales', SaleController::class)->only(['index', 'show']);
+        Route::middleware('cash-shift.required-for-sales')->group(function () {
+            Route::apiResource('sales', SaleController::class)->only(['store']);
+        });
 
         Route::middleware('feature:open_tabs')->group(function () {
             Route::apiResource('tables', BusinessTableController::class);
@@ -476,6 +479,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
             Route::middleware('permission:cash_closing.manage')->group(function () {
                 Route::get('/cash-closings/preview', [CashClosingController::class, 'preview'])->name('cash-closings.preview');
+                Route::get('/cash-closings/pending-dates', [CashClosingController::class, 'pendingDates'])->name('cash-closings.pending-dates');
                 Route::apiResource('cash-closings', CashClosingController::class)
                     ->only(['index', 'show', 'store', 'update'])
                     ->parameters(['cash-closings' => 'cashClosing']);

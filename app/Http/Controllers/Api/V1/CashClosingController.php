@@ -29,6 +29,12 @@ class CashClosingController extends Controller
         return CashClosingResource::collection($closings);
     }
 
+    /** Dias anteriores a hoy con actividad pero sin cierre de caja, para la cola de "ponerse al dia". */
+    public function pendingDates(Request $request): array
+    {
+        return ['dates' => $this->cashClosingService->pendingDates((int) $request->user()->business_id)];
+    }
+
     /**
      * Vista previa de un cierre antes de confirmarlo: los totales calculados
      * para $date, mas los turnos que ESTE cierre auto-cerraria si se confirma

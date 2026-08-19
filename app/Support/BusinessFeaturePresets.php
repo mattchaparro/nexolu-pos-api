@@ -124,6 +124,7 @@ class BusinessFeaturePresets
             'expenses' => true,
             'managerial_accounting' => false,
             'cash_closing' => true,
+            'shift_daily_close_required' => false,
             'receivables' => true,
             'kitchen_board' => false,
             'services' => false,
@@ -151,6 +152,7 @@ class BusinessFeaturePresets
             'expenses' => true,
             'managerial_accounting' => true,
             'cash_closing' => true,
+            'shift_daily_close_required' => false,
             'receivables' => true,
             'kitchen_board' => true,
             'services' => true,
@@ -221,6 +223,7 @@ class BusinessFeaturePresets
             ['key' => 'expenses', 'label' => 'Gastos', 'description' => 'Registro de gastos del negocio, con tipos de gasto y plantillas recurrentes.', 'group' => 'Finanzas'],
             ['key' => 'managerial_accounting', 'label' => 'Contabilidad gerencial', 'description' => 'Reportes mensuales y anuales de ingresos, gastos y cierre contable.', 'group' => 'Finanzas'],
             ['key' => 'cash_closing', 'label' => 'Cierre de caja', 'description' => 'Turnos de caja con apertura, cierre y arqueo de efectivo.', 'group' => 'Finanzas'],
+            ['key' => 'shift_daily_close_required', 'label' => 'Bloquear ventas con turno arrastrado', 'description' => 'Si un empleado deja un turno abierto de un día anterior, le impide seguir vendiendo hasta que lo cierre y abra uno nuevo (sin esto, solo ve un aviso). Apagado por defecto: bloquear ventas es disruptivo, se activa negocio por negocio si el dueño lo pide.', 'group' => 'Finanzas'],
 
             ['key' => 'services', 'label' => 'Catálogo de servicios', 'description' => 'Permite vender servicios (no solo productos) y crear órdenes de servicio.', 'group' => 'Catálogo'],
             ['key' => 'layaway', 'label' => 'Apartados', 'description' => 'Reserva de productos con abonos parciales antes de completar la venta.', 'group' => 'Catálogo'],
