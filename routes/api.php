@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BillingProfileController;
 use App\Http\Controllers\Api\V1\BulkStockUpdateController;
 use App\Http\Controllers\Api\V1\BusinessController;
+use App\Http\Controllers\Api\V1\BusinessOverviewController;
 use App\Http\Controllers\Api\V1\BusinessPaymentSourceController;
 use App\Http\Controllers\Api\V1\BusinessServiceWorkflowController;
 use App\Http\Controllers\Api\V1\BusinessTableController;
@@ -433,6 +434,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::get('/history/export', [SalesReportController::class, 'historyExport'])->name('history.export');
             Route::get('/by-seller', [SalesReportController::class, 'bySeller'])->name('by-seller');
             Route::get('/by-seller/export', [SalesReportController::class, 'bySellerExport'])->name('by-seller.export');
+            Route::get('/business-overview', [BusinessOverviewController::class, 'index'])->name('business-overview');
         });
         Route::middleware(['feature:cash_closing', 'permission:cash_closing.manage'])->prefix('reports')->name('reports.')->group(function () {
             Route::get('/cash-closings', [SalesReportController::class, 'cashClosings'])->name('cash-closings');
