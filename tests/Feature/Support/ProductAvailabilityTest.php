@@ -136,6 +136,34 @@ class ProductAvailabilityTest extends TestCase
         $this->assertSame('Nombre nuevo', ProductAvailability::forBusiness($business)->first()->name);
     }
 
+    /**
+     * Bug real: config/cache.php fija serializable_classes=false (bloquea
+     * deserializar objetos PHP arbitrarios - proteccion contra inyeccion de
+     * objetos si un valor de cache se corrompe/manipula). Con esa bandera,
+     * unserialize() convierte CUALQUIER objeto en __PHP_Incomplete_Class -
+     * cachear un Collection<Product> crudo se rompe en la siguiente lectura
+     * (TypeError, reproducible con Cache::put()+Cache::get() directo). Los
+     * tests corren con CACHE_STORE=array (ver phpunit.xml), que nunca
+     * serializa de verdad y no detectaba esto - por eso se fuerza aca el
+     * store 'database' real para probar el round-trip completo (escribir Y
+     * releer desde cache), no solo el primer miss.
+     */
+    public function test_for_business_survives_a_real_database_cache_round_trip(): void
+    {
+        config(['cache.default' => 'database']);
+        $business = Business::factory()->create(['feature_flags' => ['ingredients' => false]]);
+        $product = Product::factory()->create(['business_id' => $business->id]);
+        Cache::store('database')->forget(ProductAvailability::cacheKey($business->id));
+
+        ProductAvailability::forBusiness($business); // cache miss: escribe
+
+        $fromCache = ProductAvailability::forBusiness($business); // cache hit: lee
+
+        $this->assertCount(1, $fromCache);
+        $this->assertSame($product->id, $fromCache->first()->id);
+        $this->assertTrue($fromCache->first()->relationLoaded('category'));
+    }
+
     /** El stock cambia por SQL directo (increment), que no dispara el evento saved de Product. */
     public function test_a_stock_movement_invalidates_the_cached_catalog(): void
     {

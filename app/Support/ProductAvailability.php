@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Business;
 use App\Models\Product;
+use App\Models\ProductCategory;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 
@@ -80,11 +81,25 @@ class ProductAvailability
         $ingredientsEnabled = (bool) $business->hasFeature('ingredients');
 
         if (! $ingredientsEnabled) {
-            return Cache::remember(
+            // Cache::remember() no puede guardar modelos Eloquent directamente:
+            // config/cache.php fija serializable_classes=false (todo el resto
+            // del codigo ya cachea solo escalares/arrays, ver StockMovementReason
+            // y ProcessWhatsAppInbound) para que un valor de cache corrupto o
+            // manipulado nunca pueda deserializar en un objeto PHP arbitrario.
+            // Con esa bandera, unserialize() convierte cualquier objeto en
+            // __PHP_Incomplete_Class - un modelo cacheado crudo se rompe en la
+            // SIGUIENTE lectura (bug real, no hipotetico: reproducible con
+            // Cache::put()+Cache::get() en el mismo proceso). Se cachean los
+            // atributos crudos (array) y se rehidratan con newFromBuilder(),
+            // igual que hace Eloquent internamente al leer de la BD - sin
+            // volver a golpear la base en cada hit de cache.
+            $rows = Cache::remember(
                 self::cacheKey($business->id),
                 now()->addMinutes(10),
-                fn () => self::fetchSellableProducts($business, $ingredientsEnabled)
+                fn () => self::toCacheableArray(self::fetchSellableProducts($business, $ingredientsEnabled))
             );
+
+            return self::fromCacheableArray($rows);
         }
 
         return self::fetchSellableProducts($business, $ingredientsEnabled);
@@ -99,5 +114,39 @@ class ProductAvailability
             ->when($ingredientsEnabled, fn ($q) => $q->with('ingredients'))
             ->orderBy('name')
             ->get();
+    }
+
+    /**
+     * @param  Collection<int, Product>  $products
+     * @return list<array{attributes: array<string, mixed>, category: array<string, mixed>|null}>
+     */
+    private static function toCacheableArray(Collection $products): array
+    {
+        return $products->map(fn (Product $product) => [
+            'attributes' => $product->getAttributes(),
+            'category' => $product->relationLoaded('category') && $product->category
+                ? $product->category->getAttributes()
+                : null,
+        ])->all();
+    }
+
+    /**
+     * @param  list<array{attributes: array<string, mixed>, category: array<string, mixed>|null}>  $rows
+     * @return Collection<int, Product>
+     */
+    private static function fromCacheableArray(array $rows): Collection
+    {
+        $productPrototype = new Product;
+        $categoryPrototype = new ProductCategory;
+
+        return Collection::make($rows)->map(function (array $row) use ($productPrototype, $categoryPrototype) {
+            $product = $productPrototype->newFromBuilder($row['attributes']);
+            $product->setRelation(
+                'category',
+                $row['category'] ? $categoryPrototype->newFromBuilder($row['category']) : null
+            );
+
+            return $product;
+        });
     }
 }
