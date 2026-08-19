@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\ChargeSubscriptionCheckoutRequest;
 use App\Http\Requests\Api\V1\InitiateSubscriptionCheckoutRequest;
 use App\Services\SubscriptionService;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -77,6 +78,12 @@ class SubscriptionController extends Controller
                 $reference,
                 $request->validated('payment_method'),
             );
+        } catch (ModelNotFoundException $e) {
+            // firstOrFail() de chargeCheckout() (orden de otro negocio, o ya
+            // no pendiente) - ModelNotFoundException extiende RuntimeException,
+            // asi que sin este catch especifico antes caia en el generico de
+            // abajo y devolvia 502 en vez del 404 que corresponde.
+            throw $e;
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 502);
         }

@@ -7,6 +7,7 @@ use App\Models\SubscriptionCheckoutOrder;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -184,9 +185,7 @@ class SubscriptionChargeTest extends TestCase
         )->assertStatus(502);
     }
 
-    /**
-     * @dataProvider missingRequiredFieldsPerType
-     */
+    #[DataProvider('missingRequiredFieldsPerType')]
     public function test_charge_validates_required_fields_per_payment_method_type(array $paymentMethod): void
     {
         Http::fake();
@@ -218,5 +217,45 @@ class SubscriptionChargeTest extends TestCase
             'payment_source without payment_source_id' => [['type' => 'PAYMENT_SOURCE']],
             'unknown type' => [['type' => 'DAVIPLATA']],
         ];
+    }
+
+    /**
+     * Reproduce el caso reportado: PSE sin customer_full_name devolvia el
+     * mensaje generico de Laravel en ingles ("The payment method.customer
+     * full name field is required when..."), con la ruta cruda del campo.
+     */
+    public function test_charge_with_pse_missing_full_name_returns_a_friendly_spanish_message(): void
+    {
+        Http::fake();
+
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $order = SubscriptionCheckoutOrder::factory()->for($business)->create(['status' => 'pending']);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson(
+            "/api/v1/subscription/checkout/{$order->order_key}/charge",
+            ['payment_method' => [
+                'type' => 'PSE',
+                'user_type' => 0,
+                'user_legal_id_type' => 'CC',
+                'user_legal_id' => '1099888777',
+                'financial_institution_code' => '1',
+                'customer_phone_number' => '3107654321',
+                'payment_description' => 'Suscripcion Nexolu',
+            ]],
+        );
+
+        $response->assertStatus(422)->assertJsonValidationErrors(['payment_method.customer_full_name']);
+
+        // assertJsonPath trata los puntos del path como anidamiento, pero
+        // la clave real del bag de errores es literal "payment_method.
+        // customer_full_name" (un solo nivel) - se verifica leyendo el
+        // array crudo en vez de con assertJsonPath.
+        $this->assertSame(
+            'Ingresa tu nombre completo.',
+            $response->json()['errors']['payment_method.customer_full_name'][0],
+        );
+
+        Http::assertNothingSent();
     }
 }

@@ -58,4 +58,68 @@ class ChargeSubscriptionCheckoutRequest extends FormRequest
             'payment_method.payment_source_id' => ['required_if:payment_method.type,PAYMENT_SOURCE', 'string'],
         ];
     }
+
+    /**
+     * Mensajes en español y por campo: los genericos de Laravel (en ingles,
+     * sin traduccion en este repo - ver lang/) mostrarian literal la ruta
+     * "payment_method.customer_full_name" en vez de algo entendible por el
+     * usuario final.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'payment_method.required' => 'Falta indicar el método de pago.',
+            'payment_method.type.required' => 'Selecciona un método de pago.',
+            'payment_method.type.in' => 'Ese método de pago no está disponible.',
+
+            'payment_method.token.required_if' => 'Falta la tarjeta: intenta ingresarla de nuevo.',
+
+            'payment_method.phone_number.required_if' => 'Ingresa tu número de celular para pagar con Nequi.',
+            'payment_method.phone_number.regex' => 'El número de celular debe tener 10 dígitos y empezar por 3.',
+
+            'payment_method.user_type.required_if' => 'Selecciona si eres persona natural o jurídica.',
+            'payment_method.user_legal_id_type.required_if' => 'Selecciona tu tipo de documento.',
+            'payment_method.user_legal_id.required_if' => 'Ingresa tu número de documento.',
+            'payment_method.financial_institution_code.required_if' => 'Selecciona tu banco.',
+            'payment_method.customer_full_name.required_if' => 'Ingresa tu nombre completo.',
+            'payment_method.customer_phone_number.required_if' => 'Ingresa tu número de celular.',
+
+            'payment_method.payment_description.required_if' => 'Falta la descripción del pago.',
+            'payment_method.payment_description.not_regex' => 'La descripción del pago no puede contener comillas simples (\').',
+
+            'payment_method.ecommerce_url.required_if' => 'Falta la URL de retorno del Botón Bancolombia.',
+            'payment_method.ecommerce_url.url' => 'La URL de retorno del Botón Bancolombia no es válida.',
+
+            'payment_method.payment_source_id.required_if' => 'Selecciona una fuente de pago guardada.',
+        ];
+    }
+
+    /**
+     * Nombre en español de cada campo para sustituir el placeholder
+     * `:attribute` en cualquier regla (string/integer/max/...) que no
+     * tenga un mensaje especifico en messages() - evita que se cuele la
+     * ruta cruda "payment_method.xxx" en un mensaje generico.
+     *
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'payment_method.type' => 'el método de pago',
+            'payment_method.token' => 'la tarjeta',
+            'payment_method.installments' => 'el número de cuotas',
+            'payment_method.phone_number' => 'el número de celular',
+            'payment_method.user_type' => 'el tipo de persona',
+            'payment_method.user_legal_id_type' => 'el tipo de documento',
+            'payment_method.user_legal_id' => 'el número de documento',
+            'payment_method.financial_institution_code' => 'el banco',
+            'payment_method.customer_full_name' => 'el nombre completo',
+            'payment_method.customer_phone_number' => 'el número de celular',
+            'payment_method.payment_description' => 'la descripción del pago',
+            'payment_method.ecommerce_url' => 'la URL de retorno',
+            'payment_method.payment_source_id' => 'la fuente de pago',
+        ];
+    }
 }

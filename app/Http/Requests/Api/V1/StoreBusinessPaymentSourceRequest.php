@@ -23,4 +23,30 @@ class StoreBusinessPaymentSourceRequest extends FormRequest
             'label' => ['required', 'string', 'max:120'],
         ];
     }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'type.required' => 'Selecciona el tipo de fuente de pago.',
+            'type.in' => 'El tipo de fuente de pago debe ser tarjeta o Nequi.',
+            'token.required' => 'Falta tokenizar la tarjeta o el Nequi antes de guardarlo.',
+            'label.required' => 'Ponle un nombre a esta fuente de pago.',
+            'label.max' => 'El nombre no puede tener más de 120 caracteres.',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'type' => 'el tipo',
+            'token' => 'la tarjeta o Nequi',
+            'label' => 'el nombre',
+        ];
+    }
 }
