@@ -228,6 +228,25 @@ necesidad de código especial). Los 9 activos migran limpio, 0 sin match —
 el único hueco real (`datafono`, en 2 de los 9) se cerró agregándolo al
 catálogo base (`PosPaymentMethodSeeder`) en vez de ampliar el matching.
 
+### 4.6bis. Vincular sales/layaways/receivables a Client (ítem 4 de CUTOVER_TODO)
+
+`client_id` ya existe en `sales`/`layaways`/`receivables` (columna nullable,
+`ALTER TABLE` aplicado directamente, reflejado en `schema.sql`) — a
+diferencia del resto del ítem 4 (unificar `clients`/`customers`), esta parte
+no necesitaba esperar al retiro del legacy: se auditó `pos-saas-legacy`
+completo y se confirmó que ningún `INSERT` a esas tres tablas es posicional,
+así que la columna aditiva no corre riesgo de corromper filas existentes.
+
+Backfill: `php artisan clients:backfill-links {--dry-run} {--business=ID}`
+vincula filas con `client_id` NULL a un `Client` por teléfono normalizado,
+dentro del mismo negocio. Un teléfono compartido por 2+ clients se reporta
+como ambiguo y se deja intacto. Mismo patrón que 4.6: no bloqueado a
+`local` (columna 100% nueva), correr `--dry-run` primero.
+
+Al aplicar el `ALTER TABLE` en un droplet nuevo: ya viene en `schema.sql`,
+así que solo hace falta correr `clients:backfill-links` después de importar
+los datos reales (4.1) — no hay `ALTER` manual pendiente ahí.
+
 ### 4.7. Decisiones abiertas (bloquean terminar esta sección)
 
 - **¿Todos los negocios de una vez, o gradual?** Un "big bang" (todos los
@@ -251,9 +270,9 @@ catálogo base (`PosPaymentMethodSeeder`) en vez de ampliar el matching.
   variante aparte) para poder correr la normalización de vocabulario contra
   el droplet real?
 
-Los comandos de 4.4 y 4.6 ya están construidos y probados — lo que falta
-para cerrar el cutover real es resolver estas decisiones operativas, no
-más código.
+Los comandos de 4.4, 4.6 y 4.6bis ya están construidos y probados — lo que
+falta para cerrar el cutover real es resolver estas decisiones operativas,
+no más código.
 
 ## 5. Verificación post-deploy (cualquier escenario)
 

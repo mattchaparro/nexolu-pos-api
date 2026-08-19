@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Models\Business;
+use App\Models\Client;
 use App\Models\Discount;
 use App\Models\Product;
 use App\Models\Sale;
@@ -42,6 +43,38 @@ class SaleTest extends TestCase
             'type' => StockMovement::TYPE_SALE,
             'quantity' => -2,
         ]);
+    }
+
+    public function test_user_can_link_a_sale_to_an_existing_client(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $client = Client::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 20]);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
+            'payment_method' => 'cash',
+            'client_id' => $client->id,
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ]);
+
+        $response->assertCreated()->assertJsonPath('client_id', $client->id);
+    }
+
+    public function test_a_client_from_another_business_is_rejected(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $otherBusinessClient = Client::factory()->create();
+        $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 20]);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
+            'payment_method' => 'cash',
+            'client_id' => $otherBusinessClient->id,
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ]);
+
+        $response->assertJsonValidationErrors('client_id');
     }
 
     public function test_invoice_numbers_increment_sequentially(): void

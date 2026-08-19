@@ -21,6 +21,8 @@ class ReceivableResource extends JsonResource
             'customer_name' => $this->customer_name,
             'customer_phone' => $this->customer_phone,
             'customer_identification' => $this->customer_identification,
+            'client_id' => $this->client_id,
+            'client' => new ClientResource($this->whenLoaded('client')),
             'amount' => $this->amount,
             'balance' => $this->balance,
             'status' => $this->status,

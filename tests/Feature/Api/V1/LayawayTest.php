@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Models\Business;
+use App\Models\Client;
 use App\Models\Layaway;
 use App\Models\Product;
 use App\Models\StockMovement;
@@ -39,6 +40,22 @@ class LayawayTest extends TestCase
             'type' => StockMovement::TYPE_EXIT,
             'quantity' => -3,
         ]);
+    }
+
+    public function test_user_can_link_a_layaway_to_an_existing_client(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $client = Client::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 10]);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/layaways', [
+            'client_id' => $client->id,
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ]);
+
+        $response->assertCreated()->assertJsonPath('client_id', $client->id);
     }
 
     public function test_creating_a_layaway_with_insufficient_stock_is_rejected(): void

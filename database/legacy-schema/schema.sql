@@ -1044,6 +1044,7 @@ CREATE TABLE `layaways` (
   `business_id` bigint unsigned NOT NULL,
   `customer_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `customer_phone` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `client_id` bigint unsigned DEFAULT NULL,
   `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'open',
   `notes` text COLLATE utf8mb4_unicode_ci,
   `created_by_user_id` bigint unsigned NOT NULL,
@@ -1055,8 +1056,10 @@ CREATE TABLE `layaways` (
   KEY `layaways_business_id_foreign` (`business_id`),
   KEY `layaways_created_by_user_id_foreign` (`created_by_user_id`),
   KEY `layaways_cancelled_by_user_id_foreign` (`cancelled_by_user_id`),
+  KEY `layaways_client_id_foreign` (`client_id`),
   CONSTRAINT `layaways_business_id_foreign` FOREIGN KEY (`business_id`) REFERENCES `businesses` (`id`),
   CONSTRAINT `layaways_cancelled_by_user_id_foreign` FOREIGN KEY (`cancelled_by_user_id`) REFERENCES `users` (`id`),
+  CONSTRAINT `layaways_client_id_foreign` FOREIGN KEY (`client_id`) REFERENCES `clients` (`id`) ON DELETE SET NULL,
   CONSTRAINT `layaways_created_by_user_id_foreign` FOREIGN KEY (`created_by_user_id`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -1522,6 +1525,7 @@ CREATE TABLE `receivables` (
   `customer_phone` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `customer_identification` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `customer_key` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `client_id` bigint unsigned DEFAULT NULL,
   `amount` decimal(12,2) NOT NULL DEFAULT '0.00',
   `balance` decimal(12,2) NOT NULL DEFAULT '0.00',
   `status` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
@@ -1537,7 +1541,9 @@ CREATE TABLE `receivables` (
   KEY `receivables_paid_at_index` (`paid_at`),
   KEY `receivables_business_status_customer_idx` (`business_id`,`status`,`customer_key`),
   KEY `receivables_collected_by_user_id_foreign` (`collected_by_user_id`),
+  KEY `receivables_client_id_foreign` (`client_id`),
   CONSTRAINT `receivables_business_id_foreign` FOREIGN KEY (`business_id`) REFERENCES `businesses` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `receivables_client_id_foreign` FOREIGN KEY (`client_id`) REFERENCES `clients` (`id`) ON DELETE SET NULL,
   CONSTRAINT `receivables_collected_by_user_id_foreign` FOREIGN KEY (`collected_by_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `receivables_sale_id_foreign` FOREIGN KEY (`sale_id`) REFERENCES `sales` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB AUTO_INCREMENT=76 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -1775,6 +1781,7 @@ CREATE TABLE `sales` (
   `customer_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `customer_phone` varchar(30) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `customer_identification` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `client_id` bigint unsigned DEFAULT NULL,
   `is_delivery` tinyint(1) NOT NULL DEFAULT '0',
   `delivery_fee` decimal(12,2) NOT NULL DEFAULT '0.00',
   `created_at` timestamp NULL DEFAULT NULL,
@@ -1789,8 +1796,10 @@ CREATE TABLE `sales` (
   KEY `sales_business_status_idx` (`business_id`,`status`),
   KEY `sales_business_user_created_idx` (`business_id`,`user_id`,`created_at`),
   KEY `sales_closed_by_user_id_foreign` (`closed_by_user_id`),
+  KEY `sales_client_id_foreign` (`client_id`),
   CONSTRAINT `sales_business_id_foreign` FOREIGN KEY (`business_id`) REFERENCES `businesses` (`id`) ON DELETE CASCADE,
   CONSTRAINT `sales_cart_discount_id_foreign` FOREIGN KEY (`cart_discount_id`) REFERENCES `discounts` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `sales_client_id_foreign` FOREIGN KEY (`client_id`) REFERENCES `clients` (`id`) ON DELETE SET NULL,
   CONSTRAINT `sales_closed_by_user_id_foreign` FOREIGN KEY (`closed_by_user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
   CONSTRAINT `sales_table_id_foreign` FOREIGN KEY (`table_id`) REFERENCES `business_tables` (`id`) ON DELETE SET NULL,
   CONSTRAINT `sales_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE

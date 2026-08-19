@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'customer_phone',
     'customer_identification',
     'customer_key',
+    'client_id',
     'amount',
     'balance',
     'status',
@@ -45,6 +46,11 @@ class Receivable extends Model
     public function sale(): BelongsTo
     {
         return $this->belongsTo(Sale::class);
+    }
+
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class);
     }
 
     public function collectedByUser(): BelongsTo

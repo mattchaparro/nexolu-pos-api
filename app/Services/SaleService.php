@@ -40,6 +40,7 @@ class SaleService
                 'customer_name' => $data['customer_name'] ?? null,
                 'customer_phone' => $data['customer_phone'] ?? null,
                 'customer_identification' => $data['customer_identification'] ?? null,
+                'client_id' => $data['client_id'] ?? null,
                 'is_delivery' => $flags['is_delivery'],
                 'delivery_fee' => $flags['delivery_fee'],
                 'is_non_revenue' => $flags['is_non_revenue'],
@@ -256,6 +257,7 @@ class SaleService
                 'customer_name' => $sale->customer_name ?: $existingPending->customer_name,
                 'customer_phone' => $sale->customer_phone ?: $existingPending->customer_phone,
                 'customer_identification' => $sale->customer_identification ?: $existingPending->customer_identification,
+                'client_id' => $sale->client_id ?: $existingPending->client_id,
                 'amount' => (float) $existingPending->amount + (float) $sale->total,
                 'balance' => (float) $existingPending->balance + (float) $sale->total,
             ]);
@@ -270,6 +272,7 @@ class SaleService
             'customer_phone' => $sale->customer_phone,
             'customer_identification' => $sale->customer_identification,
             'customer_key' => $customerKey,
+            'client_id' => $sale->client_id,
             'amount' => $sale->total,
             'balance' => $sale->total,
             'status' => 'pending',

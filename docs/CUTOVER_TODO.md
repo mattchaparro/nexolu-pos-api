@@ -243,41 +243,74 @@ específica. Ver `App\Http\Controllers\Api\V1\ClientController::search()`/
 `store()`, ahora gateados solo por `feature:clients` (sin `permission:clients.manage`)
 para que cualquiera que pueda vender/agendar/apartar los use.
 
-**Por qué no se agrega la columna ahora:** `sales`, `layaways` y `receivables`
-ya existen en `schema.sql` y el legacy todavía las lee/escribe en producción —
-un `ALTER TABLE ... ADD COLUMN client_id` desde esta API violaría la regla del
-proyecto (`CLAUDE.md`: "nunca migración que toque una tabla que el legacy ya
-usa"), y aunque la columna en sí sería aditiva (no rompe lecturas del legacy),
-coordinar el cambio de esquema con el retiro/parcheo del legacy es el proceso
-correcto, no una excepción de "es solo agregar una columna".
+**Por qué SÍ se agregó la columna (2026-08-19, a pedido explícito del usuario):**
+la regla general del proyecto (`CLAUDE.md`: "nunca migración que toque una
+tabla que el legacy ya usa") existe para el caso de `payment_method`/
+`linkable_type` — datos que el legacy SIGUE reescribiendo, donde arreglarlos
+desde acá no sirve de nada porque el legacy los vuelve a ensuciar. `client_id`
+es una categoría de riesgo distinta: una columna nueva, nullable, que el
+legacy nunca va a tocar ni leer - no hay dato que se pise. El único riesgo real
+era que el legacy hiciera algún `INSERT` posicional (`INSERT INTO sales VALUES
+(...)` sin listar columnas) en `sales`/`layaways`/`receivables`, lo que
+correría el orden de columnas siguientes y corrompería datos en silencio -
+se auditó el código completo de `pos-saas-legacy` (`SaleService`,
+`LayawayService`, todos los `DB::table('sales'|'layaways'|'receivables')`) y
+se confirmó que **todos** los `INSERT`/`create()` usan arrays con columnas
+nombradas, ninguno posicional. Con eso descartado, agregar una columna
+aditiva es seguro sin esperar al retiro del legacy.
 
-**Fix cuando sea seguro:**
+**Hecho:**
 
 ```sql
 ALTER TABLE sales ADD COLUMN client_id BIGINT UNSIGNED NULL AFTER customer_identification,
   ADD CONSTRAINT sales_client_id_foreign FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL;
 ALTER TABLE layaways ADD COLUMN client_id BIGINT UNSIGNED NULL AFTER customer_phone,
   ADD CONSTRAINT layaways_client_id_foreign FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL;
-ALTER TABLE receivables ADD COLUMN client_id BIGINT UNSIGNED NULL AFTER customer_identification,
+ALTER TABLE receivables ADD COLUMN client_id BIGINT UNSIGNED NULL AFTER customer_key,
   ADD CONSTRAINT receivables_client_id_foreign FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL;
 ```
 
-Mismo patrón que `appointments`/`service_orders` ya usan: la columna `client_id`
-convive con el texto libre existente (una snapshot del nombre/teléfono al
-momento de la venta, no se borra), el FK es opcional (`ON DELETE SET NULL`).
-Una vez agregada la columna: `ClientQuickAssociate` pasa de "prefill de texto"
-a "guardar el vínculo real" (un cambio de app trivial), y se puede hacer un
-backfill de las filas existentes que matcheen por teléfono contra `clients`.
+Aplicado a mano (no como migración de Laravel, sigue la regla de
+`database/legacy-schema/`) contra `pos_saas` y `testing` locales, y reflejado
+en `schema.sql` en el mismo commit para que cualquier entorno nuevo lo
+incluya desde el arranque. `Sale`/`Layaway`/`Receivable` ganaron `client_id`
+en fillable + `belongsTo(Client::class)`; `SaleService::createSale()`,
+`OpenTabService::openTab()/close()`, `LayawayService::create()` y
+`SaleService::syncReceivable()` (para que un fiado herede el `client_id` de
+la venta que lo originó) ya lo persisten. `StoreSaleRequest`/
+`StoreOpenTabRequest`/`CloseOpenTabRequest`/`StoreLayawayRequest` validan
+`client_id` con `BusinessScopedExists` (mismo patrón que `cart_discount_id`),
+así que un `client_id` de otro negocio se rechaza en 422, nunca llega a
+guardarse.
 
-**`customers`:** superada por este enfoque — no vale la pena portar el modelo
-`Customer` ni el hook `syncCustomerProfile()`; `clients` ya cumple ese rol una
-vez tenga los FKs de arriba. La tabla `customers` queda huérfana en el schema
-compartido (no se puede borrar sola sin coordinar con el legacy), sin datos
-nuevos escritos desde esta API.
+`ClientQuickAssociate.vue` (Vender, Cuentas abiertas, Apartados) ya pasó de
+"prefill de texto" a "guardar el vínculo real": emite el `Client` completo
+(antes solo copiaba nombre/teléfono), y editar nombre/teléfono a mano
+después de aplicar un cliente limpia el `client_id` (un vínculo que ya no
+corresponde al texto es peor que ninguno). De paso se corrigió un bug real:
+"Guardar como cliente nuevo" creaba el `Client` pero nunca lo aplicaba al
+formulario - ahora sí.
 
-- [ ] Pendiente. Requiere coordinar con el retiro/parcheo del legacy antes del
-  `ALTER TABLE`. Mientras tanto, `ClientQuickAssociate.vue` ya cubre el caso de
-  uso real (que quede un `Client` correcto) sin la columna.
+**Backfill:** `php artisan clients:backfill-links {--dry-run} {--business=}`
+vincula filas existentes con `client_id` NULL a un `Client` por teléfono
+normalizado (solo dígitos), dentro del mismo negocio. Un teléfono que
+matchea 2+ `Client` (familia que comparte número - caso real, no
+hipotético) se reporta como ambiguo y se deja sin tocar, nunca elige uno al
+azar. No está bloqueado a `local` por la misma razón que
+`payment-methods:migrate-catalog`: solo lee/escribe una columna 100% nueva.
+
+**`customers`:** superada por este enfoque - no vale la pena portar el modelo
+`Customer` ni el hook `syncCustomerProfile()`; `clients` ya cumple ese rol.
+La tabla `customers` queda huérfana en el schema compartido (no se puede
+borrar sola sin coordinar con el legacy), sin datos nuevos escritos desde
+esta API.
+
+- [x] Columna agregada, modelos/servicios retrofitados, backfill construido,
+  frontend persiste el vínculo real - todo verificado con la suite completa
+  (990 tests) en verde. Pendiente solo la ejecución operativa: correr el
+  mismo `ALTER TABLE` contra producción real (no una copia aislada) y luego
+  `clients:backfill-links` ahí - mismo tipo de decisión de timing que el
+  ítem 5 (`payment-methods:migrate-catalog`), ver `docs/PRODUCTION_CUTOVER.md`.
 
 ---
 

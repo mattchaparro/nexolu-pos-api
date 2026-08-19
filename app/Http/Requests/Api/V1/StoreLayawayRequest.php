@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Api\V1;
 
 use App\Http\Requests\Concerns\ValidatesSaleItems;
+use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -28,6 +29,7 @@ class StoreLayawayRequest extends FormRequest
             ...$this->saleItemRules(),
             'customer_name' => ['sometimes', 'nullable', 'string', 'max:100'],
             'customer_phone' => ['sometimes', 'nullable', 'string', 'max:30'],
+            'client_id' => ['sometimes', 'nullable', 'integer', BusinessScopedExists::for('clients', $this->user()?->business_id)],
             'notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'initial_payment' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'initial_payment_method' => ['sometimes', 'nullable', 'string', 'max:50', Rule::in($business?->allowedPaymentMethodIds() ?? [])],

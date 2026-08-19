@@ -33,6 +33,7 @@ class LayawayService
                 'business_id' => $business->id,
                 'customer_name' => $data['customer_name'] ?? null,
                 'customer_phone' => $data['customer_phone'] ?? null,
+                'client_id' => $data['client_id'] ?? null,
                 'status' => 'open',
                 'notes' => $data['notes'] ?? null,
                 'created_by_user_id' => $user->id,

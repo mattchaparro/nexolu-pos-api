@@ -4,6 +4,7 @@ namespace Tests\Feature\Api\V1;
 
 use App\Models\Business;
 use App\Models\BusinessTable;
+use App\Models\Client;
 use App\Models\Product;
 use App\Models\Receivable;
 use App\Models\User;
@@ -34,6 +35,28 @@ class ReceivableTest extends TestCase
             'status' => 'pending',
             'amount' => '20000.00',
             'balance' => '20000.00',
+        ]);
+    }
+
+    public function test_a_credit_sale_linked_to_a_client_propagates_client_id_to_the_receivable(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $client = Client::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 20000, 'stock' => 10]);
+
+        $sale = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
+            'payment_method' => 'credit',
+            'customer_phone' => '3001234567',
+            'client_id' => $client->id,
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->json();
+
+        $this->assertDatabaseHas('receivables', [
+            'business_id' => $business->id,
+            'sale_id' => $sale['id'],
+            'client_id' => $client->id,
         ]);
     }
 

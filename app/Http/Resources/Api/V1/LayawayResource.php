@@ -17,6 +17,8 @@ class LayawayResource extends JsonResource
             'business_id' => $this->business_id,
             'customer_name' => $this->customer_name,
             'customer_phone' => $this->customer_phone,
+            'client_id' => $this->client_id,
+            'client' => new ClientResource($this->whenLoaded('client')),
             'status' => $this->status,
             'notes' => $this->notes,
             'total' => $this->total,

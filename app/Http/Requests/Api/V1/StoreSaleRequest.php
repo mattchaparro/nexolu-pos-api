@@ -41,6 +41,7 @@ class StoreSaleRequest extends FormRequest
             'customer_name' => ['sometimes', 'nullable', 'string', 'max:100'],
             'customer_phone' => ['sometimes', 'nullable', 'string', 'max:30'],
             'customer_identification' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'client_id' => ['sometimes', 'nullable', 'integer', BusinessScopedExists::for('clients', $businessId)],
             'is_delivery' => ['sometimes', 'boolean'],
             'is_non_revenue' => ['sometimes', 'boolean'],
             'non_revenue_reason' => ['sometimes', 'nullable', 'string', 'max:255'],

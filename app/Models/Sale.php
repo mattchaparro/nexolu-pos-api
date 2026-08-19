@@ -30,6 +30,7 @@ use Illuminate\Support\Collection;
     'customer_name',
     'customer_phone',
     'customer_identification',
+    'client_id',
     'is_delivery',
     'delivery_fee',
     'is_non_revenue',
@@ -105,6 +106,11 @@ class Sale extends Model
     public function table(): BelongsTo
     {
         return $this->belongsTo(BusinessTable::class, 'table_id');
+    }
+
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class);
     }
 
     /** Abonos registrados antes del cierre (cuenta abierta). */

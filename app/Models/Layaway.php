@@ -16,6 +16,7 @@ class Layaway extends Model
         'business_id',
         'customer_name',
         'customer_phone',
+        'client_id',
         'status',
         'notes',
         'created_by_user_id',
@@ -50,6 +51,11 @@ class Layaway extends Model
     public function cancelledBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'cancelled_by_user_id');
+    }
+
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class);
     }
 
     public function getTotalAttribute(): float

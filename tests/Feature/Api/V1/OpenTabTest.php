@@ -4,6 +4,7 @@ namespace Tests\Feature\Api\V1;
 
 use App\Models\Business;
 use App\Models\BusinessTable;
+use App\Models\Client;
 use App\Models\Discount;
 use App\Models\Product;
 use App\Models\Sale;
@@ -33,6 +34,24 @@ class OpenTabTest extends TestCase
             ->assertJsonPath('total', '20000.00');
 
         $this->assertSame(8, $product->fresh()->stock);
+    }
+
+    public function test_user_can_link_a_tab_to_an_existing_client_when_opening_and_closing(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $client = Client::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 10]);
+
+        $tab = $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'client_id' => $client->id,
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->assertCreated()->assertJsonPath('client_id', $client->id)->json();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/open-tabs/{$tab['id']}/close", ['payment_method' => 'cash'])
+            ->assertOk()
+            ->assertJsonPath('client_id', $client->id);
     }
 
     public function test_opening_a_tab_with_cart_discount_requires_discounts_apply_permission(): void

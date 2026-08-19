@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Api\V1;
 
 use App\Models\Sale;
+use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
@@ -41,6 +42,7 @@ class CloseOpenTabRequest extends FormRequest
             'customer_name' => ['sometimes', 'nullable', 'string', 'max:100'],
             'customer_phone' => ['sometimes', 'nullable', 'string', 'max:30'],
             'customer_identification' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'client_id' => ['sometimes', 'nullable', 'integer', BusinessScopedExists::for('clients', $this->user()?->business_id)],
             'apply_service_charge' => ['sometimes', 'boolean'],
             'apply_ipoconsumo' => ['sometimes', 'boolean'],
         ];

@@ -41,6 +41,7 @@ class StoreOpenTabRequest extends FormRequest
             'customer_name' => ['sometimes', 'nullable', 'string', 'max:100'],
             'customer_phone' => ['sometimes', 'nullable', 'string', 'max:30'],
             'customer_identification' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'client_id' => ['sometimes', 'nullable', 'integer', BusinessScopedExists::for('clients', $businessId)],
             'is_delivery' => ['sometimes', 'boolean'],
             'cart_discount_id' => [
                 'sometimes',
