@@ -57,7 +57,7 @@ return [
     // endpoint) realmente vino del Core - ver PaymentsCoreWebhookController.
     'payments_core' => [
         'api_key' => env('PAYMENTS_CORE_API_KEY'),
-        'base_url' => env('PAYMENTS_CORE_BASE_URL', 'http://localhost:8001'),
+        'base_url' => env('PAYMENTS_CORE_BASE_URL', 'http://host.docker.internal:8003'),
         'webhook_secret' => env('PAYMENTS_CORE_WEBHOOK_SECRET'),
     ],
 
