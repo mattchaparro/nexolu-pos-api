@@ -302,8 +302,18 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             });
         });
 
-        Route::middleware(['feature:discounts', 'permission:discounts.manage'])->group(function () {
-            Route::apiResource('discounts', DiscountController::class);
+        Route::middleware('feature:discounts')->group(function () {
+            // El POS (Vender) necesita listar los descuentos activos para el
+            // selector de carrito/item - un empleado con discounts.apply
+            // (aplicar descuentos en una venta) pero sin discounts.manage
+            // (crear/editar descuentos) debe poder verlos igual, o nunca
+            // podria usar el permiso que sí tiene.
+            Route::middleware('permission:discounts.apply,discounts.manage')->group(function () {
+                Route::apiResource('discounts', DiscountController::class)->only(['index', 'show']);
+            });
+            Route::middleware('permission:discounts.manage')->group(function () {
+                Route::apiResource('discounts', DiscountController::class)->only(['store', 'update', 'destroy']);
+            });
         });
 
         Route::middleware('permission:sales.reverse')->group(function () {

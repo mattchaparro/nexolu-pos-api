@@ -206,6 +206,51 @@ class DiscountTest extends TestCase
         $this->assertDatabaseMissing('discounts', ['id' => $discount->id]);
     }
 
+    /**
+     * Bug real: index()/show() vivian bajo el mismo permission:discounts.manage
+     * que crear/editar - un empleado con solo discounts.apply (pensado
+     * justamente para aplicar descuentos en una venta, ver
+     * PermissionCatalog) no podia ni listarlos para elegir cual aplicar en
+     * Vender.
+     */
+    public function test_a_user_with_only_discounts_apply_can_list_and_view_discounts(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->syncPermissions(['discounts.apply']);
+        $discount = Discount::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')->getJson('/api/v1/discounts')->assertOk();
+        $this->actingAs($user, 'sanctum')->getJson("/api/v1/discounts/{$discount->id}")->assertOk();
+    }
+
+    public function test_a_user_with_only_discounts_apply_cannot_create_or_edit_discounts(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->syncPermissions(['discounts.apply']);
+        $discount = Discount::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/discounts', [
+            'name' => 'Nuevo',
+            'type' => 'fixed',
+            'value' => 1000,
+            'scope' => 'cart',
+        ])->assertForbidden();
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson("/api/v1/discounts/{$discount->id}", ['is_active' => false])
+            ->assertForbidden();
+    }
+
+    public function test_a_user_without_any_discount_permission_cannot_list_discounts(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')->getJson('/api/v1/discounts')->assertForbidden();
+    }
+
     public function test_created_discount_response_reflects_the_database_default_is_active(): void
     {
         // Bug real: store() no refrescaba de BD, asi que "is_active" (DEFAULT 1)
