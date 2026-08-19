@@ -27,15 +27,18 @@ class SubscriptionService
     ) {}
 
     /**
-     * Crea una orden pendiente y, con esa referencia, un intent de cobro en
-     * el Payments Core. La orden se crea ANTES de llamar al Core (igual que
-     * el legacy con Wompi): es lo que permite correlacionar el webhook de
-     * confirmacion despues, y no depende de que la llamada al Core tenga
-     * exito para existir.
+     * Crea una orden pendiente y, contra ella, un intent de cobro en el
+     * Payments Core. La orden se crea ANTES de llamar al Core: es lo que
+     * permite no depender de que la llamada al Core tenga exito para
+     * existir (si falla, se borra). La `order_key` real es la `reference`
+     * que devuelve el Core -- es quien la genera, no este servicio -- por
+     * eso la fila arranca con un placeholder unico y se pisa apenas
+     * responde el Core, antes de que el webhook de confirmacion pueda
+     * llegar.
      *
-     * @return array{order_key: string, amount_cop: int, checkout: array<string, mixed>}
+     * @return array{order_key: string, amount_cop: int, checkout: array<string, mixed>, payment_init: array<string, mixed>|null}
      */
-    public function initiateCheckout(Business $business, User $user, string $redirectUrl): array
+    public function initiateCheckout(Business $business, User $user, string $redirectUrl, string $flow = 'widget'): array
     {
         $amount = $this->pricing->totalCop($business);
 
@@ -45,11 +48,9 @@ class SubscriptionService
             ]);
         }
 
-        $reference = 'NEX-'.$business->id.'-'.now()->format('YmdHis').'-'.Str::upper(Str::random(4));
-
         $order = SubscriptionCheckoutOrder::create([
             'business_id' => $business->id,
-            'order_key' => $reference,
+            'order_key' => 'pending-'.(string) Str::ulid(),
             'amount_cop' => $amount,
             'subscription_days' => self::SUBSCRIPTION_DAYS,
             'status' => 'pending',
@@ -58,11 +59,11 @@ class SubscriptionService
 
         try {
             $intent = $this->paymentsCore->createIntent(
-                reference: $reference,
                 amountCop: $amount,
                 customer: ['email' => $user->email, 'full_name' => $user->name],
                 redirectUrl: $redirectUrl,
                 metadata: ['business_id' => $business->id, 'subscription_days' => self::SUBSCRIPTION_DAYS],
+                flow: $flow,
             );
         } catch (\Throwable $e) {
             // El Core nunca llego a registrar este intent: no queda nada que
@@ -73,15 +74,42 @@ class SubscriptionService
             throw $e;
         }
 
-        if (! empty($intent['provider']) && $intent['provider'] !== $order->provider) {
-            $order->update(['provider' => $intent['provider']]);
-        }
+        $order->update([
+            'order_key' => $intent['reference'],
+            'provider' => $intent['provider'] ?? $order->provider,
+        ]);
 
         return [
-            'order_key' => $reference,
+            'order_key' => $order->order_key,
             'amount_cop' => $amount,
             'checkout' => $intent['checkout'] ?? [],
+            // Solo viene poblado si se pidio flow="api" - lo necesita el
+            // frontend para tokenizar tarjeta directo con Wompi (nunca con
+            // este backend) antes de llamar chargeCheckout().
+            'payment_init' => $intent['payment_init'] ?? null,
         ];
+    }
+
+    /**
+     * API directa: reenvia al Core el cobro de una orden ya creada con
+     * flow="api" (tarjeta ya tokenizada por el frontend, o Nequi/PSE/Boton
+     * Bancolombia). Verifica que la orden le pertenezca a este negocio y
+     * siga pendiente ANTES de reenviar - mismo criterio de scoping que
+     * checkoutStatus(). El resultado del Core es solo el ACK inmediato del
+     * proveedor; la confirmacion real sigue llegando por
+     * PaymentsCoreWebhookController.
+     *
+     * @param  array<string, mixed>  $paymentMethod
+     * @return array<string, mixed>
+     */
+    public function chargeCheckout(Business $business, string $reference, array $paymentMethod): array
+    {
+        SubscriptionCheckoutOrder::where('business_id', $business->id)
+            ->where('order_key', $reference)
+            ->where('status', 'pending')
+            ->firstOrFail();
+
+        return $this->paymentsCore->charge($reference, $paymentMethod);
     }
 
     /**

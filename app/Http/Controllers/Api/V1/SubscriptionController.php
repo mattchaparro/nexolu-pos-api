@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\V1\ChargeSubscriptionCheckoutRequest;
 use App\Http\Requests\Api\V1\InitiateSubscriptionCheckoutRequest;
 use App\Services\SubscriptionService;
 use Illuminate\Http\JsonResponse;
@@ -46,6 +47,7 @@ class SubscriptionController extends Controller
                 $request->user()->business,
                 $request->user(),
                 $request->validated('redirect_url'),
+                $request->validated('flow') ?? 'widget',
             );
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 502);
@@ -59,5 +61,26 @@ class SubscriptionController extends Controller
         return response()->json(
             $this->subscriptions->checkoutStatus($request->user()->business, $reference)
         );
+    }
+
+    /**
+     * API directa (flow="api"): cobra una orden ya creada con una tarjeta
+     * tokenizada por el frontend, o con Nequi/PSE/Boton Bancolombia. El
+     * status devuelto se queda "pending" a proposito - la confirmacion real
+     * llega por PaymentsCoreWebhookController, nunca por esta respuesta.
+     */
+    public function charge(ChargeSubscriptionCheckoutRequest $request, string $reference): JsonResponse
+    {
+        try {
+            $result = $this->subscriptions->chargeCheckout(
+                $request->user()->business,
+                $reference,
+                $request->validated('payment_method'),
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 502);
+        }
+
+        return response()->json($result);
     }
 }

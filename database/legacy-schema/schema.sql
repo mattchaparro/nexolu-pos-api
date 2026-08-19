@@ -382,6 +382,45 @@ CREATE TABLE `appointments` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `business_payment_sources`
+--
+-- NOTA: tabla nueva (no viene del dump original de produccion). Guarda,
+-- por negocio, los `payment_source_id` de tarjeta/Nequi ya tokenizados
+-- para REUSO via Nexolu Payments Core -- "Fuentes de Pago" de Wompi (ver
+-- docs/PLAN_METODOS_PAGO_ALTERNOS.md seccion 9). Distinto de
+-- `subscription_checkout_orders` (que es un intento de cobro puntual, uno
+-- por referencia) y de `business_pos_payment_methods` (etiquetas manuales
+-- del POS de venta en tienda, sin pasarela). El Core NO persiste el
+-- `payment_source_id`, solo lo crea y lo devuelve -- este repo es quien
+-- decide guardarlo contra un negocio. `status='removed'` es un soft-delete
+-- local: Wompi no permite anular ("void") una fuente de pago normal
+-- (confirmado en sandbox, ver el plan), asi que "eliminar" del lado del
+-- usuario es solo dejar de ofrecerla aca, la fila nunca se borra. El
+-- legacy monolito no lee ni escribe esta tabla, mismo criterio que
+-- `business_pos_payment_methods` arriba.
+--
+
+DROP TABLE IF EXISTS `business_payment_sources`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `business_payment_sources` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `business_id` bigint unsigned NOT NULL,
+  `provider_slug` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'wompi',
+  `payment_source_id` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `type` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `label` varchar(120) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'active',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `business_payment_sources_provider_source_unique` (`provider_slug`,`payment_source_id`),
+  KEY `business_payment_sources_business_id_status_index` (`business_id`,`status`),
+  CONSTRAINT `business_payment_sources_business_id_foreign` FOREIGN KEY (`business_id`) REFERENCES `businesses` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `business_pos_payment_methods`
 --
 -- NOTA: tabla nueva (no viene del dump original de produccion), agregada

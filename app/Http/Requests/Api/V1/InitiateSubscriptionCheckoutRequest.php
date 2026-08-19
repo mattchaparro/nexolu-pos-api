@@ -19,6 +19,9 @@ class InitiateSubscriptionCheckoutRequest extends FormRequest
     {
         return [
             'redirect_url' => ['required', 'url'],
+            // 'widget' (default, legado) o 'api' (tokenizacion/Nequi/PSE/
+            // Boton Bancolombia embebidos - ver docs/PLAN_METODOS_PAGO_ALTERNOS.md).
+            'flow' => ['sometimes', 'string', 'in:widget,api'],
         ];
     }
 }
