@@ -91,6 +91,15 @@ En este punto el droplet está sano, con el catálogo base cargado, pero
 wizard de registro, WhatsApp obligatorio, etc). Los negocios que hoy están
 en SG siguen sin tocar.
 
+### 1.1. Medios de pago (Wompi / Nexolu Payments Core)
+
+Sin esto, la app queda arriba pero sin poder cobrar: el "negocio que se
+registra funciona normal" de arriba no cubre `PAYMENTS_CORE_API_KEY` — eso
+no se genera solo, es un paso de provisioning aparte. Runbook completo
+(Merchant, Integration en `environment=production`, credenciales reales de
+Wompi, webhook, verificación) en
+`nexolu-payments-core/docs/PRODUCTION_SETUP.md` — no se repite acá.
+
 ## 2. Deploys posteriores (código nuevo, sin negocios nuevos que migrar)
 
 Ya automatizado:
@@ -290,6 +299,8 @@ lista el catálogo sembrado.
 ## Referencias
 
 - `nexolu-infra/README.md` — infraestructura del droplet completa.
+- `nexolu-payments-core/docs/PRODUCTION_SETUP.md` — runbook de medios de
+  pago (Wompi/Payments Core) en producción, ver § 1.1.
 - `docs/CUTOVER_TODO.md` — deuda técnica que bloquea partes de la sección 4.
 - `docs/LOCAL_DATA_IMPORT.md` + `scripts/import-sg-data.sh` — el ensayo de
   4.1-4.4 contra SG (staging), ya construido y usable hoy en local.
