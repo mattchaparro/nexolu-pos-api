@@ -19,7 +19,7 @@ class LegacyNormalizePaymentMethodsTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_it_refuses_to_run_outside_the_local_environment(): void
+    public function test_it_refuses_to_run_outside_local_and_staging_environments(): void
     {
         $business = Business::factory()->create();
         $expense = Expense::factory()->create(['business_id' => $business->id, 'payment_method' => 'Efectivo']);
@@ -27,6 +27,32 @@ class LegacyNormalizePaymentMethodsTest extends TestCase
         $this->artisan('legacy:normalize-payment-methods')->assertFailed();
 
         $this->assertSame('Efectivo', $expense->fresh()->payment_method);
+    }
+
+    public function test_it_refuses_to_run_against_production(): void
+    {
+        app()->instance('env', 'production');
+
+        $business = Business::factory()->create();
+        $expense = Expense::factory()->create(['business_id' => $business->id, 'payment_method' => 'Efectivo']);
+
+        $this->artisan('legacy:normalize-payment-methods')->assertFailed();
+
+        $this->assertSame('Efectivo', $expense->fresh()->payment_method);
+    }
+
+    public function test_it_runs_against_staging_same_as_local(): void
+    {
+        app()->instance('env', 'staging');
+
+        $business = Business::factory()->create();
+        $expense = Expense::factory()->create(['business_id' => $business->id, 'payment_method' => 'Efectivo']);
+
+        $this->artisan('legacy:normalize-payment-methods')
+            ->expectsOutputToContain('expenses: 1 filas cambiaron.')
+            ->assertSuccessful();
+
+        $this->assertSame('cash', $expense->fresh()->payment_method);
     }
 
     public function test_dry_run_reports_pending_changes_without_writing(): void

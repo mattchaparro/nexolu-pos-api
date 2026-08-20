@@ -144,15 +144,40 @@ hace la vez que sí sea con la producción real (§ 4.5).
 ### 4.1. Importar los datos (SG para ensayo; producción real cuando se decida 4.5)
 
 ```bash
-# mysqldump --no-create-info, mismo patron que scripts/import-sg-data.sh
-# (ver ese script para el detalle completo: tablas excluidas, etc.)
-mysqldump -h<host> -u<user> -p<db> --no-create-info > dump-$(date +%F).sql
+# mysqldump --no-create-info --complete-insert, mismo patron que
+# scripts/import-sg-data.sh (ver ese script para el detalle completo: tablas
+# excluidas, etc.)
+#
+# --complete-insert es OBLIGATORIO, no opcional (verificado en vivo el
+# 2026-08-20 contra el droplet SG real): mysqldump sin esa flag genera
+# INSERTs posicionales (`INSERT INTO tabla VALUES (...)`, sin nombrar
+# columnas). El origen (legacy o un dump viejo) casi seguro tiene MENOS
+# columnas que schema.sql actual (client_id, tablas nuevas, etc. - ver §
+# 4.2) porque este repo lo sigue extendiendo. Un INSERT posicional con
+# distinto conteo de columnas que la tabla destino falla directo con
+# "Column count doesn't match value count". Con --complete-insert cada
+# INSERT nombra sus columnas explicitamente, asi que las columnas nuevas
+# que el origen no tiene simplemente quedan en su DEFAULT (normalmente NULL)
+# sin romper nada.
+mysqldump -h<host> -u<user> -p<pass> --no-create-info --complete-insert \
+  --single-transaction --quick --skip-triggers \
+  --ignore-table=<db>.sessions --ignore-table=<db>.cache --ignore-table=<db>.cache_locks \
+  --ignore-table=<db>.personal_access_tokens --ignore-table=<db>.password_resets \
+  --ignore-table=<db>.failed_jobs --ignore-table=<db>.migrations --ignore-table=<db>.jobs \
+  <db> | gzip > dump-$(date +%F).sql.gz
 
-# En el droplet nuevo, contra una base ya con la estructura de schema.sql
-# cargada (nunca --no-create-info sobre una base vacia sin estructura):
-docker compose exec -T mysql mysql -unexolu -p<MYSQL_APP_PASSWORD> pos_saas \
-  < dump-$(date +%F).sql
+# En el droplet nuevo, contra una base YA VACIADA y con la estructura de
+# schema.sql recien cargada (nunca --no-create-info sobre una base vacia
+# sin estructura, y nunca sobre una base con datos viejos encima - dropear
+# y recrear la base antes de este paso si no es la primera carga):
+gunzip -c dump-$(date +%F).sql.gz | docker compose exec -T mysql mysql -unexolu -p<MYSQL_APP_PASSWORD> pos_saas
 ```
+
+**Nunca sacar este dump del lado del cliente con la contraseña en texto
+plano en el historial de shell/logs** - correr el `mysqldump` completo
+DENTRO de una sesion ssh al servidor origen, leyendo la password desde su
+propio `.env` en el mismo comando, para que el secreto nunca viaje ni quede
+impreso en ningun lado fuera de ese servidor.
 
 ### 4.2. Poner al día el esquema
 
@@ -183,14 +208,41 @@ paso; eso es 4.6.
 Ya construido: `php artisan legacy:normalize-payment-methods` (con
 `--dry-run`) — ver el docblock de
 `App\Console\Commands\LegacyNormalizePaymentMethods` y
-`docs/LOCAL_DATA_IMPORT.md`. **Corre solo con `APP_ENV=local`** — se niega
-a ejecutarse contra cualquier otro ambiente, así que **no sirve tal cual
-para el droplet de producción/staging** (que corren con `APP_ENV=production`
-o similar). Si se necesita para el droplet, hay que decidir primero si ese
-guard se relaja (y bajo qué condición) o si se construye una variante
-aparte con su propio guard — no relajar el actual sin discutirlo, es la
-única barrera hoy entre este comando y correr contra datos reales por
-accidente.
+`docs/LOCAL_DATA_IMPORT.md`.
+
+**Guard actualizado (2026-08-20):** corre con `APP_ENV=local` **o**
+`APP_ENV=staging` (antes solo `local`). Se decidió ampliarlo porque este
+mismo comando se va a correr también contra el droplet de producción nueva
+el día del cutover real (§ 4.7) — pero **siempre contra una base de
+respaldo separada** (`new-pos-saas`, nunca la `pos_saas` que sirve tráfico
+real), con ese droplet puesto en `APP_ENV=staging` para ese ensayo puntual.
+**El guard protege el ambiente, no el nombre de la base** — sigue siendo
+responsabilidad de quien lo corre verificar a mano que `DB_DATABASE` apunta
+a la copia y no a la base viva antes de correr sin `--dry-run`. Sigue
+rechazando `APP_ENV=production` sin excepción.
+
+**Corrido de verdad contra el droplet `nexolu-pos-sg` (2026-08-20), con un
+dump completo de producción real bajado ese mismo día** (no un dump viejo -
+ver § 4.5bis): resultado idéntico al `--dry-run` previo, y **el mismo total
+de `sales`** que la verificación de 2026-08-15 documentada abajo (8,988) -
+buena señal de reproducibilidad, el problema sigue intacto en producción:
+
+```
+sales: 8988 filas cambiaron.
+sale_payment_splits: 874 filas cambiaron.
+receivables: 35 filas cambiaron.
+service_payments: 0 filas cambiaron.
+expenses: 135 filas cambiaron.
+Total: 10032 filas normalizadas.
+```
+
+Verificación post-normalización: la app siguió respondiendo 200 en `/up`
+después de correrlo, y es **normal y esperado** seguir viendo valores como
+`efectivo`/`cash` conviviendo en la misma tabla `sales` tras la
+normalización — cada negocio tiene su propio vocabulario configurado
+(`Business::normalizePaymentMethodId()` resuelve por negocio, no hay un
+único valor canónico global). No confundir eso con que la normalización no
+corrió.
 
 Esto es **distinto** de "migrar el catálogo" (§ 4.6/ítem 5) - este comando
 unifica el vocabulario dentro de las tablas ya compartidas
@@ -213,6 +265,83 @@ negocios tenían miles de ventas menos en SG (ej. negocio 6: 6,802 en SG vs.
 completo. **Conclusión: un ensayo que da "0 filas a normalizar" contra SG
 no es evidencia de que producción esté limpia** — hay que verificar contra
 un dump de producción real antes de confiar en un resultado de SG.
+
+### 4.5bis. Bitácora del primer ensayo real: droplet `nexolu-pos-sg` (2026-08-20)
+
+Primer ensayo end-to-end de esta sección, ya no en un laptop sino en un
+droplet real de DigitalOcean (`nexolu-pos-sg`, `159.223.133.156`, región
+`nyc1`). Hallazgos operativos que van a repetirse el día del cutover real si
+no se tienen en cuenta:
+
+**Tamaño del droplet — 512MB no alcanza, 1GB tampoco, 2GB recién queda
+estable.** Se probaron los tres en el mismo día:
+- `s-1vcpu-512mb-10gb` ($4/mes): MySQL murió por OOM literalmente al
+  inicializar, antes de poder arrancar.
+- `s-1vcpu-1gb` ($6/mes): alcanza para levantar todo, pero con los 6-8
+  contenedores corriendo a la vez (mysql + redis + pos-web + pos-queue +
+  pos-scheduler + frontend) el load average llegó a **52** en 1 vCPU y
+  MySQL volvió a morir por OOM dos veces más bajo carga normal de uso (no
+  picos, solo operación normal: un `docker compose build` + recarga de
+  schema). Tres saturaciones completas (SSH sin responder varios minutos)
+  en la misma sesión de trabajo.
+- `s-1vcpu-2gb` ($12/mes): con esto el load volvió a ~1 después de levantar
+  el stack completo (`pos-queue`/`pos-scheduler` incluidos, sin necesidad de
+  pararlos) y quedó **1.3GB libres** de margen. Este es el tamaño mínimo
+  recomendado para el droplet de SG a partir de ahora.
+
+**Para el droplet de producción real, esto confirma
+empíricamente — no es solo una recomendación teórica — el "2vCPU/4GB piso
+razonable" que ya dice `nexolu-infra/README.md`.** No repetir el error de
+subestimar el tamaño para ahorrar unos dólares/mes.
+
+**Bug real encontrado: `storage/logs/laravel.log` queda `root:root` en vez
+de `www-data:www-data`.** Causa: `docker compose exec` sin `-u www-data`
+(el default es root) tocó el archivo antes que PHP-FPM (que corre como
+`www-data`) — el volumen (`pos_storage`) no hereda el `chown` que sí hace
+el `Dockerfile` en la imagen, porque un volumen nombrado nuevo pisa el
+contenido de la imagen en el primer mount. Consecuencia: cualquier
+excepción real durante una request queda **sin loguear**, y la respuesta es
+un 500 genérico sin rastro — perdimos tiempo real pensando que un 500 no
+tenía causa. Fix aplicado: `docker exec <container> chown -R www-data:www-data
+storage`. **Pendiente para no repetirlo:** o bien `deploy.sh` corre ese
+`chown` como parte del arranque (después de `docker compose up`, antes de
+dar el deploy por terminado), o el `Dockerfile`/entrypoint lo hace en cada
+arranque del contenedor (más robusto, sobrevive a cualquier `exec` futuro
+corrido por error como root).
+
+**Gotcha de Docker Compose: `restart` no relee `env_file`.** Cambiar una
+variable en el `.env` de un servicio y correr `docker compose restart
+<servicio>` reinicia el proceso con el entorno **viejo** con el que se creó
+el contenedor — hace falta `docker compose up -d --force-recreate
+<servicio>` (o `up -d` a secas, si Compose detecta un cambio real de
+config) para que tome el `.env` actualizado. Costó un ciclo entero de
+debugging (`VITE_API_BASE_URL` viejo sobreviviendo varios "restarts").
+
+**`--complete-insert` en el dump de datos** — ver el fix ya aplicado en §
+4.1 arriba. Encontrado al cargar un dump real de producción contra el
+`schema.sql` actual: sin esa flag, cualquier tabla que este repo haya
+extendido desde que se capturó el dump rompe la carga entera.
+
+**nginx/certbot con subdominios `-sg` para el ensayo:** para no inventar
+dominios de prueba (`.test`) ni exponer puertos sueltos por IP, se usó el
+mismo dominio real (`nexolu.co`) con subdominios `-sg`:
+`api-sg.nexolu.co`, `ia-sg.nexolu.co`, `comms-sg.nexolu.co`,
+`payments-sg.nexolu.co`, `new-pos-sg.nexolu.co` — un solo `nginx` en el
+droplet enrutando por `server_name`, un `certbot --nginx -d <dominio>` por
+cada uno (certificados independientes, no wildcard). Mismo patrón que usan
+los 4 `nginx/*.conf` de `nexolu-infra` para producción, solo con el sufijo
+`-sg`. Ajustes que NO se subieron al repo compartido (son específicos de
+este droplet, viven solo ahí): `docker-compose.override.yml` con
+`innodb-buffer-pool-size` bajo (96M) para el tamaño de RAM, y el servicio
+`frontend` corriendo el dev server de Vite (`nexolu-pos-front` todavía no
+tiene `Dockerfile`/`deploy.sh` propio — pendiente para cuando ese repo esté
+listo para producción real, ver `nexolu-infra/README.md`).
+
+**El dump de producción se sacó del droplet legacy (`pos.nexolu.co`,
+`134.122.116.201`) por SSH, de solo lectura, sin tocar la base viva** — el
+`mysqldump` corrió íntegro dentro de una sesión ssh a ese servidor, la
+contraseña se leyó de su propio `.env` en el mismo comando y nunca viajó ni
+quedó impresa fuera de ahí (ver advertencia en § 4.1).
 
 ### 4.6. Migrar negocios al catálogo (ítem 5 de CUTOVER_TODO)
 
@@ -237,6 +366,13 @@ necesidad de código especial). Los 9 activos migran limpio, 0 sin match —
 el único hueco real (`datafono`, en 2 de los 9) se cerró agregándolo al
 catálogo base (`PosPaymentMethodSeeder`) en vez de ampliar el matching.
 
+**Re-verificado end-to-end en el droplet `nexolu-pos-sg` (2026-08-20),**
+después de 4.4 y con `PosPaymentMethodSeeder` recién corrido — mismo
+resultado exacto: 9 negocios migrados (3, 5, 6, 7, 8, 11, 15, 17, 18), 0 sin
+match, 30 filas totales en `business_pos_payment_methods` (suma de medios
+por negocio: 3+4+3+4+3+3+5+2+3). Nota: el comando **no tiene** una opción
+`--force` — correr sin flags (no `--dry-run`) alcanza, `payment-methods:migrate-catalog --force` falla con "The --force option does not exist".
+
 ### 4.6bis. Vincular sales/layaways/receivables a Client (ítem 4 de CUTOVER_TODO)
 
 `client_id` ya existe en `sales`/`layaways`/`receivables` (columna nullable,
@@ -255,6 +391,18 @@ como ambiguo y se deja intacto. Mismo patrón que 4.6: no bloqueado a
 Al aplicar el `ALTER TABLE` en un droplet nuevo: ya viene en `schema.sql`,
 así que solo hace falta correr `clients:backfill-links` después de importar
 los datos reales (4.1) — no hay `ALTER` manual pendiente ahí.
+
+**Verificado en `nexolu-pos-sg` (2026-08-20)** contra el dump real de
+producción bajado ese día: 3 filas vinculadas (negocio 5/layaways: 1;
+negocio 7/sales: 2), 1 ambigua dejada intacta correctamente (teléfono
+compartido por 2+ clients en negocio 7/sales). Número bajo, y es
+esperado: producción (legacy) no tiene la columna `client_id` en absoluto
+(ver § 4.1/4.5bis, es por lo que hizo falta `--complete-insert`), así que
+**19,870 de 19,872 ventas** (prácticamente todas) llegaron con `client_id`
+NULL. El backfill solo pudo vincular 3 porque la tabla `clients` de este
+dump tiene apenas **95 registros** — la enorme mayoría de ventas son de
+clientes sin cuenta/registro de `Client` asociado (venta de mostrador sin
+captura de datos), no porque el backfill haya fallado.
 
 ### 4.7. Decisiones abiertas (bloquean terminar esta sección)
 

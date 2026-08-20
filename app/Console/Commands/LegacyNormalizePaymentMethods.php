@@ -15,9 +15,19 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Unifica el vocabulario de payment_method (ver CUTOVER_TODO.md #1) a la
- * variante id-minuscula, SOLO sobre una copia local/dev de datos - nunca
- * contra la base compartida de staging o produccion, que el monolito legacy
- * sigue escribiendo (por eso el fix esta marcado "pendiente" alla).
+ * variante id-minuscula, SOLO sobre una COPIA de datos (local/dev, o un
+ * ensayo en staging como SG) - nunca contra la base que sirve trafico real
+ * del monolito legacy, que la sigue escribiendo (por eso el fix esta
+ * marcado "pendiente" alla).
+ *
+ * Guard (2026-08-20): se amplio de solo 'local' a 'local'+'staging' porque
+ * el mismo comando se va a correr contra el droplet de produccion nueva el
+ * dia del cutover real - pero SIEMPRE contra una base de respaldo separada
+ * (ver PRODUCTION_CUTOVER.md § 4.1: `new-pos-saas`, nunca la `pos_saas` que
+ * sirve trafico), con ese droplet corriendo APP_ENV=staging para ese
+ * ensayo puntual. El guard protege el ambiente (nunca 'production'), no
+ * garantiza por si solo que el DB_DATABASE correcto este seleccionado -
+ * verificar eso a mano antes de correr sin --dry-run.
  *
  * A diferencia de lo que recomienda CUTOVER_TODO.md, esta normalizacion
  * queda deliberadamente desalineada de la validacion actual de
@@ -25,16 +35,16 @@ use Illuminate\Support\Facades\DB;
  * es una decision consciente para tener datos locales consistentes con los
  * que ya usan sales/receivables, a costa de que un `POST /v1/expenses`
  * nuevo contra esta misma copia local siga escribiendo capitalizado. No
- * "arregla" el bug documentado, solo lo aisla a la copia local importada.
+ * "arregla" el bug documentado, solo lo aisla a la copia importada.
  */
 #[Signature('legacy:normalize-payment-methods {--dry-run : Solo reporta cuantas filas cambiarian, sin escribir}')]
-#[Description('Normaliza payment_method a id-minuscula en datos importados de legacy (solo local/dev)')]
+#[Description('Normaliza payment_method a id-minuscula en datos importados de legacy (local o staging, nunca production)')]
 class LegacyNormalizePaymentMethods extends Command
 {
     public function handle(): int
     {
-        if (! app()->environment('local')) {
-            $this->error('Este comando solo corre con APP_ENV=local. Nunca contra staging/produccion (ver docblock de la clase).');
+        if (! app()->environment(['local', 'staging'])) {
+            $this->error('Este comando solo corre con APP_ENV=local o staging, y siempre contra una copia de datos - nunca contra production (ver docblock de la clase).');
 
             return self::FAILURE;
         }
