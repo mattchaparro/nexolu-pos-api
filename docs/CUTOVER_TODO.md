@@ -396,3 +396,43 @@ suficiente en la práctica, no solo en teoría.
 - [x] Comando construido y probado. Queda pendiente solo la decisión de
   **cuándo/cómo correrlo contra producción real** (no una copia aislada) —
   ver `docs/PRODUCTION_CUTOVER.md` § 4.5, todavía sin resolver.
+
+---
+
+## 6. `clients.identification` (cédula) - columna nueva agregada
+
+**Origen:** 2026-08-20, a pedido del usuario probando SG - reportó que el
+buscador de cliente (ventas/apartados/fiados/servicios) no dejaba encontrar
+un cliente ya existente por cédula, solo por nombre/teléfono/correo, y que
+`clients` no tenía dónde guardarla (la cédula solo vivía como texto suelto en
+`sales.customer_identification`/`receivables.customer_identification`, nunca
+en el directorio de clientes real).
+
+**Por qué se agregó igual que `client_id` (ítem 4):** mismo tipo de riesgo -
+columna nueva, nullable, que el legacy nunca va a tocar ni leer. Se auditó
+`pos-saas-legacy` completo (`ClientsController`, `ServiceOrdersController`,
+`AppointmentsController` en Admin/Employee) y **todos** los `Client::create()`
+usan arrays con columnas nombradas (fillable: `business_id, name, phone,
+email, notes`), ninguno posicional ni `SELECT *`/`INSERT ... VALUES` crudo -
+agregar una columna aditiva no rompe nada del lado legacy.
+
+**Hecho:**
+
+```sql
+ALTER TABLE clients ADD COLUMN identification VARCHAR(20) NULL AFTER phone;
+```
+
+Aplicado a mano contra `pos_saas` y `testing` locales, y reflejado en
+`schema.sql` en el mismo commit. `Client` (fillable), `StoreClientRequest`/
+`UpdateClientRequest` (validación `nullable|string|max:20`), `ClientResource`,
+`ClientController::search()`/`index()` (ahora matchean `identification` igual
+que `name`/`phone`/`email`) y `ClientFactory` ya lo soportan. Frontend:
+`ClientFormModal.vue`/`ClientsView.vue` (CRUD completo) y
+`ClientQuickAssociate.vue` (alta rápida desde ventas/apartados/fiados) tienen
+el campo; `useSaleCheckout.applyClient()` prellena la cédula al asociar un
+cliente existente. Suite completa verde (1069/1070 - el único fallo es
+preexistente, ajeno a este cambio, ver `BusinessTest::test_owner_can_update_email_branding...`).
+
+- [ ] Pendiente la ejecución operativa: correr el mismo `ALTER TABLE` contra
+  SG (`api-sg.nexolu.co`) y, cuando corresponda, contra producción real -
+  mismo tipo de decisión de timing que el ítem 4.

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['business_id', 'name', 'phone', 'email', 'notes'])]
+#[Fillable(['business_id', 'name', 'phone', 'identification', 'email', 'notes'])]
 class Client extends Model
 {
     use BelongsToBusiness, HasFactory, SoftDeletes;

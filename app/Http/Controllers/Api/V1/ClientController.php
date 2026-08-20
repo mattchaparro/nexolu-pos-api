@@ -26,7 +26,8 @@ class ClientController extends Controller
             $query->where(function ($sub) use ($term) {
                 $sub->where('name', 'like', $term)
                     ->orWhere('phone', 'like', $term)
-                    ->orWhere('email', 'like', $term);
+                    ->orWhere('email', 'like', $term)
+                    ->orWhere('identification', 'like', $term);
             });
         }
 
@@ -70,10 +71,11 @@ class ClientController extends Controller
             ->where(function ($q) use ($term) {
                 $q->where('name', 'like', $term)
                     ->orWhere('phone', 'like', $term)
-                    ->orWhere('email', 'like', $term);
+                    ->orWhere('email', 'like', $term)
+                    ->orWhere('identification', 'like', $term);
             })
             ->limit(10)
-            ->get(['id', 'name', 'phone', 'email']);
+            ->get(['id', 'name', 'phone', 'identification', 'email']);
 
         return response()->json($clients);
     }

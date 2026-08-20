@@ -44,6 +44,22 @@ class ClientTest extends TestCase
             ->assertJsonFragment(['name' => 'Maria Perez']);
     }
 
+    public function test_user_can_search_clients_by_identification(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        Client::factory()->create(['business_id' => $business->id, 'name' => 'Maria Perez', 'identification' => '1002003004']);
+        Client::factory()->create(['business_id' => $business->id, 'name' => 'Carlos Ruiz', 'identification' => '5006007008']);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/clients/search?q=1002003004')
+            ->assertOk()
+            ->assertJsonCount(1)
+            ->assertJsonFragment(['name' => 'Maria Perez']);
+    }
+
     public function test_user_can_create_a_client(): void
     {
         $business = Business::factory()->create();
@@ -53,10 +69,11 @@ class ClientTest extends TestCase
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/clients', [
             'name' => 'Nuevo Cliente',
             'phone' => '3001234567',
+            'identification' => '1234567890',
         ]);
 
-        $response->assertCreated()->assertJsonPath('name', 'Nuevo Cliente');
-        $this->assertDatabaseHas('clients', ['name' => 'Nuevo Cliente', 'business_id' => $business->id]);
+        $response->assertCreated()->assertJsonPath('name', 'Nuevo Cliente')->assertJsonPath('identification', '1234567890');
+        $this->assertDatabaseHas('clients', ['name' => 'Nuevo Cliente', 'business_id' => $business->id, 'identification' => '1234567890']);
     }
 
     public function test_client_creation_is_blocked_past_the_plan_limit(): void
