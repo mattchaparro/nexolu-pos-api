@@ -119,8 +119,11 @@ vez.
 
 ## 3. Qué NO hacer nunca
 
-- `php artisan migrate` — el esquema no viene de migraciones, ver
-  `CLAUDE.md` y `database/migrations/` (vacío a propósito).
+- `php artisan migrate` **antes de** correr `php artisan migrate:baseline` en
+  este ambiente — ver "Database & migrations" en `CLAUDE.md`. Una vez el
+  baseline está sembrado (fila en `migrations` marcando `schema.sql` como ya
+  aplicado), `migrate` es seguro y es el camino normal para cualquier cambio
+  de esquema nuevo.
 - Correr la `DatabaseSeeder` completa (`db:seed` sin `--class`) contra
   producción — crea un negocio y un superadmin de prueba con credenciales
   hardcodeadas en el repo.

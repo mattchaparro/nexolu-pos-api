@@ -1,5 +1,12 @@
 # Schema patches
 
+> **Congelado desde 2026-08-20.** Este sistema quedó reemplazado por
+> migraciones reales de Laravel (ver "Database & migrations" en
+> `CLAUDE.md` y `app/Console/Commands/SeedMigrationsBaseline.php`). Los
+> archivos que ya están acá se quedan como historial - no los borres, y
+> no crees uno nuevo: un cambio de esquema nuevo (tabla nueva o `ALTER`
+> sobre una existente) va con `php artisan make:migration`.
+
 `database/legacy-schema/schema.sql` es la fuente de verdad, pero solo se carga
 completo **una vez** por ambiente (`mysql ... < schema.sql`, nunca
 `php artisan migrate` — ver `CLAUDE.md`). Cuando una tabla 100% nueva se
