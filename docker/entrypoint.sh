@@ -1,6 +1,20 @@
 #!/bin/sh
 set -e
 
+# El chown -R www-data:www-data del Dockerfile solo cubre lo que existe AL
+# BUILD (directorios vacios) - `storage/` vive en un volumen nombrado
+# (pos_storage en nexolu-infra/docker-compose.yml) que persiste entre
+# builds, y cualquier archivo NUEVO dentro (ej. storage/logs/laravel.log,
+# creado la primera vez que algo escribe ahi) hereda el usuario de quien lo
+# creo, no el del directorio padre. Si eso pasa siendo root (ej. `docker
+# compose exec` sin `-u www-data`, como corren hoy los artisan de
+# deploy.sh), PHP-FPM (que corre como www-data) despues no puede escribir
+# su propio log - una excepcion real queda sin loguear y la request explota
+# en un 500 sin rastro (visto en vivo el 2026-08-20, costo horas de debug).
+# Reafirmar el dueno en cada arranque del contenedor es robusto contra
+# cualquier causa futura de este mismo problema, no solo la de hoy.
+chown -R www-data:www-data /var/www/html/storage
+
 # NUNCA se corre `php artisan migrate` aca -- el esquema de esta app viene
 # completo de database/legacy-schema/schema.sql, cargado UNA sola vez a mano
 # contra MySQL (ver deploy/README.md paso "Cargar el esquema"). Un

@@ -28,7 +28,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && docker-php-ext-install pdo_mysql zip opcache \
     && pecl install redis && docker-php-ext-enable redis \
     && apt-get purge -y --auto-remove libzip-dev libpng-dev libonig-dev \
+    && apt-get install -y --no-install-recommends libzip4 \
     && rm -rf /var/lib/apt/lists/*
+# `apt-get purge --auto-remove libzip-dev` se lleva de arrastre libzip4 (la
+# libreria RUNTIME, no solo la de desarrollo) porque en ese punto nada mas
+# la referencia a nivel de paquetes - aunque la extension `zip.so` que
+# `docker-php-ext-install` acaba de compilar SI la necesita para cargar en
+# runtime. Sin este re-install explicito, PHP arranca con
+# "Unable to load dynamic library 'zip' ... libzip.so.4: cannot open shared
+# object file" (visto en vivo el 2026-08-20) - silencioso en el healthcheck
+# basico, rompe cualquier feature que use ZipArchive.
 
 # opcache en produccion: APP_ENV=production ya evita el filesystem stat en
 # cada request si opcache.validate_timestamps=0, pero eso exige reiniciar
