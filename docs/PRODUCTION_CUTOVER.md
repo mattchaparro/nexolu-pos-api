@@ -343,6 +343,26 @@ listo para producción real, ver `nexolu-infra/README.md`).
 contraseña se leyó de su propio `.env` en el mismo comando y nunca viajó ni
 quedó impresa fuera de ahí (ver advertencia en § 4.1).
 
+**Deploy keys de GitHub: una por repo, nunca la misma en dos repos.**
+Para que `deploy.sh`/`deploy-menu.sh` puedan hacer `git pull` sin depender
+de una sesión SSH humana con agent forwarding, el droplet necesita su
+propia identidad de GitHub — pero **GitHub rechaza agregar la misma clave
+pública como Deploy Key en más de un repo** ("Key is already in use").
+Hace falta una clave ed25519 distinta por repo (`nexolu-infra`,
+`nexolu-pos-api`, `nexolu-ia-core`, `nexolu-comms-api`,
+`nexolu-payments-core`), cada una agregada solo de lectura (sin "Allow
+write access") en `Settings → Deploy keys` de su propio repo. Para que
+cada `git pull` use la clave correcta sin tocar la URL del remote ni
+`~/.ssh/config` global, se configura por repo:
+```bash
+cd /opt/nexolu/<repo>
+git config core.sshCommand "ssh -i ~/.ssh/deploy_keys/<repo> -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+```
+`StrictHostKeyChecking=accept-new` (no `=no`) porque a diferencia de la
+key de admin→SG (`app/infra/ssh_runner.py` en `nexolu-admin`, que sí usa
+`=no` porque SG se recrea seguido y cambia de host key), acá el destino es
+siempre `github.com`, que no cambia — no hace falta bajar la guardia ahí.
+
 ### 4.6. Migrar negocios al catálogo (ítem 5 de CUTOVER_TODO)
 
 Ya construido: `php artisan payment-methods:migrate-catalog` (con
