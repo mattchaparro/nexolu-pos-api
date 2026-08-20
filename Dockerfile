@@ -21,23 +21,25 @@ COPY . .
 RUN composer dump-autoload --optimize --no-dev
 
 # ---- Etapa 3: runtime (PHP-FPM + Nginx + Supervisor en un solo contenedor) ----
-FROM php:8.4-fpm-bookworm
+# Alpine en vez de bookworm (Debian) a proposito: mismo runtime, imagen
+# final 907MB -> 293MB (-68%), verificado en vivo el 2026-08-20 (build +
+# arranque real de nginx/php-fpm via supervisor + entrypoint.sh completo +
+# las 4 extensiones cargando bien, contra este mismo Dockerfile). git y
+# unzip NO se instalan aca: eran solo del build (`git pull`/`composer`
+# corren en el host y en la etapa `vendor` respectivamente), nada en
+# runtime (entrypoint.sh, nginx.conf, supervisord.conf) los usa.
+FROM php:8.4-fpm-alpine
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        nginx supervisor git unzip libzip-dev libpng-dev libonig-dev \
+RUN apk add --no-cache nginx supervisor libzip \
+    && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS libzip-dev libpng-dev oniguruma-dev \
     && docker-php-ext-install pdo_mysql zip opcache \
     && pecl install redis && docker-php-ext-enable redis \
-    && apt-get purge -y --auto-remove libzip-dev libpng-dev libonig-dev \
-    && apt-get install -y --no-install-recommends libzip4 \
-    && rm -rf /var/lib/apt/lists/*
-# `apt-get purge --auto-remove libzip-dev` se lleva de arrastre libzip4 (la
-# libreria RUNTIME, no solo la de desarrollo) porque en ese punto nada mas
-# la referencia a nivel de paquetes - aunque la extension `zip.so` que
-# `docker-php-ext-install` acaba de compilar SI la necesita para cargar en
-# runtime. Sin este re-install explicito, PHP arranca con
-# "Unable to load dynamic library 'zip' ... libzip.so.4: cannot open shared
-# object file" (visto en vivo el 2026-08-20) - silencioso en el healthcheck
-# basico, rompe cualquier feature que use ZipArchive.
+    && apk del .build-deps
+# Mismo patron que el purge de Debian que reemplaza (ver git blame): `apk
+# add --no-cache libzip` ANTES del build-deps deja la libreria runtime
+# instalada por fuera del grupo virtual, asi que `apk del .build-deps`
+# (que se lleva libzip-dev) nunca se lleva de arrastre el `.so` que la
+# extension `zip.so` necesita para cargar.
 
 # opcache en produccion: APP_ENV=production ya evita el filesystem stat en
 # cada request si opcache.validate_timestamps=0, pero eso exige reiniciar
@@ -51,7 +53,7 @@ COPY --from=assets /app/public/build ./public/build
 
 RUN chown -R www-data:www-data storage bootstrap/cache
 
-COPY docker/nginx.conf /etc/nginx/sites-enabled/default
+COPY docker/nginx.conf /etc/nginx/http.d/default.conf
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
