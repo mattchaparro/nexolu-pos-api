@@ -31,10 +31,19 @@ class RecipeSaleTest extends TestCase
 
     private function recipeProduct(Business $business, array $ingredientsWithQuantity): Product
     {
+        // stock=0, no 999: es lo que ProductService::create() de verdad deja
+        // en un producto con receta (columna fantasma, nunca se toca - ver
+        // ProductAvailability). Antes este helper usaba 999, que enmascaraba
+        // el bug real: ValidatesSaleItems comparaba contra products.stock
+        // crudo en vez de ProductAvailability::effectiveStock(), asi que
+        // cualquier producto con receta con su stock=0 de verdad (todos, en
+        // produccion) rechazaba la venta con "stock insuficiente" sin
+        // importar el insumo disponible - este test suite pasaba igual
+        // porque 999 nunca disparaba esa rama.
         $product = Product::factory()->create([
             'business_id' => $business->id,
             'track_stock' => true,
-            'stock' => 999,
+            'stock' => 0,
         ]);
 
         foreach ($ingredientsWithQuantity as [$ingredient, $quantity]) {
@@ -58,8 +67,10 @@ class RecipeSaleTest extends TestCase
 
         $response->assertCreated();
 
-        // products.stock nunca se toca para un producto con receta.
-        $this->assertSame(999, $burger->fresh()->stock);
+        // products.stock nunca se toca para un producto con receta - sigue
+        // en 0 (el default de creacion), y la venta igual se permite porque
+        // la disponibilidad real sale de los ingredientes.
+        $this->assertSame(0, $burger->fresh()->stock);
         $this->assertSame('14.00', (string) $bread->fresh()->stock);
         $this->assertSame('7.00', (string) $cheese->fresh()->stock);
 

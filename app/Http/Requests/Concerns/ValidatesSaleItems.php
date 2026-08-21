@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Concerns;
 
 use App\Models\Product;
+use App\Support\ProductAvailability;
 use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Validation\Validator;
 
@@ -49,8 +50,19 @@ trait ValidatesSaleItems
             return;
         }
 
+        // ingredientsEnabled + with('ingredients'): mismo criterio que
+        // ProductAvailability::forBusiness() - sin esto, effectiveStock()
+        // no puede calcular el stock real de un producto con receta (queda
+        // en products.stock, que para esos productos siempre es 0, ver el
+        // docblock de ProductAvailability). Antes este metodo comparaba
+        // directo contra esa columna fantasma: cualquier producto con
+        // receta con track_stock=true rechazaba la venta con "stock
+        // insuficiente" sin importar cuanto insumo hubiera disponible.
+        $ingredientsEnabled = (bool) $this->user()?->business?->hasFeature('ingredients');
+
         $products = Product::where('business_id', $this->user()?->business_id)
             ->whereIn('id', collect($items)->pluck('product_id')->filter()->values())
+            ->when($ingredientsEnabled, fn ($q) => $q->with('ingredients'))
             ->get()
             ->keyBy('id');
 
@@ -70,10 +82,11 @@ trait ValidatesSaleItems
             }
 
             $quantity = (int) ($item['quantity'] ?? 0);
-            if ($product->track_stock && $quantity > $product->stock) {
+            $availableStock = ProductAvailability::effectiveStock($product, $ingredientsEnabled);
+            if ($product->track_stock && $quantity > $availableStock) {
                 $validator->errors()->add(
                     "items.{$i}.quantity",
-                    'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $product->stock.').'
+                    'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $availableStock.').'
                 );
             }
 
