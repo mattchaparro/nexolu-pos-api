@@ -30,11 +30,16 @@ RUN composer dump-autoload --optimize --no-dev
 # runtime (entrypoint.sh, nginx.conf, supervisord.conf) los usa.
 FROM php:8.4-fpm-alpine
 
-RUN apk add --no-cache nginx supervisor libzip \
+RUN apk add --no-cache nginx supervisor libzip tzdata \
     && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS libzip-dev libpng-dev oniguruma-dev \
     && docker-php-ext-install pdo_mysql zip opcache \
     && pecl install redis && docker-php-ext-enable redis \
     && apk del .build-deps
+# tzdata: sin esto, TZ=America/Bogota (ver nexolu-infra/docker-compose.yml)
+# no resuelve a nada - Alpine no trae la base de datos de zonas horarias
+# por defecto. Laravel/Carbon ya funcionan bien sin esto (traen su propia
+# tabla de timezones vía ext-date), pero `date` de shell, logs de
+# supervisor/nginx, y cualquier cosa a nivel de SO seguian en UTC.
 # Mismo patron que el purge de Debian que reemplaza (ver git blame): `apk
 # add --no-cache libzip` ANTES del build-deps deja la libreria runtime
 # instalada por fuera del grupo virtual, asi que `apk del .build-deps`
