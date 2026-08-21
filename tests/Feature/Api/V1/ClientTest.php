@@ -76,6 +76,55 @@ class ClientTest extends TestCase
         $this->assertDatabaseHas('clients', ['name' => 'Nuevo Cliente', 'business_id' => $business->id, 'identification' => '1234567890']);
     }
 
+    public function test_creating_a_client_with_the_same_name_and_phone_as_an_existing_one_is_rejected(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        Client::factory()->create(['business_id' => $business->id, 'name' => 'Carlos Ruiz', 'phone' => '3001112222']);
+
+        // Mayusculas/minusculas distintas, mismo nombre - el chequeo es
+        // case-insensitive.
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/clients', ['name' => 'CARLOS RUIZ', 'phone' => '3001112222'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('name');
+
+        // Mismo nombre, otro negocio - no es duplicado (scoping por negocio).
+        $otherBusiness = Business::factory()->create();
+        $otherUser = User::factory()->create(['business_id' => $otherBusiness->id]);
+        $otherUser->assignRole('admin');
+        $this->actingAs($otherUser, 'sanctum')
+            ->postJson('/api/v1/clients', ['name' => 'Carlos Ruiz', 'phone' => '3001112222'])
+            ->assertCreated();
+
+        // Mismo nombre, telefono distinto - no es duplicado (se requieren
+        // ambos, no solo el nombre).
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/clients', ['name' => 'Carlos Ruiz', 'phone' => '3009998888'])
+            ->assertCreated();
+    }
+
+    public function test_updating_a_client_to_match_another_ones_name_and_phone_is_rejected(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        Client::factory()->create(['business_id' => $business->id, 'name' => 'Carlos Ruiz', 'phone' => '3001112222']);
+        $target = Client::factory()->create(['business_id' => $business->id, 'name' => 'Maria Perez', 'phone' => '3003334444']);
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson("/api/v1/clients/{$target->id}", ['name' => 'Carlos Ruiz', 'phone' => '3001112222'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('name');
+
+        // Editar un cliente sin cambiar su nombre/telefono no se choca
+        // contra si mismo.
+        $this->actingAs($user, 'sanctum')
+            ->putJson("/api/v1/clients/{$target->id}", ['notes' => 'Cliente frecuente'])
+            ->assertOk();
+    }
+
     public function test_client_creation_is_blocked_past_the_plan_limit(): void
     {
         $business = Business::factory()->create();
