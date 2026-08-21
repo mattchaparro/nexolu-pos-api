@@ -71,7 +71,15 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    // Colombia (Bogota) es la unica timezone real del producto - sin DST,
+    // offset fijo -05:00 siempre. Antes en UTC, distinto del legacy
+    // (pos-saas-legacy, config('app.timezone')=America/Bogota) mientras
+    // ambos escriben la misma base de datos de produccion: la columna
+    // datetime `starts_at`/`ends_at` (sin conversion automatica de MySQL)
+    // quedaba con 5 horas de diferencia segun que backend la escribio. Ver
+    // AppointmentService::parseLocal() y config/database.php (timezone de
+    // sesion MySQL, mismo criterio).
+    'timezone' => env('APP_TIMEZONE', 'America/Bogota'),
 
     /*
     |--------------------------------------------------------------------------

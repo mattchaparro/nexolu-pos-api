@@ -73,8 +73,8 @@ class AppointmentController extends Controller
     {
         $appointment = $this->appointmentService->reschedule(
             $appointment,
-            AppointmentService::parseUtc($request->validated('starts_at')),
-            AppointmentService::parseUtc($request->validated('ends_at')),
+            AppointmentService::parseLocal($request->validated('starts_at')),
+            AppointmentService::parseLocal($request->validated('ends_at')),
         );
 
         return new AppointmentResource($appointment);

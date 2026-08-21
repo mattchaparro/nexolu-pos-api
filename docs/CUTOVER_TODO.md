@@ -436,3 +436,73 @@ preexistente, ajeno a este cambio, ver `BusinessTest::test_owner_can_update_emai
 - [ ] Pendiente la ejecución operativa: correr el mismo `ALTER TABLE` contra
   SG (`api-sg.nexolu.co`) y, cuando corresponda, contra producción real -
   mismo tipo de decisión de timing que el ítem 4.
+
+---
+
+## 7. `config('app.timezone')` en UTC, distinto del legacy (`America/Bogota`) - desfase de 5h en columnas compartidas
+
+**Origen:** 2026-08-21, a pedido del usuario ("la app debe usar la fecha y
+hora de Colombia... tanto para los calendarios, como para guardar en base de
+datos, absolutamente todo").
+
+**El problema real (no solo cosmético):** `pos-saas-legacy` corre con
+`config('app.timezone') = 'America/Bogota'` desde siempre; esta API corría en
+`UTC`. Ambos escriben la **misma base de datos de producción**. Hay 7
+columnas `datetime` compartidas (`appointments.starts_at`/`ends_at`,
+`cash_shifts.opened_at`/`closed_at`, `receivables.paid_at`,
+`reminders.completed_at`/`last_completed_at`) que MySQL guarda **literales,
+sin convertir**. El legacy siempre las llenó con hora de Bogotá; esta API
+las convertía explícitamente a UTC antes de guardar
+(`AppointmentService::parseUtc()`, ahora `parseLocal()`). Resultado real: la
+misma columna, en la misma tabla, con 5 horas de diferencia según qué
+backend escribió la fila - un legacy leyendo una cita creada desde acá (o
+viceversa) mostraba la hora corrida.
+
+Aparte, con `app.timezone=UTC`, cualquier `Carbon::today()`/`whereDate()`
+(Resumen del día, cierres de caja, reportes) cortaba "el día" a las 7pm hora
+Colombia en vez de medianoche - una venta cerrada a las 6pm podía
+desaparecer del resumen si alguien lo miraba después de esa hora, sin que
+el dueño hubiera cambiado de día. Confirmado con un test que falla en la
+config vieja y pasa en la nueva (`DashboardTest::test_today_summary_uses_the_bogota_calendar_day_not_utc`).
+
+**Por qué es seguro arreglarlo ahora (no requiere retirar el monolito
+primero):** a diferencia de los ítems 1/2 (vocabulario `payment_method`,
+`linkable_type`), acá no hay dos formatos nuevos peleando - el fix hace que
+esta API escriba **exactamente lo que el legacy ya escribe** (hora literal
+de Bogotá en esas 7 columnas), eliminando la divergencia en vez de crear una
+nueva. No hay coordinación pendiente con el legacy: su comportamiento no
+cambia, el nuestro se alinea al de él.
+
+**Hecho:**
+
+- `config/app.php`: `'timezone' => env('APP_TIMEZONE', 'America/Bogota')`
+  (antes `'UTC'` fijo).
+- `config/database.php` (conexiones `mysql` y `mariadb`): `'timezone' =>
+  env('DB_TIMEZONE', '-05:00')` - fuerza `SET time_zone` en la sesión PDO
+  (offset fijo, no nombre de zona, porque `mysql.time_zone_name` no está
+  poblada acá). Sin esto, las 209 columnas `timestamp` del esquema
+  (`created_at`/`updated_at` de casi todo) quedarían con el mismo tipo de
+  desfase que las `datetime`, por la vía contraria (MySQL las convierte a
+  la timezone de sesión al leer, que sin este cambio seguía en `SYSTEM` =
+  UTC del contenedor).
+- `AppointmentService::parseUtc()` → `parseLocal()`: normaliza a
+  `America/Bogota` en vez de a UTC antes de persistir `starts_at`/`ends_at`.
+  El resto de las columnas `datetime` compartidas (`opened_at`, `closed_at`,
+  `paid_at`, `completed_at`, `last_completed_at`) se llenan con `now()`, que
+  ya respeta `app.timezone` - se corrigen solas con el cambio de config, sin
+  tocar código.
+- `.env.example`/`.env`: `APP_TIMEZONE=America/Bogota`, `DB_TIMEZONE=-05:00`.
+- `nexolu-infra/docker-compose.yml`: `TZ=America/Bogota` en `mysql`,
+  `pos-web`, `pos-queue`, `pos-scheduler` - belt-and-suspenders a nivel de
+  contenedor/SO, no solo a nivel de Laravel/PDO.
+- Test nuevo (`DashboardTest`) prueba explícitamente el corte de día a
+  medianoche Bogotá, no a las 7pm UTC - falla en la config vieja, pasa en la
+  nueva (verificado corriendo ambas).
+- Suite completa verde (1073/1074 - el único fallo es preexistente, ajeno a
+  este cambio).
+
+- [ ] Pendiente la ejecución operativa: correr contra SG y, cuando
+  corresponda, producción real - mismo tipo de decisión de timing que el
+  ítem 4. Antes de tocar producción, correr `SELECT @@global.time_zone,
+  NOW(), UTC_TIMESTAMP();` ahí primero (no asumir que está en el mismo
+  estado que SG) - ver cómo se verificó en SG antes de aplicar.

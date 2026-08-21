@@ -12,12 +12,44 @@ use App\Models\Sale;
 use App\Models\ServiceOrder;
 use App\Models\ServicePayment;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
 class DashboardTest extends TestCase
 {
     use DatabaseTransactions;
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow(null);
+        parent::tearDown();
+    }
+
+    public function test_today_summary_uses_the_bogota_calendar_day_not_utc(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+
+        // Venta cerrada a las 6pm hora Bogota (13-ago) - 11pm UTC del mismo dia.
+        Carbon::setTestNow(Carbon::parse('2026-08-13 18:00:00', 'America/Bogota'));
+        Sale::factory()->for($business)->create(['status' => 'closed', 'total' => 50000]);
+
+        // El dueño mira el resumen a las 9pm hora Bogota, mismo dia para el
+        // - pero ya son las 2am UTC del dia siguiente. Con
+        // config('app.timezone')=UTC (bug real corregido aca),
+        // Carbon::today() ya habia rodado a "mañana" en UTC, y la venta de
+        // las 6pm quedaba fuera del whereDate('closed_at', $today) del
+        // resumen - desaparecia sin que el dueño hubiera cambiado de dia.
+        Carbon::setTestNow(Carbon::parse('2026-08-13 21:00:00', 'America/Bogota'));
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/dashboard/summary')
+            ->assertOk();
+
+        $response->assertJsonPath('today_sales', 50000);
+        $response->assertJsonPath('today_count', 1);
+    }
 
     public function test_today_summary_combines_sales_receivables_and_service_payments(): void
     {

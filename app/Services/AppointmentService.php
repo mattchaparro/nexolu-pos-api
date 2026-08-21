@@ -36,8 +36,8 @@ class AppointmentService
     {
         $appointment = DB::transaction(function () use ($user, $data) {
             $business = $user->business;
-            $startsAt = $this->parseUtc($data['starts_at']);
-            $endsAt = $this->parseUtc($data['ends_at']);
+            $startsAt = $this->parseLocal($data['starts_at']);
+            $endsAt = $this->parseLocal($data['ends_at']);
 
             $this->assertNoConflict($business, $data['user_id'] ?? null, $startsAt, $endsAt);
 
@@ -150,8 +150,8 @@ class AppointmentService
 
         return DB::transaction(function () use ($appointment, $data) {
             $business = $appointment->business;
-            $startsAt = $this->parseUtc($data['starts_at']);
-            $endsAt = $this->parseUtc($data['ends_at']);
+            $startsAt = $this->parseLocal($data['starts_at']);
+            $endsAt = $this->parseLocal($data['ends_at']);
 
             $this->assertNoConflict($business, $data['user_id'] ?? null, $startsAt, $endsAt, $appointment->id);
 
@@ -224,15 +224,24 @@ class AppointmentService
      * Carbon::parse() conserva el offset original del string (ej.
      * "-05:00") en vez de normalizarlo - el cast 'datetime' de Eloquent
      * guarda la hora tal cual la ve el objeto Carbon en ese momento (sin
-     * convertir), asi que un cliente que mande una hora local con offset
-     * explicito (no UTC) terminaba corriendo el instante real varias horas
-     * sin darse cuenta (ej. "15:00-05:00" quedaba guardado como "15:00
-     * UTC", 5 horas adelantado). Normalizar a UTC aca antes de persistir
-     * evita ese corrimiento sin importar que offset mande el cliente.
+     * convertir), asi que un cliente que mande una hora con offset
+     * distinto al esperado terminaria corriendo el instante real varias
+     * horas sin darse cuenta. Normalizar aca antes de persistir evita ese
+     * corrimiento sin importar que offset mande el cliente (el front
+     * siempre manda ISO UTC via Date.toISOString(), pero no hay que
+     * confiar en eso a ciegas).
+     *
+     * Se normaliza a America/Bogota, no a UTC: `starts_at`/`ends_at` son
+     * columnas `datetime` (no `timestamp`) en el esquema compartido con
+     * pos-saas-legacy - MySQL las guarda literales, sin convertir. El
+     * legacy (config('app.timezone')=America/Bogota) siempre escribio hora
+     * de Bogota ahi; normalizar a UTC aca (como se hacia antes) dejaba la
+     * misma columna con 5 horas de diferencia segun que backend escribio
+     * la fila. Ver config/app.php.
      */
-    public static function parseUtc(string $value): Carbon
+    public static function parseLocal(string $value): Carbon
     {
-        return Carbon::parse($value)->utc();
+        return Carbon::parse($value)->setTimezone('America/Bogota');
     }
 
     /**

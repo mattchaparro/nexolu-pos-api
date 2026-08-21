@@ -119,31 +119,36 @@ class AppointmentTest extends TestCase
             ->assertJsonPath('service_order.stage.id', $initial->id);
     }
 
-    public function test_a_non_utc_offset_in_starts_at_is_normalized_instead_of_shifting_the_instant(): void
+    public function test_a_utc_offset_in_starts_at_is_normalized_to_bogota_instead_of_shifting_the_instant(): void
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
         $user->assignRole('admin');
         $service = Product::factory()->service()->create(['business_id' => $business->id]);
 
-        // "15:00 -05:00" es el mismo instante que "20:00 UTC" - antes de la
-        // normalizacion en AppointmentService::parseUtc(), Carbon::parse()
-        // guardaba la hora tal cual (15:00) re-etiquetada como UTC, un
-        // corrimiento silencioso de 5 horas.
+        // "20:00 UTC" es el mismo instante que "15:00 -05:00" (Bogota) -
+        // antes de la normalizacion en AppointmentService::parseLocal(),
+        // Carbon::parse() guardaba la hora tal cual (20:00) re-etiquetada
+        // como si ya fuera Bogota, un corrimiento silencioso de 5 horas.
+        // Se normaliza a Bogota, no a UTC (ver el docblock de
+        // parseLocal()): `starts_at`/`ends_at` son columnas `datetime`
+        // compartidas con pos-saas-legacy, que siempre escribio hora
+        // literal de Bogota ahi.
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/appointments', [
             'services' => [['id' => $service->id]],
             'client_name' => 'Ana Gomez',
-            'starts_at' => '2026-08-13T15:00:00-05:00',
-            'ends_at' => '2026-08-13T15:45:00-05:00',
+            'starts_at' => '2026-08-13T20:00:00Z',
+            'ends_at' => '2026-08-13T20:45:00Z',
         ]);
 
         $response->assertCreated()
-            ->assertJsonPath('starts_at', '2026-08-13T20:00:00+00:00')
-            ->assertJsonPath('ends_at', '2026-08-13T20:45:00+00:00');
+            ->assertJsonPath('starts_at', '2026-08-13T15:00:00-05:00')
+            ->assertJsonPath('ends_at', '2026-08-13T15:45:00-05:00');
 
         $this->assertDatabaseHas('appointments', [
             'id' => $response->json('id'),
-            'starts_at' => '2026-08-13 20:00:00',
+            'starts_at' => '2026-08-13 15:00:00',
+            'ends_at' => '2026-08-13 15:45:00',
         ]);
     }
 

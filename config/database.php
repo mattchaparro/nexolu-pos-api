@@ -59,6 +59,18 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            // Offset fijo, no nombre de zona ("America/Bogota" requeriria
+            // las tablas mysql.time_zone_name cargadas via
+            // mysql_tzinfo_to_sql, que no estan pobladas aca) - Colombia no
+            // tiene horario de verano, asi que -05:00 es correcto todo el
+            // año. Sin esto, las columnas `timestamp` (created_at/
+            // updated_at, la mayoria del esquema) se convierten segun la
+            // timezone de sesion de MySQL (por defecto SYSTEM = UTC del
+            // contenedor), mientras que Carbon las interpreta segun
+            // config('app.timezone')=America/Bogota - mismo desfase de 5
+            // horas que motivo este cambio, pero para las columnas
+            // `timestamp`, no las `datetime` (ver config/app.php).
+            'timezone' => env('DB_TIMEZONE', '-05:00'),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
@@ -79,6 +91,18 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            // Offset fijo, no nombre de zona ("America/Bogota" requeriria
+            // las tablas mysql.time_zone_name cargadas via
+            // mysql_tzinfo_to_sql, que no estan pobladas aca) - Colombia no
+            // tiene horario de verano, asi que -05:00 es correcto todo el
+            // año. Sin esto, las columnas `timestamp` (created_at/
+            // updated_at, la mayoria del esquema) se convierten segun la
+            // timezone de sesion de MySQL (por defecto SYSTEM = UTC del
+            // contenedor), mientras que Carbon las interpreta segun
+            // config('app.timezone')=America/Bogota - mismo desfase de 5
+            // horas que motivo este cambio, pero para las columnas
+            // `timestamp`, no las `datetime` (ver config/app.php).
+            'timezone' => env('DB_TIMEZONE', '-05:00'),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
