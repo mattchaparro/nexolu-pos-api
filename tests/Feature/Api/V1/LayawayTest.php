@@ -215,6 +215,23 @@ class LayawayTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_layaways_can_be_filtered_by_a_creation_date_range(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $inRange = Layaway::factory()->create(['business_id' => $business->id, 'customer_name' => 'En rango']);
+        $inRange->forceFill(['created_at' => '2026-03-15'])->save();
+        $outOfRange = Layaway::factory()->create(['business_id' => $business->id, 'customer_name' => 'Fuera de rango']);
+        $outOfRange->forceFill(['created_at' => '2026-01-01'])->save();
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/layaways?date_from=2026-03-01&date_to=2026-03-31')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.customer_name', 'En rango');
+    }
+
     public function test_updating_items_adjusts_stock_by_delta(): void
     {
         $business = Business::factory()->create();

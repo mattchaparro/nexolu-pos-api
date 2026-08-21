@@ -7,11 +7,12 @@ use App\Models\LogAction;
 use App\Models\User;
 use App\Support\PermissionCatalog;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Tests\Support\ActsAsSuperAdmin;
 use Tests\TestCase;
 
 class AuditLogTest extends TestCase
 {
-    use DatabaseTransactions;
+    use ActsAsSuperAdmin, DatabaseTransactions;
 
     protected function setUp(): void
     {
@@ -57,6 +58,53 @@ class AuditLogTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.action', 'product.created');
+    }
+
+    public function test_excludes_actions_taken_by_a_superadmin_impersonating_the_business(): void
+    {
+        $admin = $this->superadmin();
+        $business = Business::factory()->create();
+        $owner = $this->userWithPermission($business);
+        $owner->assignRole('admin');
+
+        // Real: el dueño abre y cierra su propio turno (no puede quedar
+        // abierto - CashShiftService rechaza un segundo turno abierto para
+        // el mismo usuario, y la impersonacion actua como ese mismo user_id).
+        $realShiftId = $this->actingAs($owner, 'sanctum')
+            ->postJson('/api/v1/cash-shifts', ['opening_cash' => 50000])
+            ->assertCreated()
+            ->json('id');
+        $this->actingAs($owner, 'sanctum')
+            ->postJson("/api/v1/cash-shifts/{$realShiftId}/close", ['counted_cash' => 50000])
+            ->assertOk();
+
+        // El superadmin impersona al dueño y abre OTRO turno "como" el.
+        $impersonateToken = $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/v1/superadmin/impersonate/{$owner->id}")
+            ->assertOk()
+            ->json('token');
+        $this->app['auth']->forgetGuards();
+
+        $this->withHeader('Authorization', "Bearer {$impersonateToken}")
+            ->postJson('/api/v1/cash-shifts', ['opening_cash' => 99999])
+            ->assertCreated();
+        $this->app['auth']->forgetGuards();
+
+        // La accion impersonada quedo marcada en la BD...
+        $impersonatedLog = LogAction::where('action', 'cash_shift.opened')
+            ->where('details->opening_cash', 99999)
+            ->first();
+        $this->assertNotNull($impersonatedLog);
+        $this->assertSame($admin->id, $impersonatedLog->details['impersonated_by_superadmin_id']);
+
+        // ...pero el dueño del negocio, mirando SU auditoria, solo ve la
+        // suya - no la que el superadmin hizo "como" el.
+        $response = $this->actingAs($owner, 'sanctum')
+            ->getJson('/api/v1/audit-logs?search=cash_shift.opened')
+            ->assertOk();
+
+        $response->assertJsonCount(1, 'data');
+        $this->assertSame(50000.0, (float) $response->json('data.0.details.opening_cash'));
     }
 
     public function test_requires_the_audit_logs_view_permission(): void

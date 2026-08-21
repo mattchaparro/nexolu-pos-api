@@ -298,6 +298,23 @@ class ServiceOrderTest extends TestCase
             ->assertJsonCount(1, 'data');
     }
 
+    public function test_service_orders_can_be_filtered_by_a_creation_date_range(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $inRange = ServiceOrder::factory()->create(['business_id' => $business->id, 'service_name' => 'En rango']);
+        $inRange->forceFill(['created_at' => '2026-03-15'])->save();
+        $outOfRange = ServiceOrder::factory()->create(['business_id' => $business->id, 'service_name' => 'Fuera de rango']);
+        $outOfRange->forceFill(['created_at' => '2026-01-01'])->save();
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/service-orders?date_from=2026-03-01&date_to=2026-03-31')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.service_name', 'En rango');
+    }
+
     public function test_summary_sums_the_balance_of_pending_and_partial_orders_only(): void
     {
         $business = Business::factory()->create();

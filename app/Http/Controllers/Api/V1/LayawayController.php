@@ -38,6 +38,14 @@ class LayawayController extends Controller
             });
         }
 
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->string('date_from'));
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->string('date_to'));
+        }
+
         return LayawayResource::collection($query->paginate(15)->withQueryString());
     }
 

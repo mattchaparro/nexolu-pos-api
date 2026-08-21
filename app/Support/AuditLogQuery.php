@@ -15,7 +15,13 @@ class AuditLogQuery
 {
     public static function forBusiness(Request $request, int $businessId): Builder
     {
-        $query = LogAction::with(['user'])->where('business_id', $businessId);
+        $query = LogAction::with(['user'])
+            ->where('business_id', $businessId)
+            // Una accion hecha por un superadmin impersonando este negocio
+            // no es del dueño ni de su equipo - no debe aparecer en SU
+            // auditoria (si sigue interesando verla, esta en forSuperadmin()
+            // sin este filtro). Ver el marcador que deja AuditLogger::log().
+            ->whereNull('details->impersonated_by_superadmin_id');
 
         self::applySearch($query, $request);
 

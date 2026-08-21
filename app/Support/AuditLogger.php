@@ -2,14 +2,15 @@
 
 namespace App\Support;
 
+use App\Http\Controllers\Api\V1\SuperAdmin\ImpersonateController;
 use App\Models\LogAction;
 
 /**
  * Rastro de acciones administrativas consultable con SQL (tabla `log_actions`,
- * ya existe en el schema compartido). Solo se llama desde acciones de
- * SuperAdmin (mueven plata, cambian acceso, o son un usuario viendo como
- * otro) - no es un logger general para el resto de la app; retro-instrumentar
- * cada modulo del POS con esto es un cambio aparte, mucho mas grande.
+ * ya existe en el schema compartido). Instrumenta acciones de todo el POS
+ * (ventas, turnos de caja, gastos, cierres, fiados, cocina...), no solo
+ * SuperAdmin - retro-instrumentar cada modulo restante con esto es un
+ * cambio aparte, mas grande.
  */
 class AuditLogger
 {
@@ -20,6 +21,18 @@ class AuditLogger
     {
         $request = request();
         $user = $request?->user();
+
+        // El token de un superadmin impersonando un negocio se nombra
+        // "impersonation-by-{id}" (ver ImpersonateController::start()) - sin
+        // este marcador, una accion hecha por el superadmin durante esa
+        // sesion queda en log_actions con el user_id del negocio
+        // impersonado, indistinguible de una accion real de ese usuario.
+        // AuditLogQuery::forBusiness() usa este campo para excluirlas del
+        // listado que ve el dueño del negocio (ver ese archivo).
+        $tokenName = (string) ($user?->currentAccessToken()?->name ?? '');
+        if (str_starts_with($tokenName, ImpersonateController::TOKEN_NAME_PREFIX)) {
+            $details['impersonated_by_superadmin_id'] = (int) substr($tokenName, strlen(ImpersonateController::TOKEN_NAME_PREFIX));
+        }
 
         LogAction::create([
             'action' => $action,
