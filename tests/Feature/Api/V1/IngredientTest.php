@@ -88,6 +88,25 @@ class IngredientTest extends TestCase
             ->assertJsonPath('data.0.name', 'Queso mozzarella');
     }
 
+    public function test_index_filters_by_stock_status(): void
+    {
+        $admin = $this->admin();
+        $outOfStock = Ingredient::factory()->create(['business_id' => $admin->business_id, 'name' => 'Sin stock', 'stock' => 0]);
+        $lowStock = Ingredient::factory()->create(['business_id' => $admin->business_id, 'name' => 'Bajo minimo', 'stock' => 1, 'min_stock' => 5]);
+        $inactive = Ingredient::factory()->create(['business_id' => $admin->business_id, 'name' => 'Inactivo', 'is_active' => false, 'stock' => 100]);
+        Ingredient::factory()->create(['business_id' => $admin->business_id, 'name' => 'Sobrado', 'stock' => 100, 'min_stock' => 5]);
+
+        $this->actingAs($admin, 'sanctum')->getJson('/api/v1/ingredients?filter=out_of_stock')
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $outOfStock->id);
+
+        $lowStockResponse = $this->actingAs($admin, 'sanctum')->getJson('/api/v1/ingredients?filter=low_stock')
+            ->assertOk()->assertJsonCount(2, 'data');
+        $this->assertContains($lowStock->id, $lowStockResponse->json('data.*.id'));
+
+        $this->actingAs($admin, 'sanctum')->getJson('/api/v1/ingredients?filter=inactive')
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $inactive->id);
+    }
+
     public function test_update_changes_fields(): void
     {
         $admin = $this->admin();

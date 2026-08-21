@@ -38,8 +38,13 @@ class IngredientController extends Controller
         return response()->json([
             'active_count' => $ingredients->where('is_active', true)->count(),
             'low_stock_count' => $lowStockCount,
+            'out_of_stock_count' => $ingredients->filter(fn (Ingredient $i) => (float) $i->stock <= 0)->count(),
+            'inactive_count' => $ingredients->where('is_active', false)->count(),
         ]);
     }
+
+    /** @var list<string> */
+    private const STOCK_FILTERS = ['out_of_stock', 'low_stock', 'inactive'];
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -51,6 +56,20 @@ class IngredientController extends Controller
         if ($request->filled('search')) {
             $term = '%'.trim((string) $request->input('search')).'%';
             $query->where('name', 'like', $term);
+        }
+
+        // filter: mismo criterio que ProductController::index() (ver ese
+        // comentario) - un estado real de filtro, no solo cards de resumen
+        // de solo lectura.
+        if ($request->filled('filter') && in_array($request->input('filter'), self::STOCK_FILTERS, true)) {
+            $lowStockThreshold = (float) ($request->user()?->business?->low_stock_alert_threshold ?? 5);
+
+            match ($request->input('filter')) {
+                'out_of_stock' => $query->where('stock', '<=', 0),
+                'low_stock' => $query->whereRaw('stock <= COALESCE(NULLIF(min_stock, 0), ?)', [$lowStockThreshold]),
+                'inactive' => $query->where('is_active', false),
+                default => null,
+            };
         }
 
         return IngredientResource::collection($query->paginate());
