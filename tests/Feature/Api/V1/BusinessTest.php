@@ -284,6 +284,18 @@ class BusinessTest extends TestCase
         $this->assertArrayNotHasKey('unknown_key', $prefs);
     }
 
+    public function test_regular_employee_cannot_update_notifications(): void
+    {
+        $business = Business::factory()->create();
+        $employee = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => false]);
+
+        $this->actingAs($employee, 'sanctum')
+            ->putJson('/api/v1/business/notifications', ['preferences' => ['resumen_diario' => true]])
+            ->assertForbidden();
+
+        $this->assertNull($business->fresh()->notification_preferences);
+    }
+
     public function test_owner_can_clear_the_low_stock_snooze_early(): void
     {
         $business = Business::factory()->create(['low_stock_snoozed_until' => now()->addDays(15)]);

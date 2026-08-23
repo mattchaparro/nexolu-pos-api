@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureBusinessAdmin;
 use App\Http\Middleware\EnsureBusinessCanAccessPurchases;
 use App\Http\Middleware\EnsureBusinessFeatureEnabled;
 use App\Http\Middleware\EnsureBusinessPermission;
@@ -30,6 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'superadmin' => EnsureSuperAdmin::class,
             'ia-core.key' => EnsureValidIaCoreKey::class,
             'permission' => EnsureBusinessPermission::class,
+            'business-admin' => EnsureBusinessAdmin::class,
             'cash-shift.required-for-sales' => EnsureCashShiftOpenForSales::class,
         ]);
     })

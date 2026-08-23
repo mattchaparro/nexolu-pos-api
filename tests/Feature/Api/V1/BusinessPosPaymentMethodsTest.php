@@ -116,6 +116,16 @@ class BusinessPosPaymentMethodsTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_regular_employee_cannot_view_payment_methods(): void
+    {
+        $business = Business::factory()->create();
+        $employee = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => false]);
+
+        $this->actingAs($employee, 'sanctum')
+            ->getJson('/api/v1/business/payment-methods')
+            ->assertForbidden();
+    }
+
     public function test_any_business_user_can_request_support_for_a_missing_payment_method(): void
     {
         Mail::fake();

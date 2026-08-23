@@ -38,7 +38,7 @@ class SubscriptionTest extends TestCase
             'trial_ends_at' => now()->subDays(60),
             'created_at' => now()->subDays(60),
         ]);
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
 
         $response = $this->actingAs($user, 'sanctum')->getJson('/api/v1/subscription/status');
 
@@ -54,7 +54,7 @@ class SubscriptionTest extends TestCase
     public function test_status_includes_the_recent_payment_history(): void
     {
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         $payment = SaasSubscriptionPayment::factory()->for($business)->create([
             'amount_cop' => 65000,
             'period_label' => '2026-08',
@@ -80,7 +80,7 @@ class SubscriptionTest extends TestCase
             'trial_ends_at' => now()->subDay(),
             'created_at' => now()->subDay(),
         ]);
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
 
         $response = $this->actingAs($user, 'sanctum')->getJson('/api/v1/subscription/status');
 
@@ -111,7 +111,7 @@ class SubscriptionTest extends TestCase
         // Negocio recien creado (factory: trial_ends_at futuro, sin pagos) cae
         // en el primer ciclo promocional: 65000 con 40% de descuento = 39000.
         $business = Business::factory()->create(['subscription_plan' => 'basic', 'custom_price_cop' => null]);
-        $user = User::factory()->create(['business_id' => $business->id, 'email' => 'admin@nexolu.co', 'name' => 'Admin']);
+        $user = User::factory()->create(['business_id' => $business->id, 'email' => 'admin@nexolu.co', 'name' => 'Admin', 'is_business_owner' => true]);
 
         $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/subscription/checkout', [
             'redirect_url' => 'https://pos.nexolu.co/billing?paid=1',
@@ -149,7 +149,7 @@ class SubscriptionTest extends TestCase
         ]);
 
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
 
         $this->actingAs($user, 'sanctum')->postJson('/api/v1/subscription/checkout', [
             'redirect_url' => 'https://pos.nexolu.co/billing?paid=1',
@@ -161,7 +161,7 @@ class SubscriptionTest extends TestCase
     public function test_initiate_validates_the_redirect_url(): void
     {
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
 
         $this->actingAs($user, 'sanctum')->postJson('/api/v1/subscription/checkout', [
             'redirect_url' => 'not-a-url',
@@ -177,7 +177,7 @@ class SubscriptionTest extends TestCase
         ]);
 
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         $order = SubscriptionCheckoutOrder::factory()->for($business)->create(['status' => 'pending']);
 
         $response = $this->actingAs($user, 'sanctum')
@@ -191,7 +191,7 @@ class SubscriptionTest extends TestCase
     public function test_checkout_status_skips_payments_core_once_the_order_is_confirmed(): void
     {
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         $order = SubscriptionCheckoutOrder::factory()->for($business)->create([
             'status' => 'confirmed',
             'confirmed_at' => now(),
@@ -207,11 +207,25 @@ class SubscriptionTest extends TestCase
     public function test_checkout_status_rejects_a_reference_from_another_business(): void
     {
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         $otherOrder = SubscriptionCheckoutOrder::factory()->for(Business::factory())->create();
 
         $this->actingAs($user, 'sanctum')
             ->getJson("/api/v1/subscription/checkout/{$otherOrder->order_key}")
             ->assertStatus(404);
+    }
+
+    public function test_regular_employee_cannot_view_or_manage_the_subscription(): void
+    {
+        $business = Business::factory()->create();
+        $employee = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => false]);
+
+        $this->actingAs($employee, 'sanctum')
+            ->getJson('/api/v1/subscription/status')
+            ->assertForbidden();
+
+        $this->actingAs($employee, 'sanctum')
+            ->postJson('/api/v1/subscription/checkout', ['redirect_url' => 'https://app.nexolu.co/mi-negocio'])
+            ->assertForbidden();
     }
 }

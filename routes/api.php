@@ -130,14 +130,30 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::delete('/', [AiChannelLinkController::class, 'unlink'])->name('unlink');
         });
 
+        // business.show queda fuera de business-admin a proposito: cualquier
+        // empleado autenticado lo necesita para resolver feature flags
+        // (hasFeature()) en todo el frontend, no solo Ajustes.
         Route::get('/business', [BusinessController::class, 'show'])->name('business.show');
-        Route::put('/business', [BusinessController::class, 'update'])->name('business.update');
-        Route::get('/business/billing-profile', [BillingProfileController::class, 'show'])->name('business.billing-profile.show');
-        Route::put('/business/billing-profile', [BillingProfileController::class, 'update'])->name('business.billing-profile.update');
-        Route::put('/business/notifications', [BusinessController::class, 'updateNotifications'])->name('business.notifications.update');
-        Route::delete('/business/low-stock-snooze', [BusinessController::class, 'clearLowStockSnooze'])->name('business.low-stock-snooze.clear');
-        Route::get('/business/payment-methods', [PosPaymentMethodController::class, 'index'])->name('business.payment-methods.index');
-        Route::put('/business/payment-methods', [PosPaymentMethodController::class, 'update'])->name('business.payment-methods.update');
+
+        // Configuracion del negocio, facturacion y medios de pago aceptados
+        // no son delegables via el picker de permisos de un empleado (ver
+        // EnsureBusinessAdmin) - un empleado con CUALQUIER combinacion de
+        // permisos del catalogo nunca puede tocar esto, solo el admin.
+        Route::middleware('business-admin')->group(function () {
+            Route::put('/business', [BusinessController::class, 'update'])->name('business.update');
+            Route::get('/business/billing-profile', [BillingProfileController::class, 'show'])->name('business.billing-profile.show');
+            Route::put('/business/billing-profile', [BillingProfileController::class, 'update'])->name('business.billing-profile.update');
+            Route::put('/business/notifications', [BusinessController::class, 'updateNotifications'])->name('business.notifications.update');
+            Route::delete('/business/low-stock-snooze', [BusinessController::class, 'clearLowStockSnooze'])->name('business.low-stock-snooze.clear');
+            Route::get('/business/payment-methods', [PosPaymentMethodController::class, 'index'])->name('business.payment-methods.index');
+            Route::put('/business/payment-methods', [PosPaymentMethodController::class, 'update'])->name('business.payment-methods.update');
+        });
+
+        // A diferencia de ver/editar los medios de pago aceptados, pedir
+        // soporte para uno que falta es solo un mensaje al equipo - no
+        // cambia nada del negocio, cualquier empleado autenticado puede
+        // mandarlo (ver test_any_business_user_can_request_support_for_a_
+        // missing_payment_method).
         Route::post('/business/payment-methods/support-request', [PosPaymentMethodController::class, 'requestSupport'])
             ->middleware('throttle:5,1')
             ->name('business.payment-methods.support-request');
@@ -146,10 +162,15 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('/dashboard/whatsapp-onboarding', [DashboardController::class, 'whatsappOnboarding'])->name('dashboard.whatsapp-onboarding');
         Route::post('/dashboard/whatsapp-onboarding/dismiss', [DashboardController::class, 'dismissWhatsappOnboarding'])->name('dashboard.whatsapp-onboarding.dismiss');
 
-        Route::get('/subscription/status', [SubscriptionController::class, 'status'])->name('subscription.status');
-        Route::post('/subscription/checkout', [SubscriptionController::class, 'initiate'])->name('subscription.checkout');
-        Route::get('/subscription/checkout/{reference}', [SubscriptionController::class, 'checkoutStatus'])->name('subscription.checkout.status');
-        Route::post('/subscription/checkout/{reference}/charge', [SubscriptionController::class, 'charge'])->name('subscription.checkout.charge');
+        // Suscripcion/facturacion del negocio: mismo criterio de
+        // business-admin que arriba - mover dinero o ver el estado del plan
+        // no es algo que un empleado deba poder hacer.
+        Route::middleware('business-admin')->group(function () {
+            Route::get('/subscription/status', [SubscriptionController::class, 'status'])->name('subscription.status');
+            Route::post('/subscription/checkout', [SubscriptionController::class, 'initiate'])->name('subscription.checkout');
+            Route::get('/subscription/checkout/{reference}', [SubscriptionController::class, 'checkoutStatus'])->name('subscription.checkout.status');
+            Route::post('/subscription/checkout/{reference}/charge', [SubscriptionController::class, 'charge'])->name('subscription.checkout.charge');
+        });
 
         // Catalogo de metodos de pago (API directa via Payments Core) -
         // ver docs/PLAN_METODOS_PAGO_ALTERNOS.md seccion 5.4. No es

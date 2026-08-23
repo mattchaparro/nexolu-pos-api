@@ -21,7 +21,7 @@ class BillingProfileTest extends TestCase
     public function test_show_returns_an_empty_profile_when_none_exists_yet(): void
     {
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
 
         $response = $this->actingAs($user, 'sanctum')->getJson('/api/v1/business/billing-profile');
 
@@ -39,7 +39,7 @@ class BillingProfileTest extends TestCase
     public function test_show_returns_the_saved_profile(): void
     {
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         BillingProfile::factory()->for($business)->create(['full_name' => 'Cliente De Prueba']);
 
         $response = $this->actingAs($user, 'sanctum')->getJson('/api/v1/business/billing-profile');
@@ -50,7 +50,7 @@ class BillingProfileTest extends TestCase
     public function test_update_creates_the_profile_when_it_does_not_exist(): void
     {
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
 
         $response = $this->actingAs($user, 'sanctum')->putJson('/api/v1/business/billing-profile', [
             'document_type' => 'CC',
@@ -72,7 +72,7 @@ class BillingProfileTest extends TestCase
     public function test_update_overwrites_the_existing_profile_instead_of_duplicating_it(): void
     {
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         BillingProfile::factory()->for($business)->create(['full_name' => 'Nombre Viejo']);
 
         $this->actingAs($user, 'sanctum')->putJson('/api/v1/business/billing-profile', [
@@ -85,7 +85,7 @@ class BillingProfileTest extends TestCase
     public function test_update_rejects_an_invalid_document_type(): void
     {
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
 
         $response = $this->actingAs($user, 'sanctum')->putJson('/api/v1/business/billing-profile', [
             'document_type' => 'PASSPORT',
@@ -95,10 +95,24 @@ class BillingProfileTest extends TestCase
             ->assertJsonPath('errors.document_type.0', 'El tipo de documento debe ser CC, NIT o CE.');
     }
 
+    public function test_regular_employee_cannot_view_or_update_the_billing_profile(): void
+    {
+        $business = Business::factory()->create();
+        $employee = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => false]);
+
+        $this->actingAs($employee, 'sanctum')
+            ->getJson('/api/v1/business/billing-profile')
+            ->assertForbidden();
+
+        $this->actingAs($employee, 'sanctum')
+            ->putJson('/api/v1/business/billing-profile', ['full_name' => 'Intento De Empleado'])
+            ->assertForbidden();
+    }
+
     public function test_a_users_billing_profile_is_scoped_to_their_own_business(): void
     {
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         $otherProfile = BillingProfile::factory()->for(Business::factory())->create(['full_name' => 'Otro Negocio']);
 
         $response = $this->actingAs($user, 'sanctum')->getJson('/api/v1/business/billing-profile');

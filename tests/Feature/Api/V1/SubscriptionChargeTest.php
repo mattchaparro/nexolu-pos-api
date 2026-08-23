@@ -44,7 +44,7 @@ class SubscriptionChargeTest extends TestCase
         ]);
 
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         $order = SubscriptionCheckoutOrder::factory()->for($business)->create(['status' => 'pending']);
 
         $response = $this->actingAs($user, 'sanctum')->postJson(
@@ -71,7 +71,7 @@ class SubscriptionChargeTest extends TestCase
         ]);
 
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         $order = SubscriptionCheckoutOrder::factory()->for($business)->create(['status' => 'pending']);
 
         $this->actingAs($user, 'sanctum')->postJson(
@@ -92,7 +92,7 @@ class SubscriptionChargeTest extends TestCase
         ]);
 
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         $order = SubscriptionCheckoutOrder::factory()->for($business)->create(['status' => 'pending']);
 
         $response = $this->actingAs($user, 'sanctum')->postJson(
@@ -122,7 +122,7 @@ class SubscriptionChargeTest extends TestCase
         ]);
 
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         $order = SubscriptionCheckoutOrder::factory()->for($business)->create(['status' => 'pending']);
 
         $this->actingAs($user, 'sanctum')->postJson(
@@ -139,7 +139,7 @@ class SubscriptionChargeTest extends TestCase
         Http::fake();
 
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         $otherOrder = SubscriptionCheckoutOrder::factory()->for(Business::factory())->create(['status' => 'pending']);
 
         $this->actingAs($user, 'sanctum')->postJson(
@@ -155,7 +155,7 @@ class SubscriptionChargeTest extends TestCase
         Http::fake();
 
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         $order = SubscriptionCheckoutOrder::factory()->for($business)->create(['status' => 'confirmed']);
 
         $this->actingAs($user, 'sanctum')->postJson(
@@ -176,7 +176,7 @@ class SubscriptionChargeTest extends TestCase
         ]);
 
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         $order = SubscriptionCheckoutOrder::factory()->for($business)->create(['status' => 'pending']);
 
         $this->actingAs($user, 'sanctum')->postJson(
@@ -191,7 +191,7 @@ class SubscriptionChargeTest extends TestCase
         Http::fake();
 
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         $order = SubscriptionCheckoutOrder::factory()->for($business)->create(['status' => 'pending']);
 
         $this->actingAs($user, 'sanctum')->postJson(
@@ -229,7 +229,7 @@ class SubscriptionChargeTest extends TestCase
         Http::fake();
 
         $business = Business::factory()->create();
-        $user = User::factory()->create(['business_id' => $business->id]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
         $order = SubscriptionCheckoutOrder::factory()->for($business)->create(['status' => 'pending']);
 
         $response = $this->actingAs($user, 'sanctum')->postJson(
