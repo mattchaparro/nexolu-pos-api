@@ -138,11 +138,37 @@ class PermissionCatalog
             'description' => 'Permite ver el P&L mensual/anual del negocio (ingresos, gastos, utilidad) y cerrar el mes contable. Otorgar con cuidado: expone la rentabilidad completa del negocio.',
             'warning' => true,
         ],
+        // Antes un unico reports.sales cubria los 4 reportes de abajo -
+        // separado a pedido explicito para poder darle a un empleado, por
+        // ejemplo, solo Resumen del dia sin exponerle Mi negocio. reports.sales
+        // no se renombra (evita dejar huerfano cualquier grant directo que
+        // ya exista) - pasa a significar puntualmente "Historial de ventas".
+        // Los otros 3 son permisos nuevos - ver la migracion que le da estos
+        // 3 a cualquier usuario que ya tuviera reports.sales, para que nadie
+        // pierda acceso que ya tenia el dia que esto se despliega.
+        [
+            'name' => 'reports.daily_summary',
+            'category' => 'reportes',
+            'label' => 'Resumen del día',
+            'description' => 'Permite ver el ingreso del negocio de hoy o un rango, por canal y medio de pago.',
+        ],
+        [
+            'name' => 'reports.business_overview',
+            'category' => 'reportes',
+            'label' => 'Mi negocio',
+            'description' => 'Permite ver crecimiento, horas pico, descuentos, fiado y rotación de productos.',
+        ],
         [
             'name' => 'reports.sales',
             'category' => 'reportes',
-            'label' => 'Reportes de ventas',
-            'description' => 'Permite acceder a los reportes de ventas totales y por vendedor.',
+            'label' => 'Historial de ventas',
+            'description' => 'Permite ver todas las ventas con filtros por fecha, estado, medio de pago y cliente.',
+        ],
+        [
+            'name' => 'reports.sales_by_seller',
+            'category' => 'reportes',
+            'label' => 'Ventas por vendedor',
+            'description' => 'Permite ver totales, ticket promedio y unidades vendidas por cada cajero.',
         ],
         [
             'name' => 'reports.inventory',

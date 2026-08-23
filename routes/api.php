@@ -445,17 +445,24 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::apiResource('appointments', AppointmentController::class)->only(['index', 'show', 'store', 'update', 'destroy']);
         });
 
-        // Reportes de ventas - permission:reports.sales requerido para
-        // todos los sub-endpoints. El reporte de cierres de caja ademas
-        // requiere feature:cash_closing + permission:cash_closing.manage
-        // (mismo criterio que las rutas de cash-closings de gestion).
-        Route::middleware('permission:reports.sales')->prefix('reports/sales')->name('reports.sales.')->group(function () {
+        // Reportes de ventas - un permiso distinto por reporte (antes uno
+        // solo, reports.sales, cubria los 4 - ver la nota en PermissionCatalog).
+        // El reporte de cierres de caja ademas requiere feature:cash_closing +
+        // permission:cash_closing.manage (mismo criterio que las rutas de
+        // cash-closings de gestion).
+        Route::middleware('permission:reports.daily_summary')->prefix('reports/sales')->name('reports.sales.')->group(function () {
             Route::get('/daily', [SalesReportController::class, 'daily'])->name('daily');
+        });
+        Route::middleware('permission:reports.business_overview')->prefix('reports/sales')->name('reports.sales.')->group(function () {
+            Route::get('/business-overview', [BusinessOverviewController::class, 'index'])->name('business-overview');
+        });
+        Route::middleware('permission:reports.sales')->prefix('reports/sales')->name('reports.sales.')->group(function () {
             Route::get('/history', [SalesReportController::class, 'history'])->name('history');
             Route::get('/history/export', [SalesReportController::class, 'historyExport'])->name('history.export');
+        });
+        Route::middleware('permission:reports.sales_by_seller')->prefix('reports/sales')->name('reports.sales.')->group(function () {
             Route::get('/by-seller', [SalesReportController::class, 'bySeller'])->name('by-seller');
             Route::get('/by-seller/export', [SalesReportController::class, 'bySellerExport'])->name('by-seller.export');
-            Route::get('/business-overview', [BusinessOverviewController::class, 'index'])->name('business-overview');
         });
         Route::middleware(['feature:cash_closing', 'permission:cash_closing.manage'])->prefix('reports')->name('reports.')->group(function () {
             Route::get('/cash-closings', [SalesReportController::class, 'cashClosings'])->name('cash-closings');

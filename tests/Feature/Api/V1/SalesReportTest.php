@@ -12,6 +12,7 @@ use App\Models\Sale;
 use App\Models\ServiceOrder;
 use App\Models\ServicePayment;
 use App\Models\User;
+use App\Support\PermissionCatalog;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
@@ -97,8 +98,9 @@ class SalesReportTest extends TestCase
             ->assertJsonPath('closed_sales_revenue', 50000);
     }
 
-    public function test_daily_summary_requires_reports_sales_permission(): void
+    public function test_daily_summary_requires_reports_daily_summary_permission(): void
     {
+        PermissionCatalog::sync();
         [$business, $admin] = $this->admin();
         $employee = User::factory()->create(['business_id' => $business->id]);
         $employee->assignRole('employee');
@@ -106,6 +108,62 @@ class SalesReportTest extends TestCase
         $this->actingAs($employee, 'sanctum')
             ->getJson('/api/v1/reports/sales/daily')
             ->assertForbidden();
+
+        // El viejo reports.sales (antes cubria los 4 reportes de ventas) ya
+        // no alcanza para este - cada uno tiene su propio permiso ahora.
+        $employee->syncPermissions(['reports.sales']);
+        $this->actingAs($employee, 'sanctum')
+            ->getJson('/api/v1/reports/sales/daily')
+            ->assertForbidden();
+
+        $employee->syncPermissions(['reports.daily_summary']);
+        $this->actingAs($employee, 'sanctum')
+            ->getJson('/api/v1/reports/sales/daily?date='.today()->toDateString())
+            ->assertOk();
+    }
+
+    public function test_sales_history_requires_reports_sales_permission(): void
+    {
+        PermissionCatalog::sync();
+        [$business, $admin] = $this->admin();
+        $employee = User::factory()->create(['business_id' => $business->id]);
+        $employee->assignRole('employee');
+
+        $this->actingAs($employee, 'sanctum')
+            ->getJson('/api/v1/reports/sales/history?from=2026-03-01&to=2026-03-31')
+            ->assertForbidden();
+
+        $employee->syncPermissions(['reports.daily_summary']);
+        $this->actingAs($employee, 'sanctum')
+            ->getJson('/api/v1/reports/sales/history?from=2026-03-01&to=2026-03-31')
+            ->assertForbidden();
+
+        $employee->syncPermissions(['reports.sales']);
+        $this->actingAs($employee, 'sanctum')
+            ->getJson('/api/v1/reports/sales/history?from=2026-03-01&to=2026-03-31')
+            ->assertOk();
+    }
+
+    public function test_sales_by_seller_requires_reports_sales_by_seller_permission(): void
+    {
+        PermissionCatalog::sync();
+        [$business, $admin] = $this->admin();
+        $employee = User::factory()->create(['business_id' => $business->id]);
+        $employee->assignRole('employee');
+
+        $this->actingAs($employee, 'sanctum')
+            ->getJson('/api/v1/reports/sales/by-seller?from=2026-03-01&to=2026-03-31')
+            ->assertForbidden();
+
+        $employee->syncPermissions(['reports.sales']);
+        $this->actingAs($employee, 'sanctum')
+            ->getJson('/api/v1/reports/sales/by-seller?from=2026-03-01&to=2026-03-31')
+            ->assertForbidden();
+
+        $employee->syncPermissions(['reports.sales_by_seller']);
+        $this->actingAs($employee, 'sanctum')
+            ->getJson('/api/v1/reports/sales/by-seller?from=2026-03-01&to=2026-03-31')
+            ->assertOk();
     }
 
     public function test_daily_summary_breaks_down_income_by_channel_and_payment_method(): void
