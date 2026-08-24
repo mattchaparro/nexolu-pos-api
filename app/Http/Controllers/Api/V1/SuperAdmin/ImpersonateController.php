@@ -36,6 +36,19 @@ class ImpersonateController extends Controller
         AuditLogger::log('superadmin.impersonation.started', [
             'business_id' => $user->business_id,
             'impersonated_user_id' => $user->id,
+            // A diferencia de cualquier otra accion hecha DURANTE una
+            // impersonacion (que AuditLogger::log() marca solo mirando el
+            // token de la request ACTUAL), este request en particular
+            // todavia esta autenticado con el token real del superadmin -
+            // el de impersonacion recien se crea arriba, no existe todavia
+            // como token "actual" de esta request. Sin pasarlo a mano aca,
+            // este evento puntual quedaba sin el marcador que
+            // AuditLogQuery::forBusiness() usa para excluir de la
+            // auditoria del dueño lo que no es suyo (bug real reportado:
+            // "impersonar" aparecia en su auditoria, a diferencia del
+            // evento .ended, que si queda marcado solo porque logout()
+            // corre con el token de impersonacion todavia activo).
+            'impersonated_by_superadmin_id' => $request->user()->id,
         ]);
 
         return [

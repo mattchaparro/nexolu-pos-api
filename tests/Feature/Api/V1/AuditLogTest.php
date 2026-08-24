@@ -107,6 +107,39 @@ class AuditLogTest extends TestCase
         $this->assertSame(50000.0, (float) $response->json('data.0.details.opening_cash'));
     }
 
+    /**
+     * A diferencia de una accion cualquiera hecha DURANTE la impersonacion
+     * (cubierto arriba), el evento de "empezar a impersonar" en si mismo es
+     * un caso especial: en el momento en que ImpersonateController::start()
+     * audita, la request todavia esta autenticada con el token REAL del
+     * superadmin (el de impersonacion recien se crea, no es el "actual" de
+     * esa request) - AuditLogger::log() no podia detectarlo solo, por eso
+     * ImpersonateController::start() lo pasa a mano. Bug real reportado: el
+     * dueño del negocio veia "superadmin.impersonation.started" en SU
+     * propia auditoria.
+     */
+    public function test_excludes_the_impersonation_started_event_itself_from_the_business_audit_log(): void
+    {
+        $admin = $this->superadmin();
+        $business = Business::factory()->create();
+        $owner = $this->userWithPermission($business);
+        $owner->assignRole('admin');
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/v1/superadmin/impersonate/{$owner->id}")
+            ->assertOk();
+
+        $startedLog = LogAction::where('action', 'superadmin.impersonation.started')->first();
+        $this->assertNotNull($startedLog);
+        $this->assertSame($admin->id, $startedLog->details['impersonated_by_superadmin_id']);
+
+        $response = $this->actingAs($owner, 'sanctum')
+            ->getJson('/api/v1/audit-logs?search=impersonation')
+            ->assertOk();
+
+        $response->assertJsonCount(0, 'data');
+    }
+
     public function test_requires_the_audit_logs_view_permission(): void
     {
         $business = Business::factory()->create();
