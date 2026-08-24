@@ -146,7 +146,6 @@
 
         body {
             margin: 0;
-            max-width: none;
         }
 
         .no-print {

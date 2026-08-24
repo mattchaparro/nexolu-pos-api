@@ -335,6 +335,12 @@ class BusinessOverviewService
             ->where('sales.is_credit', false)
             ->whereBetween('sales.closed_at', [$start, $end])
             ->whereNull('products.deleted_at')
+            // is_single_sale: producto de precio libre/una sola vez (ej. un
+            // servicio cobrado como item suelto) que nunca lleva stock/receta
+            // (ver ProductService::create()) - no tiene "rotacion" real que
+            // reportar, mismo criterio que ya usan LowStockAlertReport e
+            // InventoryReportService para excluirlo de sus reportes.
+            ->where('products.is_single_sale', false)
             ->groupBy('sale_items.product_id')
             ->selectRaw('sale_items.product_id as product_id')
             ->selectRaw('MAX(products.name) as name')

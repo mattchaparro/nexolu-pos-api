@@ -112,6 +112,9 @@ class SalesReportService
             ->whereBetween('closed_at', [$from, $to])
             ->where('status', 'closed')
         )
+            // is_single_sale: sin rotacion real que reportar - mismo criterio
+            // que BusinessOverviewService::productRotation().
+            ->whereHas('product', fn ($q) => $q->where('is_single_sale', false))
             ->selectRaw('product_id, SUM(quantity) as total_quantity, SUM(subtotal - COALESCE(discount_amount, 0)) as total_revenue')
             ->groupBy('product_id')
             ->orderByDesc('total_quantity')

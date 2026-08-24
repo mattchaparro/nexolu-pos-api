@@ -221,6 +221,33 @@ class BusinessOverviewServiceTest extends TestCase
         $this->assertSame(11.1, $period['bottom_products'][0]['pct_of_revenue']);
     }
 
+    public function test_product_rotation_excludes_single_sale_products(): void
+    {
+        $business = Business::factory()->create();
+        $popular = Product::factory()->create(['business_id' => $business->id, 'name' => 'Popular']);
+        // Precio libre/una sola vez (ej. un servicio cobrado como item
+        // suelto) - nunca lleva stock/receta, no tiene "rotacion" real que
+        // reportar aunque se venda mucho, mismo criterio que
+        // LowStockAlertReport/InventoryReportService.
+        $freePrice = Product::factory()->create([
+            'business_id' => $business->id,
+            'name' => 'Tatuaje',
+            'is_single_sale' => true,
+        ]);
+
+        $sale = $this->closedSale($business, 100000, now());
+        SaleItem::factory()->create(['sale_id' => $sale->id, 'product_id' => $popular->id, 'quantity' => 1, 'subtotal' => 20000]);
+        SaleItem::factory()->create(['sale_id' => $sale->id, 'product_id' => $freePrice->id, 'quantity' => 50, 'subtotal' => 80000]);
+
+        $period = $this->service()->overview($business, (int) now()->year, (int) now()->month)['period'];
+
+        $topNames = array_column($period['top_products'], 'name');
+        $bottomNames = array_column($period['bottom_products'], 'name');
+        $this->assertContains('Popular', $topNames);
+        $this->assertNotContains('Tatuaje', $topNames);
+        $this->assertNotContains('Tatuaje', $bottomNames);
+    }
+
     public function test_top_services_is_null_when_the_feature_is_disabled(): void
     {
         $business = Business::factory()->create(['feature_flags' => ['services' => false]]);

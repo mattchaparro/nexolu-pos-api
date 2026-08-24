@@ -7,8 +7,10 @@ use App\Models\CashClosing;
 use App\Models\Expense;
 use App\Models\Layaway;
 use App\Models\LayawayPayment;
+use App\Models\Product;
 use App\Models\Receivable;
 use App\Models\Sale;
+use App\Models\SaleItem;
 use App\Models\ServiceOrder;
 use App\Models\ServicePayment;
 use App\Models\User;
@@ -65,6 +67,30 @@ class SalesReportTest extends TestCase
         $this->assertSame('3001234567', $receivable['customer_phone']);
         $this->assertSame('transfer', $receivable['payment_method']);
         $this->assertSame(12000, $receivable['amount']);
+    }
+
+    public function test_daily_summary_top_products_excludes_single_sale_products(): void
+    {
+        [$business, $admin] = $this->admin();
+        $tracked = Product::factory()->create(['business_id' => $business->id, 'name' => 'Producto normal']);
+        // Precio libre/una sola vez - no tiene "rotacion" real que reportar
+        // aunque se venda mucho, mismo criterio que BusinessOverviewService.
+        $freePrice = Product::factory()->create([
+            'business_id' => $business->id,
+            'name' => 'Tatuaje',
+            'is_single_sale' => true,
+        ]);
+        $sale = Sale::factory()->create(['business_id' => $business->id, 'status' => 'closed', 'closed_at' => now(), 'total' => 100000]);
+        SaleItem::factory()->create(['sale_id' => $sale->id, 'product_id' => $tracked->id, 'quantity' => 1, 'subtotal' => 20000]);
+        SaleItem::factory()->create(['sale_id' => $sale->id, 'product_id' => $freePrice->id, 'quantity' => 50, 'subtotal' => 80000]);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/sales/daily?date='.today()->toDateString())
+            ->assertOk();
+
+        $names = collect($response->json('top_products'))->pluck('name');
+        $this->assertContains('Producto normal', $names);
+        $this->assertNotContains('Tatuaje', $names);
     }
 
     public function test_daily_summary_counts_closed_sales_for_the_date(): void
