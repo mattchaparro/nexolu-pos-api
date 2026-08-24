@@ -54,7 +54,12 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single')),
+            // 'sentry_logs' lo registra automaticamente sentry/sentry-laravel
+            // (config/sentry.php: enable_logs + logs_channel_level) - se
+            // agrega siempre aca para que cualquier Log::warning()/error()
+            // del proyecto tambien llegue a Sentry, sin tocar los canales
+            // que ya trae LOG_STACK.
+            'channels' => [...explode(',', (string) env('LOG_STACK', 'single')), 'sentry_logs'],
             'ignore_exceptions' => false,
         ],
 

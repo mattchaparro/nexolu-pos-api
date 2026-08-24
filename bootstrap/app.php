@@ -7,10 +7,12 @@ use App\Http\Middleware\EnsureBusinessPermission;
 use App\Http\Middleware\EnsureCashShiftOpenForSales;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\EnsureValidIaCoreKey;
+use App\Http\Middleware\SentryBusinessContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Sentry\Laravel\Integration;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -33,10 +35,13 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => EnsureBusinessPermission::class,
             'business-admin' => EnsureBusinessAdmin::class,
             'cash-shift.required-for-sales' => EnsureCashShiftOpenForSales::class,
+            'sentry.context' => SentryBusinessContext::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );
+
+        Integration::handles($exceptions);
     })->create();
