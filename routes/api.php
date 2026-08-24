@@ -159,6 +159,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             ->name('business.payment-methods.support-request');
 
         Route::get('/dashboard/summary', [DashboardController::class, 'summary'])->name('dashboard.summary');
+        Route::put('/dashboard/shortcuts', [DashboardController::class, 'updateShortcuts'])->name('dashboard.shortcuts.update');
         Route::get('/dashboard/whatsapp-onboarding', [DashboardController::class, 'whatsappOnboarding'])->name('dashboard.whatsapp-onboarding');
         Route::post('/dashboard/whatsapp-onboarding/dismiss', [DashboardController::class, 'dismissWhatsappOnboarding'])->name('dashboard.whatsapp-onboarding.dismiss');
 

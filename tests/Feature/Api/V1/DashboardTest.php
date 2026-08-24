@@ -174,6 +174,80 @@ class DashboardTest extends TestCase
         $this->getJson('/api/v1/dashboard/summary')->assertUnauthorized();
     }
 
+    public function test_summary_reports_null_shortcuts_when_the_user_never_customized_them(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/dashboard/summary')
+            ->assertOk()
+            ->assertJsonPath('shortcuts', null);
+    }
+
+    public function test_summary_reports_the_users_saved_shortcuts(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create([
+            'business_id' => $business->id,
+            'dashboard_shortcuts' => [
+                ['route_name' => 'sales.create', 'color' => 'primary'],
+                ['route_name' => 'catalog.index', 'color' => 'outline'],
+            ],
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/dashboard/summary')
+            ->assertOk()
+            ->assertJsonPath('shortcuts.0.route_name', 'sales.create')
+            ->assertJsonPath('shortcuts.0.color', 'primary')
+            ->assertJsonPath('shortcuts.1.route_name', 'catalog.index');
+    }
+
+    public function test_a_business_user_can_save_their_own_shortcuts(): void
+    {
+        // Sin middleware business-admin a proposito: cada usuario (admin o
+        // empleado) tiene su propio set de atajos, dashboard_shortcuts es
+        // una columna por usuario, no por negocio - ver la nota en
+        // routes/api.php.
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('employee');
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson('/api/v1/dashboard/shortcuts', [
+                'shortcuts' => [
+                    ['route_name' => 'sales.create', 'color' => 'primary'],
+                    ['route_name' => 'open-tabs.index', 'color' => 'outline'],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('shortcuts.0.route_name', 'sales.create')
+            ->assertJsonPath('shortcuts.1.color', 'outline');
+
+        $this->assertDatabaseHas('users', ['id' => $user->id]);
+        $user->refresh();
+        $this->assertSame('sales.create', $user->dashboard_shortcuts[0]['route_name']);
+    }
+
+    public function test_saving_shortcuts_rejects_an_invalid_color(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson('/api/v1/dashboard/shortcuts', [
+                'shortcuts' => [['route_name' => 'sales.create', 'color' => 'purple']],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['shortcuts.0.color']);
+    }
+
+    public function test_guest_cannot_save_dashboard_shortcuts(): void
+    {
+        $this->putJson('/api/v1/dashboard/shortcuts', ['shortcuts' => []])->assertUnauthorized();
+    }
+
     public function test_whatsapp_onboarding_reports_unlinked_for_a_user_with_ai_chat_access(): void
     {
         $business = Business::factory()->create();
