@@ -1,7 +1,19 @@
 <style>
+    {{--
+        size acepta <length>{1,2} o la palabra clave "auto" sola, nunca una
+        medida combinada con "auto" (ver CSS Paged Media Module Level 3) -
+        "Nmm auto" es sintaxis invalida, el navegador la descarta entera y
+        cae al tamaño de pagina por defecto del sistema (Carta), que es
+        exactamente el bug reportado: el ancho configurado (58/80mm) se
+        ignoraba al imprimir de verdad, no solo en la vista previa en
+        pantalla. 297mm (altura generosa, igual que ya usa styles.blade.php
+        para el PDF descargable) evita la palabra "auto" sin asumir un alto
+        real - el recibo real es mucho mas corto y termina bien antes de
+        esa altura, no genera una segunda pagina en blanco.
+    --}}
     @page {
         margin: 0;
-        size: {{ $paperWidthMm }}mm auto;
+        size: {{ $paperWidthMm }}mm 297mm;
     }
 
     * {
