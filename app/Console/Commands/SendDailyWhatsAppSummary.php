@@ -9,6 +9,7 @@ use App\Support\WhatsAppRecipients;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 
 /**
  * Resumen diario del negocio por WhatsApp: la primera notificacion proactiva
@@ -25,9 +26,19 @@ use Illuminate\Console\Command;
  * Va por PLANTILLA: es un mensaje que el negocio inicia, no una respuesta
  * dentro de la ventana de 24h. Sin la plantilla aprobada en Meta, el comando
  * no envia nada (mismo patron tolerante que reminders:send-whatsapp-notifications).
+ *
+ * Hora configurable por negocio (Business::notificationHour('resumen_diario'),
+ * default 20:00 - ver NotificationTypes): antes corria una unica vez al dia
+ * a las 8pm fijas para todos, sin importar si el negocio ya habia cerrado su
+ * dia o no (bug reportado: un negocio que cierra a medianoche recibia el
+ * resumen con horas de venta todavia por delante). Ahora el schedule
+ * (routes/console.php) lo corre cada 5 minutos, mismo patron que
+ * reminders:send-whatsapp-notifications/appointments:send-two-hour-reminders,
+ * y cada negocio se evalua una sola vez por dia (last_daily_summary_sent_on)
+ * en el primer tick que alcanza o pasa SU hora elegida.
  */
 #[Signature('notifications:send-daily-whatsapp-summary {--business_id= : Solo para un negocio}')]
-#[Description('Envia el resumen diario del negocio por WhatsApp a los admins que lo activaron')]
+#[Description('Envia el resumen diario del negocio por WhatsApp a los admins que lo activaron, a la hora que cada uno eligio')]
 class SendDailyWhatsAppSummary extends Command
 {
     public function handle(SmartSummaryInsight $insight, MessagingChannel $client): int
@@ -46,6 +57,7 @@ class SendDailyWhatsAppSummary extends Command
             $query->where('id', $businessId);
         }
 
+        $now = Carbon::now();
         $sent = 0;
 
         foreach ($query->cursor() as $business) {
@@ -54,6 +66,20 @@ class SendDailyWhatsAppSummary extends Command
             if (! ($business->notification_preferences['resumen_diario'] ?? false)) {
                 continue;
             }
+
+            // Ya evaluado hoy - sea que se haya enviado o no (ver mas
+            // abajo, se marca ANTES de decidir si hay algo que mandar), no
+            // se vuelve a intentar en cada tick de 5 min de lo que resta
+            // del dia.
+            if ($business->last_daily_summary_sent_on?->isSameDay($now)) {
+                continue;
+            }
+
+            if ($now->format('H:i') < $business->notificationHour('resumen_diario')) {
+                continue;
+            }
+
+            $business->update(['last_daily_summary_sent_on' => $now->toDateString()]);
 
             $recipients = WhatsAppRecipients::linkedAdmins($business);
             if ($recipients->isEmpty()) {

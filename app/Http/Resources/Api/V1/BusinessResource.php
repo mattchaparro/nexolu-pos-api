@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Support\NotificationTypes;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -46,6 +47,16 @@ class BusinessResource extends JsonResource
             'email_footer_text' => $this->email_config['footer_text'] ?? null,
             'email_whatsapp_cta' => $this->email_whatsapp_cta,
             'notification_preferences' => $this->notification_preferences,
+            // Siempre resuelto con los defaults de NotificationTypes::DEFAULT_HOURS
+            // ya aplicados - el frontend no necesita conocerlos, solo
+            // mostrar/editar esta hora y mandar de vuelta lo que el usuario
+            // cambie (ver Business::notificationHour(), mismo criterio de
+            // "el backend resuelve, el frontend no reimplementa" que
+            // resolved_features mas abajo).
+            'notification_schedule' => array_merge(
+                NotificationTypes::DEFAULT_HOURS,
+                $this->notification_schedule ?? [],
+            ),
             // Configuracion del formulario de "Nueva orden de servicio" (ver
             // ServiceOrderFormView.vue en el frontend) - si el negocio quiere
             // que se pueda elegir un servicio del catalogo, y con que nombre

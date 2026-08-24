@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\Sale;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -22,6 +23,17 @@ class SendDailyWhatsAppSummaryTest extends TestCase
             'services.whatsapp.phone_number_id' => '1234567890',
             'services.whatsapp.templates.resumen_diario' => ['name' => 'daily_business_summary', 'lang' => 'es_CO'],
         ]);
+        // El comando ahora solo envia a partir de la hora que cada negocio
+        // eligio (default 20:00, ver NotificationTypes) - fijar el reloj
+        // despues de esa hora para que los tests no dependan de a que hora
+        // del dia real corre la suite.
+        Carbon::setTestNow(Carbon::parse('2026-08-24 20:05:00', 'America/Bogota'));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow(null);
+        parent::tearDown();
     }
 
     private function businessWithLinkedAdmin(array $businessAttributes = [], string $externalId = '573001234567'): Business
@@ -117,6 +129,45 @@ class SendDailyWhatsAppSummaryTest extends TestCase
 
         $this->artisan('notifications:send-daily-whatsapp-summary', ['--business_id' => $target->id])->assertSuccessful();
 
+        Http::assertSentCount(1);
+    }
+
+    public function test_does_not_send_before_the_businesss_custom_hour(): void
+    {
+        Http::fake();
+        $business = $this->businessWithLinkedAdmin(['notification_schedule' => ['resumen_diario' => '21:00']]);
+        Sale::factory()->create(['business_id' => $business->id, 'total' => 100000, 'closed_at' => now()]);
+
+        // now() esta fijo en 20:05 (setUp) - todavia no llega a las 21:00 que este negocio eligio.
+        $this->artisan('notifications:send-daily-whatsapp-summary')->assertSuccessful();
+
+        Http::assertNothingSent();
+    }
+
+    public function test_sends_once_the_businesss_custom_hour_arrives(): void
+    {
+        Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.1']]], 200)]);
+        $business = $this->businessWithLinkedAdmin(['notification_schedule' => ['resumen_diario' => '21:00']]);
+        Sale::factory()->create(['business_id' => $business->id, 'total' => 100000, 'closed_at' => now()]);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-24 21:05:00', 'America/Bogota'));
+        $this->artisan('notifications:send-daily-whatsapp-summary')->assertSuccessful();
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_does_not_re_evaluate_the_same_business_twice_in_the_same_day(): void
+    {
+        Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.1']]], 200)]);
+        $business = $this->businessWithLinkedAdmin();
+        Sale::factory()->create(['business_id' => $business->id, 'total' => 100000, 'closed_at' => now()]);
+
+        $this->artisan('notifications:send-daily-whatsapp-summary')->assertSuccessful();
+        Carbon::setTestNow(Carbon::parse('2026-08-24 20:10:00', 'America/Bogota'));
+        $this->artisan('notifications:send-daily-whatsapp-summary')->assertSuccessful();
+
+        // Un solo envio pese a dos corridas del comando el mismo dia
+        // (simula dos ticks de los everyFiveMinutes() del schedule).
         Http::assertSentCount(1);
     }
 }

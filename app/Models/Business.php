@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\BusinessFeaturePresets;
+use App\Support\NotificationTypes;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -45,6 +46,9 @@ use Illuminate\Validation\ValidationException;
     'low_stock_snoozed_until',
     'email_config',
     'notification_preferences',
+    'notification_schedule',
+    'last_daily_summary_sent_on',
+    'last_low_stock_alert_sent_on',
     'active',
     'trial_ends_at',
     'paid_until',
@@ -94,6 +98,9 @@ class Business extends Model
             'subscription_expiry_notified_at' => 'datetime',
             'email_config' => 'array',
             'notification_preferences' => 'array',
+            'notification_schedule' => 'array',
+            'last_daily_summary_sent_on' => 'date',
+            'last_low_stock_alert_sent_on' => 'date',
             'delivery_enabled' => 'boolean',
             'delivery_fee' => 'decimal:2',
             'payment_methods' => 'array',
@@ -329,6 +336,17 @@ class Business extends Model
         }
 
         return 'cash';
+    }
+
+    /**
+     * Hora (HH:mm, America/Bogota) a la que este negocio quiere recibir un
+     * tipo de notificacion schedulable (ver NotificationTypes::SCHEDULABLE)
+     * - notification_schedule solo guarda overrides, asi que sin
+     * personalizar cae al default de la plataforma.
+     */
+    public function notificationHour(string $type): string
+    {
+        return $this->notification_schedule[$type] ?? NotificationTypes::DEFAULT_HOURS[$type] ?? '00:00';
     }
 
     /**

@@ -52,7 +52,22 @@ class BusinessController extends Controller
             $preferences[$key] = (bool) ($incoming[$key] ?? false);
         }
 
-        $this->currentBusiness($request)->update(['notification_preferences' => $preferences]);
+        // Solo se guardan overrides para los tipos schedulable - una hora
+        // vacia/ausente deja el default de la plataforma aplicandose solo
+        // (ver Business::notificationHour()), no se persiste "00:00" ni
+        // nada para lo que el negocio no toco.
+        $incomingSchedule = $request->validated('schedule', []);
+        $schedule = [];
+        foreach (NotificationTypes::SCHEDULABLE as $key) {
+            if (! empty($incomingSchedule[$key])) {
+                $schedule[$key] = $incomingSchedule[$key];
+            }
+        }
+
+        $this->currentBusiness($request)->update([
+            'notification_preferences' => $preferences,
+            'notification_schedule' => $schedule,
+        ]);
 
         return response()->json(['ok' => true]);
     }

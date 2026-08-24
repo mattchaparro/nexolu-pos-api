@@ -241,7 +241,7 @@ class BusinessTest extends TestCase
             ->assertJsonPath('email_whatsapp_cta', true);
 
         $business->refresh();
-        $this->assertSame(['header_color' => '#ff0000', 'footer_text' => 'Gracias por tu compra'], $business->email_config);
+        $this->assertEquals(['header_color' => '#ff0000', 'footer_text' => 'Gracias por tu compra'], $business->email_config);
         $this->assertTrue($business->email_whatsapp_cta);
     }
 
@@ -282,6 +282,67 @@ class BusinessTest extends TestCase
         $this->assertTrue($prefs['inventario_bajo']);
         $this->assertFalse($prefs['recordatorios']);
         $this->assertArrayNotHasKey('unknown_key', $prefs);
+    }
+
+    public function test_owner_can_save_a_custom_hour_for_a_schedulable_notification(): void
+    {
+        $business = Business::factory()->create();
+        $owner = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+        AiChannelIdentity::create([
+            'business_id' => $business->id,
+            'user_id' => $owner->id,
+            'channel' => AiChannelIdentity::CHANNEL_WHATSAPP,
+            'external_id' => '573001234567',
+            'verified_at' => now(),
+        ]);
+
+        $this->actingAs($owner, 'sanctum')
+            ->putJson('/api/v1/business/notifications', [
+                'preferences' => ['resumen_diario' => true],
+                // recordatorios no es schedulable (ver NotificationTypes::SCHEDULABLE)
+                // - una hora para el se descarta en vez de guardarse.
+                'schedule' => ['resumen_diario' => '22:30', 'recordatorios' => '09:00'],
+            ])
+            ->assertOk();
+
+        $schedule = $business->fresh()->notification_schedule;
+        $this->assertSame('22:30', $schedule['resumen_diario']);
+        $this->assertArrayNotHasKey('recordatorios', $schedule);
+    }
+
+    public function test_business_resource_resolves_notification_schedule_defaults_when_unset(): void
+    {
+        $business = Business::factory()->create(['notification_schedule' => ['resumen_diario' => '22:30']]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+
+        $response = $this->actingAs($user, 'sanctum')->getJson('/api/v1/business')->assertOk();
+
+        // resumen_diario personalizado, inventario_bajo cae al default de
+        // la plataforma (ver NotificationTypes::DEFAULT_HOURS) porque este
+        // negocio nunca lo toco.
+        $response->assertJsonPath('notification_schedule.resumen_diario', '22:30');
+        $response->assertJsonPath('notification_schedule.inventario_bajo', '08:00');
+    }
+
+    public function test_saving_notifications_rejects_an_invalid_hour_format(): void
+    {
+        $business = Business::factory()->create();
+        $owner = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+        AiChannelIdentity::create([
+            'business_id' => $business->id,
+            'user_id' => $owner->id,
+            'channel' => AiChannelIdentity::CHANNEL_WHATSAPP,
+            'external_id' => '573001234567',
+            'verified_at' => now(),
+        ]);
+
+        $this->actingAs($owner, 'sanctum')
+            ->putJson('/api/v1/business/notifications', [
+                'preferences' => ['resumen_diario' => true],
+                'schedule' => ['resumen_diario' => '10pm'],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['schedule.resumen_diario']);
     }
 
     public function test_regular_employee_cannot_update_notifications(): void

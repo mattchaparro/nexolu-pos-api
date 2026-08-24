@@ -9,6 +9,7 @@ use App\Models\Ingredient;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
@@ -25,6 +26,16 @@ class InventorySendLowStockAlertsTest extends TestCase
             'services.whatsapp.phone_number_id' => '1234567890',
             'services.whatsapp.templates.inventario_bajo' => ['name' => 'low_stock_alert', 'lang' => 'es_CO'],
         ]);
+        // El comando ahora solo envia a partir de la hora que cada negocio
+        // eligio (default 08:00, ver NotificationTypes) - mismo motivo que
+        // SendDailyWhatsAppSummaryTest.
+        Carbon::setTestNow(Carbon::parse('2026-08-24 08:05:00', 'America/Bogota'));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow(null);
+        parent::tearDown();
     }
 
     private function linkWhatsApp(Business $business, User $admin, string $externalId = '573001234567'): void
@@ -323,5 +334,69 @@ class InventorySendLowStockAlertsTest extends TestCase
         $this->artisan('inventory:send-low-stock-alerts')->assertSuccessful();
 
         Http::assertNothingSent();
+    }
+
+    public function test_does_not_notify_before_the_businesss_custom_hour(): void
+    {
+        Mail::fake();
+        $business = $this->businessWithAdmin([
+            'low_stock_email' => 'dueno@example.com',
+            'notification_schedule' => ['inventario_bajo' => '10:00'],
+        ]);
+        Product::factory()->create([
+            'business_id' => $business->id,
+            'is_active' => true,
+            'track_stock' => true,
+            'is_single_sale' => false,
+            'stock' => 1,
+            'low_stock_alert_threshold' => 5,
+        ]);
+
+        // now() esta fijo en 08:05 (setUp) - todavia no llega a las 10:00 que este negocio eligio.
+        $this->artisan('inventory:send-low-stock-alerts')->assertSuccessful();
+
+        Mail::assertNothingSent();
+    }
+
+    public function test_notifies_once_the_businesss_custom_hour_arrives(): void
+    {
+        Mail::fake();
+        $business = $this->businessWithAdmin([
+            'low_stock_email' => 'dueno@example.com',
+            'notification_schedule' => ['inventario_bajo' => '10:00'],
+        ]);
+        Product::factory()->create([
+            'business_id' => $business->id,
+            'is_active' => true,
+            'track_stock' => true,
+            'is_single_sale' => false,
+            'stock' => 1,
+            'low_stock_alert_threshold' => 5,
+        ]);
+
+        Carbon::setTestNow(Carbon::parse('2026-08-24 10:05:00', 'America/Bogota'));
+        $this->artisan('inventory:send-low-stock-alerts')->assertSuccessful();
+
+        Mail::assertSent(LowStockAlertMail::class, fn ($mail) => $mail->hasTo('dueno@example.com'));
+    }
+
+    public function test_does_not_re_evaluate_the_same_business_twice_in_the_same_day(): void
+    {
+        Mail::fake();
+        $business = $this->businessWithAdmin(['low_stock_email' => 'dueno@example.com']);
+        Product::factory()->create([
+            'business_id' => $business->id,
+            'is_active' => true,
+            'track_stock' => true,
+            'is_single_sale' => false,
+            'stock' => 1,
+            'low_stock_alert_threshold' => 5,
+        ]);
+
+        $this->artisan('inventory:send-low-stock-alerts')->assertSuccessful();
+        Carbon::setTestNow(Carbon::parse('2026-08-24 08:10:00', 'America/Bogota'));
+        $this->artisan('inventory:send-low-stock-alerts')->assertSuccessful();
+
+        Mail::assertSentCount(1);
     }
 }

@@ -27,6 +27,10 @@ class UpdateBusinessNotificationsRequest extends FormRequest
         return [
             'preferences' => ['array'],
             'preferences.*' => ['boolean'],
+            // HH:mm 24h - los <input type="time"> del frontend ya emiten
+            // este formato, sin segundos.
+            'schedule' => ['array'],
+            'schedule.*' => ['nullable', 'date_format:H:i'],
         ];
     }
 }

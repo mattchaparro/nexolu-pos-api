@@ -31,6 +31,30 @@ class NotificationTypes
         ],
     ];
 
+    /**
+     * Que tipos ademas dejan elegir A QUE HORA llegan (ver
+     * Business::notificationHour(), SendDailyWhatsAppSummary,
+     * InventorySendLowStockAlerts). recordatorios no aplica: cada
+     * recordatorio ya trae su propia notify_time, no hay "una hora" de
+     * negocio que fijar. fiados_vencidos tampoco: todavia no existe un
+     * comando que lo envie.
+     *
+     * @var list<string>
+     */
+    public const SCHEDULABLE = ['resumen_diario', 'inventario_bajo'];
+
+    /**
+     * Hora por defecto (America/Bogota, unica zona horaria del producto)
+     * para quien nunca la personalizo - mismos horarios que ya usaban los
+     * `dailyAt()` originales de ambos comandos antes de este feature.
+     *
+     * @var array<string, string>
+     */
+    public const DEFAULT_HOURS = [
+        'resumen_diario' => '20:00',
+        'inventario_bajo' => '08:00',
+    ];
+
     /** @return list<string> */
     public static function keys(): array
     {
@@ -40,13 +64,18 @@ class NotificationTypes
     /**
      * Catalogo con la clave incluida, para el frontend.
      *
-     * @return list<array{key:string, label:string, desc:string}>
+     * @return list<array{key:string, label:string, desc:string, schedulable:bool, default_hour:?string}>
      */
     public static function catalog(): array
     {
         $out = [];
         foreach (self::TYPES as $key => $meta) {
-            $out[] = ['key' => $key, ...$meta];
+            $out[] = [
+                'key' => $key,
+                ...$meta,
+                'schedulable' => in_array($key, self::SCHEDULABLE, true),
+                'default_hour' => self::DEFAULT_HOURS[$key] ?? null,
+            ];
         }
 
         return $out;

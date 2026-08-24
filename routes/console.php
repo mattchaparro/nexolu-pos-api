@@ -31,12 +31,18 @@ $logCronRun('appointments:send-reminders', 'appointment_reminders')->dailyAt('09
 // Cada 5 min, mismo motivo que reminder_whatsapp: una cita a cualquier hora
 // necesita que el aviso se dispare cerca de "2h antes", no en una hora fija.
 $logCronRun('appointments:send-two-hour-reminders', 'appointment_two_hour_reminders')->everyFiveMinutes();
-$logCronRun('inventory:send-low-stock-alerts', 'low_stock_alerts')->dailyAt('08:00');
+// Cada 5 min y no una hora fija: cada negocio elige su propia hora desde
+// Ajustes (Business::notificationHour('inventario_bajo'), default 08:00) -
+// mismo motivo que reminder_whatsapp/appointment_two_hour_reminders, el
+// comando ya se auto-limita a evaluar cada negocio una sola vez por dia.
+$logCronRun('inventory:send-low-stock-alerts', 'low_stock_alerts')->everyFiveMinutes();
 // Cada 5 min y no una hora fija: un recordatorio "hoy a las 5:00pm" tiene
 // que dispararse cerca de esa hora, sea cual sea.
 $logCronRun('reminders:send-whatsapp-notifications', 'reminder_whatsapp')->everyFiveMinutes();
 $logCronRun('expenses:register-scheduled', 'scheduled_expenses')->dailyAt('00:05');
-$logCronRun('notifications:send-daily-whatsapp-summary', 'daily_whatsapp_summary')->dailyAt('20:00');
+// Cada 5 min, mismo motivo que low_stock_alerts arriba: la hora la elige
+// cada negocio (default 20:00, ver NotificationTypes), no todos a la vez.
+$logCronRun('notifications:send-daily-whatsapp-summary', 'daily_whatsapp_summary')->everyFiveMinutes();
 $logCronRun('businesses:send-trial-winback', 'trial_winback')->weeklyOn(1, '10:00');
 $logCronRun('businesses:warn-inactive-trial', 'inactive_trial_warning')->dailyAt('10:00');
 // 06:00: temprano, para que TODO gasto del dia (IA y WhatsApp) se pueda

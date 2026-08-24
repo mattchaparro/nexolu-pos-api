@@ -12,6 +12,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Mail;
 
@@ -20,6 +21,14 @@ use Illuminate\Support\Facades\Mail;
  * cada negocio tenga activado. Los dos canales son independientes entre si:
  * un negocio puede tener el correo apagado y la preferencia de WhatsApp
  * prendida, o al reves.
+ *
+ * Hora configurable por negocio (Business::notificationHour('inventario_bajo'),
+ * default 08:00) - mismo cambio y mismo motivo que
+ * SendDailyWhatsAppSummary: el schedule (routes/console.php) paso de una
+ * corrida fija a cada 5 minutos, y last_low_stock_alert_sent_on evita
+ * reevaluar el mismo negocio mas de una vez por dia. La hora gatea el chequeo
+ * completo (los dos canales), no uno a la vez - es "cuando queres que te
+ * avise de esto", no una preferencia por canal.
  */
 #[Signature('inventory:send-low-stock-alerts {--business_id= : Enviar solo para un negocio}')]
 #[Description('Envia una alerta de inventario bajo (correo y/o WhatsApp) a los negocios configurados')]
@@ -50,6 +59,7 @@ class InventorySendLowStockAlerts extends Command
 
         $whatsappTemplate = config('services.whatsapp.templates.inventario_bajo');
 
+        $now = Carbon::now();
         $emailsSent = 0;
         $whatsappSent = 0;
 
@@ -63,6 +73,18 @@ class InventorySendLowStockAlerts extends Command
             if ($business->low_stock_snoozed_until?->isFuture()) {
                 continue;
             }
+
+            // Igual que el resumen diario: se evalua una sola vez por dia,
+            // en el primer tick que alcanza o pasa la hora elegida.
+            if ($business->last_low_stock_alert_sent_on?->isSameDay($now)) {
+                continue;
+            }
+
+            if ($now->format('H:i') < $business->notificationHour('inventario_bajo')) {
+                continue;
+            }
+
+            $business->update(['last_low_stock_alert_sent_on' => $now->toDateString()]);
 
             if ($business->low_stock_email_enabled) {
                 $emailsSent += $this->sendEmail($business);
