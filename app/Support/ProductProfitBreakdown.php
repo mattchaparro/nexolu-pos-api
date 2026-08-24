@@ -55,6 +55,12 @@ class ProductProfitBreakdown
             // detras.
             ->where('s.is_credit', false)
             ->whereBetween('s.closed_at', [$start, $end])
+            // is_single_sale: producto de precio libre/una sola vez que nunca
+            // lleva stock/receta (ver ProductService::create()) - no tiene
+            // rentabilidad real que reportar, mismo criterio que ya usa
+            // BusinessOverviewService::productRotation() y
+            // SalesReportService::topProducts() para excluirlo.
+            ->where('p.is_single_sale', false)
             ->groupBy('p.id', 'p.name', 'p.sku')
             ->get();
 

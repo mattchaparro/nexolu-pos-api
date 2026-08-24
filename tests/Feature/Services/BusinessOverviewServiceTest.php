@@ -349,6 +349,36 @@ class BusinessOverviewServiceTest extends TestCase
         $this->assertSame(20000.0, $profit['uncosted_revenue']);
     }
 
+    public function test_profit_excludes_single_sale_products(): void
+    {
+        $business = Business::factory()->create();
+        $regular = Product::factory()->create(['business_id' => $business->id, 'name' => 'Regular']);
+        // Precio libre/una sola vez - no tiene rentabilidad real que
+        // reportar aunque tenga un costo configurado, mismo criterio que
+        // productRotation() (ver test_product_rotation_excludes_single_sale_products).
+        $freePrice = Product::factory()->create([
+            'business_id' => $business->id,
+            'name' => 'Tatuaje',
+            'is_single_sale' => true,
+        ]);
+
+        $sale = $this->closedSale($business, 30000, now());
+        SaleItem::factory()->create([
+            'sale_id' => $sale->id, 'product_id' => $regular->id,
+            'quantity' => 1, 'subtotal' => 10000, 'discount_amount' => 0, 'unit_cost_at_sale' => 4000,
+        ]);
+        SaleItem::factory()->create([
+            'sale_id' => $sale->id, 'product_id' => $freePrice->id,
+            'quantity' => 1, 'subtotal' => 20000, 'discount_amount' => 0, 'unit_cost_at_sale' => 5000,
+        ]);
+
+        $profit = $this->service()->overview($business, (int) now()->year, (int) now()->month, canViewProfit: true)['period']['profit'];
+
+        $this->assertCount(1, $profit['top_products']);
+        $this->assertSame('Regular', $profit['top_products'][0]['name']);
+        $this->assertSame(10000.0, $profit['revenue']);
+    }
+
     public function test_profit_excludes_credit_sales_not_yet_collected(): void
     {
         $business = Business::factory()->create();
