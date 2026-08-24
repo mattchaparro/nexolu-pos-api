@@ -8,6 +8,8 @@ use App\Http\Requests\Api\V1\ForgotPasswordRequest;
 use App\Http\Requests\Api\V1\LoginRequest;
 use App\Http\Requests\Api\V1\RegisterRequest;
 use App\Http\Requests\Api\V1\ResetPasswordRequest;
+use App\Http\Requests\Api\V1\UpdatePasswordRequest;
+use App\Http\Requests\Api\V1\UpdateProfileRequest;
 use App\Http\Resources\Api\V1\UserResource;
 use App\Models\User;
 use App\Services\BusinessRegistrationService;
@@ -79,6 +81,33 @@ class AuthController extends Controller
     public function me(Request $request): UserResource
     {
         return new UserResource($request->user()->load('roles'));
+    }
+
+    /** Perfil propio (nombre, apellido, correo, celular) - nunca la contraseña, eso va por updatePassword(). */
+    public function updateProfile(UpdateProfileRequest $request): UserResource
+    {
+        $user = $request->user();
+        $user->update($request->validated());
+
+        return new UserResource($user->fresh()->load('roles'));
+    }
+
+    /**
+     * Cambio de contraseña autoservicio: a diferencia de
+     * EmployeeController::update() (un admin reseteando la de otro), exige
+     * la contraseña actual - es el propio usuario cambiando la suya.
+     */
+    public function updatePassword(UpdatePasswordRequest $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! Hash::check($request->validated('current_password'), $user->password)) {
+            throw ValidationException::withMessages(['current_password' => ['La contraseña actual no es correcta.']]);
+        }
+
+        $user->update(['password' => $request->validated('password')]);
+
+        return response()->json(['message' => 'Tu contraseña se actualizó correctamente.']);
     }
 
     /**

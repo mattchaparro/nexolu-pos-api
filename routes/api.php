@@ -116,6 +116,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
         Route::get('/me', [AuthController::class, 'me'])->name('me');
+        Route::put('/me', [AuthController::class, 'updateProfile'])->name('me.update');
+        Route::put('/me/password', [AuthController::class, 'updatePassword'])->name('me.password.update');
 
         Route::post('/ai/chat', [AiChatController::class, 'send'])->name('ai.chat');
         Route::post('/ai/drafts/{draftId}/confirm', [AiDraftController::class, 'confirm'])->name('ai.drafts.confirm');

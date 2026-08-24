@@ -127,4 +127,109 @@ class AuthTest extends TestCase
         $this->assertContains('cash_shift.manage', $permissions);
         $this->assertNotContains('sales.reverse', $permissions);
     }
+
+    public function test_a_user_can_update_their_own_profile(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create([
+            'business_id' => $business->id,
+            'name' => 'Vieja',
+            'last_name' => 'Apellido',
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->putJson('/api/v1/me', [
+                'name' => 'Nueva',
+                'last_name' => 'Apellido Nuevo',
+                'email' => 'nueva@example.com',
+                'cellphone' => '3001234567',
+            ])
+            ->assertOk();
+
+        $response->assertJsonPath('name', 'Nueva')
+            ->assertJsonPath('last_name', 'Apellido Nuevo')
+            ->assertJsonPath('email', 'nueva@example.com')
+            ->assertJsonPath('cellphone', '3001234567');
+
+        $this->assertSame('Nueva', $user->fresh()->name);
+    }
+
+    public function test_updating_the_profile_rejects_an_email_already_used_by_another_account(): void
+    {
+        $business = Business::factory()->create();
+        User::factory()->create(['business_id' => $business->id, 'email' => 'tomado@example.com']);
+        $user = User::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson('/api/v1/me', [
+                'name' => $user->name,
+                'email' => 'tomado@example.com',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['email']);
+    }
+
+    public function test_updating_the_profile_allows_keeping_the_users_own_current_email(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id, 'email' => 'yo@example.com']);
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson('/api/v1/me', [
+                'name' => $user->name,
+                'email' => 'yo@example.com',
+            ])
+            ->assertOk();
+    }
+
+    public function test_a_user_can_change_their_own_password_with_the_correct_current_password(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('old-password')]);
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson('/api/v1/me/password', [
+                'current_password' => 'old-password',
+                'password' => 'new-password-123',
+                'password_confirmation' => 'new-password-123',
+            ])
+            ->assertOk();
+
+        $this->assertTrue(Hash::check('new-password-123', $user->fresh()->password));
+    }
+
+    public function test_changing_password_rejects_an_incorrect_current_password(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('old-password')]);
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson('/api/v1/me/password', [
+                'current_password' => 'wrong-password',
+                'password' => 'new-password-123',
+                'password_confirmation' => 'new-password-123',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['current_password']);
+
+        $this->assertTrue(Hash::check('old-password', $user->fresh()->password));
+    }
+
+    public function test_changing_password_requires_confirmation_to_match(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('old-password')]);
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson('/api/v1/me/password', [
+                'current_password' => 'old-password',
+                'password' => 'new-password-123',
+                'password_confirmation' => 'does-not-match',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['password']);
+    }
+
+    public function test_guest_cannot_update_profile_or_password(): void
+    {
+        $this->putJson('/api/v1/me', ['name' => 'X'])->assertUnauthorized();
+        $this->putJson('/api/v1/me/password', ['current_password' => 'x', 'password' => 'x'])->assertUnauthorized();
+    }
 }
