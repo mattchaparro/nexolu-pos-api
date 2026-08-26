@@ -14,7 +14,7 @@ y `docs/CUTOVER_TODO.md` (la deuda técnica que bloquea algunos pasos).
 queda una pregunta abierta real sobre dónde vive la producción de verdad
 (ver § 4.5).
 
-- **Droplet nuevo**: el DigitalOcean droplet que corre `api.nexolu.co` (ver
+- **Droplet nuevo**: el DigitalOcean droplet que corre `pos-backend.nexolu.co` (ver
   `nexolu-infra/README.md`) — infraestructura **separada** de donde vive hoy
   el monolito legacy (`pos.nexolu.co`). No comparten servidor ni, hoy, base
   de datos.
@@ -30,7 +30,7 @@ queda una pregunta abierta real sobre dónde vive la producción de verdad
   una copia periódica de esta, o es independiente?) y con el droplet nuevo
   no está confirmada todavía — ver § 4.5.
 - **Cutover**: el momento en que uno o más negocios reales pasan de ser
-  servidos por el monolito legacy a ser servidos por `api.nexolu.co` /
+  servidos por el monolito legacy a ser servidos por `pos-backend.nexolu.co` /
   `nexolu-pos-front`.
 
 Hay dos escenarios completamente distintos que este documento cubre por
@@ -136,7 +136,7 @@ vez.
 ## 4. Cutover de negocios reales (legacy → droplet nuevo)
 
 Esto es lo que falta decidir y construir antes de que un negocio real
-pueda operar desde `api.nexolu.co`. La rehearsal completa (pasos 4.1-4.4)
+pueda operar desde `pos-backend.nexolu.co`. La rehearsal completa (pasos 4.1-4.4)
 ya se puede ensayar hoy contra **SG (staging)**, sin tocar producción —
 eso es justo lo que `scripts/import-sg-data.sh` +
 `legacy:normalize-payment-methods` ya permiten hacer en local (ver
@@ -458,7 +458,7 @@ no más código.
 
 ```bash
 docker compose ps
-curl -s https://api.nexolu.co/up
+curl -s https://pos-backend.nexolu.co/up
 docker compose logs -f pos-queue   # confirmar que el worker esta corriendo, no queue:listen
 docker compose exec -T pos-web php artisan schema:apply-patches --dry-run   # debe decir "No hay patches pendientes"
 ```

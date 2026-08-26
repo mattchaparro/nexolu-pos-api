@@ -39,4 +39,4 @@ docker compose exec -T pos-web php artisan permissions:sync
 echo "==> Confirmando que el worker de cola quedo arriba (no queue:listen)"
 docker compose logs --tail=5 pos-queue
 
-echo "==> Listo. Verificar: curl -s https://api.nexolu.co/up"
+echo "==> Listo. Verificar: curl -s https://pos-backend.nexolu.co/up"
