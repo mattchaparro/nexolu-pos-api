@@ -454,6 +454,15 @@ Los comandos de 4.4, 4.6 y 4.6bis ya están construidos y probados — lo que
 falta para cerrar el cutover real es resolver estas decisiones operativas,
 no más código.
 
+**Resuelto (2026-08-26):** la primera pregunta de esta sección ("¿todos los
+negocios de una vez, o gradual?") se decidió — gradual, negocio por negocio,
+sin dual-write y sin posibilidad de regreso una vez migrado. Ver
+`docs/CUTOVER_PER_BUSINESS.md` para el diseño completo (máquina de estados,
+middleware de redirect, comando `businesses:migrate` en `pos-saas-legacy`,
+remapeo de IDs). Ese documento reemplaza esta sección como fuente de verdad
+para el cutover real; esta sección queda como historial de las alternativas
+consideradas.
+
 ## 5. Verificación post-deploy (cualquier escenario)
 
 ```bash
