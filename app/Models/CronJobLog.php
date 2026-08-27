@@ -13,9 +13,11 @@ use Illuminate\Database\Eloquent\Model;
  * propia columna), no created_at/updated_at.
  *
  * A diferencia de legacy, `ran_at` se castea normal a datetime: esta API
- * corre con config('app.timezone')='UTC' (igual que la columna), asi que no
- * hace falta el accessor manual que legacy necesitaba para no reinterpretar
- * la hora UTC guardada como si fuera America/Bogota (su config('app.timezone')).
+ * corre con config('app.timezone')='America/Bogota' y la columna tambien
+ * (MySQL guarda CURRENT_TIMESTAMP en la timezone del contenedor, ver
+ * TZ=America/Bogota en nexolu-infra/docker-compose.yml) - ambas coinciden,
+ * asi que no hace falta el accessor manual que legacy necesitaba para no
+ * reinterpretar una hora guardada en una timezone como si fuera otra.
  */
 #[Fillable(['job_key', 'status', 'output', 'triggered_by', 'ran_at'])]
 class CronJobLog extends Model
