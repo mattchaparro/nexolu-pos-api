@@ -314,6 +314,38 @@ class SalesReportTest extends TestCase
             ->assertJsonStructure(['data', 'meta', 'payment_method_options']);
     }
 
+    public function test_sales_history_search_matches_sold_product_name(): void
+    {
+        [$business, $admin] = $this->admin();
+
+        $matchingProduct = Product::factory()->create(['business_id' => $business->id, 'name' => 'Croissant de almendras']);
+        $saleWithProduct = Sale::factory()->create([
+            'business_id' => $business->id,
+            'status' => 'closed',
+            'customer_name' => 'Cliente Mostrador',
+            'closed_at' => '2026-03-01 12:00:00',
+        ]);
+        SaleItem::factory()->create([
+            'sale_id' => $saleWithProduct->id,
+            'product_id' => $matchingProduct->id,
+        ]);
+
+        // no debe aparecer: ni el nombre de producto ni el resto de campos buscables coinciden
+        Sale::factory()->create([
+            'business_id' => $business->id,
+            'status' => 'closed',
+            'customer_name' => 'Otro cliente',
+            'closed_at' => '2026-03-02 12:00:00',
+        ]);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/sales/history?from=2026-03-01&to=2026-03-31&search=croissant');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $saleWithProduct->id);
+    }
+
     public function test_sales_history_export_returns_csv(): void
     {
         [$business, $admin] = $this->admin();

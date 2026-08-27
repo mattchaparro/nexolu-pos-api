@@ -291,7 +291,8 @@ class SalesReportService
                 $q->where('invoice_number', 'like', "%{$search}%")
                     ->orWhere('customer_name', 'like', "%{$search}%")
                     ->orWhere('customer_phone', 'like', "%{$search}%")
-                    ->orWhere('id', 'like', "%{$search}%");
+                    ->orWhere('id', 'like', "%{$search}%")
+                    ->orWhereHas('items.product', fn ($p) => $p->where('name', 'like', "%{$search}%"));
             });
         }
 
@@ -371,7 +372,8 @@ class SalesReportService
             $query->where(fn ($q) => $q
                 ->where('invoice_number', 'like', "%{$search}%")
                 ->orWhere('customer_name', 'like', "%{$search}%")
-                ->orWhere('customer_phone', 'like', "%{$search}%"));
+                ->orWhere('customer_phone', 'like', "%{$search}%")
+                ->orWhereHas('items.product', fn ($p) => $p->where('name', 'like', "%{$search}%")));
         }
 
         return $query->orderByRaw('COALESCE(closed_at, created_at) DESC')
