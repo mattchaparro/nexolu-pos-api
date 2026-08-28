@@ -7,6 +7,7 @@ use App\Models\CashClosing;
 use App\Models\Expense;
 use App\Models\Layaway;
 use App\Models\LayawayPayment;
+use App\Models\PosPaymentMethod;
 use App\Models\Product;
 use App\Models\Receivable;
 use App\Models\Sale;
@@ -236,6 +237,64 @@ class SalesReportTest extends TestCase
         $this->assertSame(0, $layawaysByMethod['cash']['total']);
     }
 
+    public function test_daily_summary_payment_breakdown_excludes_disabled_methods_without_activity(): void
+    {
+        [$business, $admin] = $this->admin();
+        $cash = PosPaymentMethod::factory()->create(['key' => 'cash', 'label' => 'Efectivo', 'sort_order' => 1]);
+        $nequi = PosPaymentMethod::factory()->create(['key' => 'nequi', 'label' => 'Nequi', 'sort_order' => 2]);
+        $business->posPaymentMethods()->attach([
+            $cash->id => ['is_enabled' => true],
+            $nequi->id => ['is_enabled' => false],
+        ]);
+        $date = today()->toDateString();
+
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed', 'total' => 40000,
+            'is_credit' => false, 'is_non_revenue' => false, 'payment_method' => 'cash',
+            'closed_at' => $date.' 09:00:00',
+        ]);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson("/api/v1/reports/sales/daily?date={$date}")
+            ->assertOk();
+
+        $channels = collect($response->json('channels'))->keyBy('key');
+        $salesByMethod = collect($channels['sales']['by_payment_method'])->keyBy('id');
+
+        $this->assertSame(40000, $salesByMethod['cash']['total']);
+        $this->assertFalse($salesByMethod->has('nequi'), 'un medio deshabilitado sin ventas ese dia no deberia ocupar columna en $0');
+    }
+
+    public function test_daily_summary_payment_breakdown_still_includes_a_disabled_method_with_real_activity(): void
+    {
+        // Si el medio SI se uso ese dia (estaba habilitado cuando se genero
+        // la venta, se desactivo despues), el desglose no debe esconder el
+        // dato real - solo deja de "ofrecerse de oficio" en $0.
+        [$business, $admin] = $this->admin();
+        $cash = PosPaymentMethod::factory()->create(['key' => 'cash', 'label' => 'Efectivo', 'sort_order' => 1]);
+        $nequi = PosPaymentMethod::factory()->create(['key' => 'nequi', 'label' => 'Nequi', 'sort_order' => 2]);
+        $business->posPaymentMethods()->attach([
+            $cash->id => ['is_enabled' => true],
+            $nequi->id => ['is_enabled' => false],
+        ]);
+        $date = today()->toDateString();
+
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed', 'total' => 12000,
+            'is_credit' => false, 'is_non_revenue' => false, 'payment_method' => 'nequi',
+            'closed_at' => $date.' 09:00:00',
+        ]);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson("/api/v1/reports/sales/daily?date={$date}")
+            ->assertOk();
+
+        $channels = collect($response->json('channels'))->keyBy('key');
+        $salesByMethod = collect($channels['sales']['by_payment_method'])->keyBy('id');
+
+        $this->assertSame(12000, $salesByMethod['nequi']['total']);
+    }
+
     public function test_daily_summary_merges_legacy_spanish_payment_method_into_configured_bucket(): void
     {
         // Bug relacionado al de sales history: sin normalizar, una venta
@@ -342,7 +401,36 @@ class SalesReportTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('meta.total', 1)
-            ->assertJsonStructure(['data', 'meta', 'payment_method_options']);
+            ->assertJsonStructure(['data', 'meta', 'payment_method_options', 'payment_method_labels']);
+    }
+
+    public function test_sales_history_payment_method_options_excludes_disabled_catalog_entries(): void
+    {
+        [$business, $admin] = $this->admin();
+        $cash = PosPaymentMethod::factory()->create(['key' => 'cash', 'label' => 'Efectivo', 'sort_order' => 1]);
+        $nequi = PosPaymentMethod::factory()->create(['key' => 'nequi', 'label' => 'Nequi', 'sort_order' => 2]);
+        $business->posPaymentMethods()->attach([
+            $cash->id => ['is_enabled' => true],
+            $nequi->id => ['is_enabled' => false],
+        ]);
+        // Venta vieja con un medio que el negocio ya desactivo - debe seguir
+        // resolviendo su label real (via payment_method_labels), aunque ya
+        // no aparezca como opcion del dropdown de filtro.
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed', 'total' => 15000,
+            'is_credit' => false, 'is_non_revenue' => false, 'payment_method' => 'nequi',
+            'closed_at' => '2026-03-01 12:00:00',
+        ]);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/sales/history?from=2026-03-01&to=2026-03-31')
+            ->assertOk();
+
+        $optionIds = collect($response->json('payment_method_options'))->pluck('id');
+        $this->assertTrue($optionIds->contains('cash'));
+        $this->assertFalse($optionIds->contains('nequi'), 'un medio deshabilitado no deberia ofrecerse en el dropdown de filtro');
+
+        $this->assertSame('Nequi', $response->json('payment_method_labels.nequi'), 'el label de un medio deshabilitado debe seguir resolviendo para ventas historicas');
     }
 
     public function test_sales_history_search_matches_sold_product_name(): void
@@ -403,6 +491,37 @@ class SalesReportTest extends TestCase
             // Normalizado al vocabulario configurado del negocio en la
             // respuesta, no el string crudo "efectivo" guardado en la fila.
             ->assertJsonPath('data.0.payment_method', 'cash');
+    }
+
+    public function test_sales_history_can_still_filter_by_a_disabled_payment_method(): void
+    {
+        // El dropdown ya no OFRECE un medio deshabilitado (ver
+        // test_sales_history_payment_method_options_excludes_disabled_catalog_entries),
+        // pero seguir pudiendo consultar ventas historicas por ese medio
+        // (ej. via un link guardado) es un caso valido - normalizeFilters()
+        // valida contra TODOS los ids conocidos, no solo los habilitados.
+        [$business, $admin] = $this->admin();
+        $cash = PosPaymentMethod::factory()->create(['key' => 'cash', 'label' => 'Efectivo']);
+        $nequi = PosPaymentMethod::factory()->create(['key' => 'nequi', 'label' => 'Nequi']);
+        $business->posPaymentMethods()->attach([
+            $cash->id => ['is_enabled' => true],
+            $nequi->id => ['is_enabled' => false],
+        ]);
+        $nequiSale = Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed',
+            'payment_method' => 'nequi', 'closed_at' => '2026-03-01 12:00:00',
+        ]);
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed',
+            'payment_method' => 'cash', 'closed_at' => '2026-03-01 12:00:00',
+        ]);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/sales/history?from=2026-03-01&to=2026-03-31&payment_method=nequi');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $nequiSale->id);
     }
 
     public function test_sales_history_sort_by_total(): void
@@ -473,6 +592,27 @@ class SalesReportTest extends TestCase
             ->assertJsonPath('totals.sales_count', 1)
             ->assertJsonPath('totals.gross_total', 60000)
             ->assertJsonCount(1, 'sellers');
+    }
+
+    public function test_sales_by_seller_resolves_the_real_label_for_a_disabled_payment_method(): void
+    {
+        [$business, $admin] = $this->admin();
+        $seller = User::factory()->create(['business_id' => $business->id]);
+        $nequi = PosPaymentMethod::factory()->create(['key' => 'nequi', 'label' => 'Nequi']);
+        $business->posPaymentMethods()->attach([$nequi->id => ['is_enabled' => false]]);
+
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed', 'total' => 20000,
+            'is_credit' => false, 'is_non_revenue' => false, 'payment_method' => 'nequi',
+            'closed_by_user_id' => $seller->id, 'closed_at' => '2026-03-10 15:00:00',
+        ]);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/sales/by-seller?from=2026-03-01&to=2026-03-31')
+            ->assertOk();
+
+        $methods = collect($response->json('sellers.0.methods'))->keyBy('id');
+        $this->assertSame('Nequi', $methods['nequi']['label'], 'un medio deshabilitado debe seguir mostrando su label real, no el id crudo, en este reporte');
     }
 
     public function test_by_seller_export_returns_csv(): void

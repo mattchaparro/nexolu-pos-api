@@ -322,6 +322,45 @@ class Business extends Model
     }
 
     /**
+     * Igual que allowedPaymentMethodIds() pero conservando id+label - para
+     * poblar selectores donde se crea una transacción NUEVA (checkout,
+     * abono a compra/apartado, filtro de reportes): un medio que el
+     * negocio ya desactivó no debe ofrecerse ahí. No usar para resolver el
+     * label de una transacción YA EXISTENTE (pudo haberse hecho con un
+     * medio hoy desactivado) - para eso ver paymentMethodLabelsMap().
+     *
+     * @return array<int, array{id: string, label: string}>
+     */
+    public function enabledPaymentMethods(): array
+    {
+        return collect($this->paymentMethods())
+            ->filter(fn (array $method) => ($method['enabled'] ?? true) !== false)
+            ->map(fn (array $method) => [
+                'id' => (string) $method['id'],
+                'label' => (string) ($method['label'] ?? ucfirst(str_replace('_', ' ', (string) $method['id']))),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * id => label de TODOS los métodos configurados (habilitados o no) -
+     * para resolver el label de una transacción ya existente que pudo usar
+     * un medio desde entonces desactivado. Nunca usar para poblar un
+     * selector de una transacción nueva, ver enabledPaymentMethods().
+     *
+     * @return array<string, string>
+     */
+    public function paymentMethodLabelsMap(): array
+    {
+        return collect($this->paymentMethods())
+            ->mapWithKeys(fn (array $method) => [
+                (string) $method['id'] => (string) ($method['label'] ?? ucfirst(str_replace('_', ' ', (string) $method['id']))),
+            ])
+            ->all();
+    }
+
+    /**
      * El id que este negocio usa para el metodo de pago en efectivo. Soporta
      * tanto 'cash' (default/legacy) como 'efectivo' (configs en espanol).
      */

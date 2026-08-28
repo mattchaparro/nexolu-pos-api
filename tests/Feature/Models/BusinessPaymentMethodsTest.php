@@ -75,4 +75,34 @@ class BusinessPaymentMethodsTest extends TestCase
         $this->assertFalse($methods[0]['enabled']);
         $this->assertSame([], $business->allowedPaymentMethodIds());
     }
+
+    public function test_enabled_payment_methods_excludes_disabled_catalog_entries(): void
+    {
+        $business = Business::factory()->create();
+        $cash = PosPaymentMethod::factory()->create(['key' => 'cash', 'label' => 'Efectivo', 'sort_order' => 1]);
+        $nequi = PosPaymentMethod::factory()->create(['key' => 'nequi', 'label' => 'Nequi', 'sort_order' => 2]);
+        $business->posPaymentMethods()->attach([
+            $cash->id => ['is_enabled' => true],
+            $nequi->id => ['is_enabled' => false],
+        ]);
+
+        $enabled = $business->fresh()->enabledPaymentMethods();
+
+        $this->assertSame([['id' => 'cash', 'label' => 'Efectivo']], $enabled);
+    }
+
+    public function test_payment_method_labels_map_includes_disabled_catalog_entries(): void
+    {
+        $business = Business::factory()->create();
+        $cash = PosPaymentMethod::factory()->create(['key' => 'cash', 'label' => 'Efectivo']);
+        $nequi = PosPaymentMethod::factory()->create(['key' => 'nequi', 'label' => 'Nequi']);
+        $business->posPaymentMethods()->attach([
+            $cash->id => ['is_enabled' => true],
+            $nequi->id => ['is_enabled' => false],
+        ]);
+
+        $labels = $business->fresh()->paymentMethodLabelsMap();
+
+        $this->assertSame(['cash' => 'Efectivo', 'nequi' => 'Nequi'], $labels);
+    }
 }

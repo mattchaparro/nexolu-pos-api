@@ -60,6 +60,12 @@ class SalesReportController extends Controller
                 'total' => $paginator->total(),
             ],
             'payment_method_options' => $this->service->paymentMethodOptions($business),
+            // Todos los ids configurados (habilitados o no) para resolver
+            // el label de una fila con un medio que el negocio ya
+            // desactivó - payment_method_options de arriba está filtrado a
+            // solo los habilitados (para el dropdown de filtro), asi que no
+            // sirve para eso.
+            'payment_method_labels' => $this->service->paymentMethodLabels($business),
         ];
     }
 

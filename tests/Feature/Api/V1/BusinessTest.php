@@ -4,6 +4,7 @@ namespace Tests\Feature\Api\V1;
 
 use App\Models\AiChannelIdentity;
 use App\Models\Business;
+use App\Models\PosPaymentMethod;
 use App\Models\ProductCategory;
 use App\Models\User;
 use App\Support\BusinessFeaturePresets;
@@ -24,6 +25,36 @@ class BusinessTest extends TestCase
             ->assertOk()
             ->assertJsonPath('id', $business->id)
             ->assertJsonPath('name', 'Cafe Nexolu');
+    }
+
+    public function test_business_resource_payment_methods_excludes_disabled_catalog_entries(): void
+    {
+        // Bug real reportado: el modal de cobro (pago unico, varios medios,
+        // dividir) ofrecia CUALQUIER medio del catalogo global, no solo los
+        // que el negocio tiene activos - ahi es donde se elige el metodo de
+        // una transaccion NUEVA, asi que a diferencia de un reporte
+        // historico no hay razon para ofrecer un medio ya desactivado.
+        $business = Business::factory()->create();
+        $owner = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+        $cash = PosPaymentMethod::factory()->create(['key' => 'cash', 'label' => 'Efectivo', 'sort_order' => 1]);
+        $nequi = PosPaymentMethod::factory()->create(['key' => 'nequi', 'label' => 'Nequi', 'sort_order' => 2]);
+        $business->posPaymentMethods()->attach([
+            $cash->id => ['is_enabled' => true],
+            $nequi->id => ['is_enabled' => false],
+        ]);
+
+        $response = $this->actingAs($owner, 'sanctum')
+            ->getJson('/api/v1/business')
+            ->assertOk();
+
+        $methodIds = collect($response->json('payment_methods'))->pluck('id');
+        $this->assertTrue($methodIds->contains('cash'));
+        $this->assertFalse($methodIds->contains('nequi'), 'un medio deshabilitado no deberia ofrecerse para cobrar una transaccion nueva');
+
+        // Pero el label de ese medio debe seguir resolviendo - para mostrar
+        // correctamente un pago YA REGISTRADO que lo haya usado antes de
+        // desactivarlo (ver PaymentModal.vue, abonos parciales de una venta).
+        $this->assertSame('Nequi', $response->json('payment_method_labels.nequi'));
     }
 
     public function test_business_resource_exposes_computed_can_access_purchases(): void

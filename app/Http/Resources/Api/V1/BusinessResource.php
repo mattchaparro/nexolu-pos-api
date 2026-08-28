@@ -35,7 +35,13 @@ class BusinessResource extends JsonResource
             'delivery_enabled' => $this->delivery_enabled,
             'delivery_fee' => $this->delivery_fee,
             'charges' => $this->chargesConfig(),
-            'payment_methods' => $this->paymentMethods(),
+            // Solo los HABILITADOS - selectores de cobro/checkout no deben
+            // ofrecer un medio que el negocio ya desactivó (ver
+            // Business::enabledPaymentMethods()). Para resolver el label de
+            // un pago YA REGISTRADO con un medio hoy desactivado, ver
+            // payment_method_labels más abajo.
+            'payment_methods' => $this->enabledPaymentMethods(),
+            'payment_method_labels' => $this->paymentMethodLabelsMap(),
             'low_stock_alert_threshold' => $this->low_stock_alert_threshold,
             'low_stock_email_enabled' => $this->low_stock_email_enabled,
             'low_stock_email' => $this->low_stock_email,

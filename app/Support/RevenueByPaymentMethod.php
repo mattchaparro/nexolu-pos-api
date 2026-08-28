@@ -145,7 +145,14 @@ class RevenueByPaymentMethod
      */
     private static function labelled(?Business $business, array $totals): Collection
     {
-        $configured = collect($business?->paymentMethods() ?? [])
+        // Solo los HABILITADOS entran en la lista "siempre mostrar aunque
+        // este en $0" - un medio que el negocio desactivo no deberia seguir
+        // ocupando columna/opcion de filtro. Si igual tiene totales reales
+        // en este periodo (lo tenia habilitado cuando se genero esa venta),
+        // el segundo loop de abajo lo agrega de todas formas por su id -
+        // no se pierde el dato historico, solo deja de aparecer "de oficio"
+        // en $0 una vez desactivado.
+        $configured = collect($business?->enabledPaymentMethods() ?? [])
             ->filter(fn ($m) => ($m['id'] ?? null) !== 'credit')
             ->values();
 

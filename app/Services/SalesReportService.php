@@ -445,8 +445,7 @@ class SalesReportService
             ])
             ->get(['id', 'closed_by_user_id', 'total', 'payment_method', 'closed_at']);
 
-        $methodLabels = collect($this->paymentMethodOptions($business))
-            ->pluck('label', 'id');
+        $methodLabels = $this->paymentMethodLabels($business);
 
         $bySeller = [];
         foreach ($sales as $sale) {
@@ -561,27 +560,52 @@ class SalesReportService
 
     /**
      * Opciones de métodos de pago para filtros de reporte (incluye "Varios").
+     * Solo los HABILITADOS del negocio - uno que ya desactivó no debería
+     * seguir ofreciéndose en el dropdown de filtro. Para resolver el label
+     * de una venta histórica que pudo usar un medio ya desactivado, ver
+     * paymentMethodLabels() (incluye todos, habilitados o no).
      *
      * @return array<int, array{id: string, label: string}>
      */
     public function paymentMethodOptions(Business $business): array
     {
         $opts = [];
-        foreach ($business->paymentMethods() as $m) {
-            $id = strtolower(trim((string) ($m['id'] ?? '')));
+        foreach ($business->enabledPaymentMethods() as $m) {
+            $id = strtolower(trim($m['id']));
             if ($id === '') {
                 continue;
             }
-            $opts[] = [
-                'id' => $id,
-                'label' => (string) ($m['label'] ?? ucfirst(str_replace('_', ' ', $id))),
-            ];
+            $opts[] = ['id' => $id, 'label' => $m['label']];
         }
         if (! collect($opts)->contains(fn ($o) => ($o['id'] ?? '') === 'mixed')) {
             $opts[] = ['id' => 'mixed', 'label' => 'Varios medios'];
         }
 
         return $opts;
+    }
+
+    /**
+     * id => label de TODOS los métodos configurados (habilitados o no) - a
+     * diferencia de paymentMethodOptions(), no filtra por 'enabled'. Uso
+     * interno para resolver labels de datos ya existentes (ventas
+     * históricas con un medio que el negocio pudo haber desactivado
+     * después) y para validar el filtro entrante, que sigue debiendo poder
+     * apuntar a un medio desactivado para consultar ventas viejas - solo el
+     * dropdown visible se restringe a los habilitados.
+     *
+     * @return Collection<string, string>
+     */
+    public function paymentMethodLabels(Business $business): Collection
+    {
+        $labels = collect($business->paymentMethodLabelsMap())
+            ->mapWithKeys(fn (string $label, string $id) => [strtolower(trim($id)) => $label])
+            ->filter(fn ($label, $id) => $id !== '');
+
+        if (! $labels->has('mixed')) {
+            $labels->put('mixed', 'Varios medios');
+        }
+
+        return $labels;
     }
 
     /**
@@ -665,7 +689,10 @@ class SalesReportService
         if (isset($filters['status']) && in_array($filters['status'], ['open', 'closed'], true)) {
             $out['status'] = $filters['status'];
         }
-        $allowedPm = collect($this->paymentMethodOptions($business))->pluck('id')->map(fn ($id) => strtolower((string) $id))->all();
+        // Contra TODOS los ids conocidos (habilitados o no), no solo las
+        // opciones visibles del dropdown - filtrar ventas historicas por un
+        // medio que el negocio ya desactivo sigue siendo un caso valido.
+        $allowedPm = $this->paymentMethodLabels($business)->keys()->all();
         if (! empty($filters['payment_method'])) {
             $pm = strtolower(trim((string) $filters['payment_method']));
             if (in_array($pm, $allowedPm, true)) {
