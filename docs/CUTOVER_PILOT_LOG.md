@@ -413,12 +413,50 @@ Con test (`LoginSsoHandoffTest`, 3 casos: token exitoso, fallback si el
 handoff falla, negocio no migrado sin tocar). Suite completa verde (728
 tests). Desplegado a producción en los dos repos.
 
-**Nota de rama:** al comitear esto, `master` de `pos-saas` ya tenía un
-commit (`feat(payments): migrar el webhook de Wompi...`) que `staging` no
-tiene - las ramas dejaron de estar sincronizadas (algo ajeno a este
-piloto). No se forzó la sincronización unilateralmente: se comiteó sobre
-`master` (lo que despliega producción) y se avisó al usuario para que
-decida si hace falta reconciliar.
+**Nota de rama (resuelta 2026-08-27):** `master` de `pos-saas` había
+llegado a tener un commit (`feat(payments): migrar el webhook de Wompi...`)
+que `staging` no tenía. Reconciliado: `staging` no tenía nada propio que
+`master` no tuviera (divergencia unidireccional), así que se hizo
+fast-forward de `staging` a `master` sin riesgo de perder trabajo. Ambas
+ramas vuelven a apuntar al mismo commit.
+
+### 4.12. Negocio migrado sin forma de cerrar sesión en legacy
+
+Reportado por el usuario: el dueño real de un negocio ya migrado (no
+impersonando - login directo) no tenía manera de cerrar su sesión de
+legacy. Causa: `check_migration_status` solo protege las rutas
+`admin.*`/`employee.*` (confirmado con grep - no envuelve `/logout`), pero
+como CADA una de esas rutas redirige de una vez para `status = completed`,
+la página que tendría el botón de "Cerrar sesión" nunca llega a
+renderizar - sesión zombie viva para siempre, sin ninguna ruta de la UI
+para terminarla.
+
+Fix: el redirect en `CheckBusinessMigrationStatus` ahora cierra la sesión
+él mismo (logout + invalidate + regenerateToken) antes de redirigir - el
+negocio nunca va a volver a usar legacy, así que no hay razón para dejar
+una sesión viva. Mismo patrón que `LoginResponse::handoffToMigratedBusiness()`
+ya usa para el caso de login.
+
+**Nota de testing interesante:** escribir el test de esto expuso que dos
+requests HTTP reales dentro de un mismo método de test PHPUnit comparten
+un guard de auth con la relación `business`/`migration` del usuario
+cacheada desde la primera request (se carga de paso dentro de
+`LoginResponse`) - un artefacto que nunca ocurre en producción real (cada
+request ahí es un proceso PHP nuevo, sin nada compartido). Hace falta
+`app('auth')->forgetGuards()` entre requests para que el test simule
+fielmente "una sesión que ya estaba abierta cuando el negocio pasó a
+completed".
+
+**Pendiente de reproducir:** el usuario también reportó que, logueado
+directo como superadmin (`mattchaparrof@gmail.com`, `business_id` NULL en
+producción, confirmado), lo redirige a la app nueva. No se pudo reproducir
+por código ni por datos - `CheckBusinessMigrationStatus` exime explícito
+`! $user->business_id`, y `LoginResponse::handoffToMigratedBusiness()`
+tampoco se dispara (mismo chequeo). Hipótesis: era un efecto secundario del
+bug de arriba (sesión de legacy en un estado confuso por no poder cerrarla
+limpiamente al probar el negocio migrado). Pedir al usuario que reintente
+ahora que el logout está arreglado; si se repite, necesito pasos exactos
+de reproducción (URL exacta, si fue login con Google o con contraseña).
 
 ## 6. Próximos pasos
 
@@ -427,11 +465,9 @@ decida si hace falta reconciliar.
 3. ~~Migrar un segundo negocio de prueba.~~ Hecho (negocio 5 → destino 22),
    `completed`, verificado.
 4. ~~SSO de login para negocios migrados.~~ Hecho (§ 4.11).
-5. Reconciliar `master`/`staging` en `pos-saas` (ver nota de § 4.11) -
-   pendiente, decisión del usuario.
-6. Verificar que legacy bloquee el negocio para siempre incluso para
-   accesos directos (no solo login) - probablemente ya cubierto por
-   `CheckBusinessMigrationStatus`, pero no se ha probado explícito aparte
-   del flujo de login.
-7. Si todo sigue saliendo bien, definir con el usuario el criterio para
+5. ~~Reconciliar `master`/`staging` en `pos-saas`.~~ Hecho (§ 4.11/4.12).
+6. ~~Negocio migrado sin forma de cerrar sesión en legacy.~~ Hecho (§ 4.12).
+7. Confirmar con el usuario si el redirect de superadmin (§ 4.12) se repite
+   ahora que el logout está arreglado - sin reproducir todavía.
+8. Si todo sigue saliendo bien, definir con el usuario el criterio para
    empezar a migrar negocios reales.
