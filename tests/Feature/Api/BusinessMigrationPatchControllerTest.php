@@ -23,24 +23,40 @@ class BusinessMigrationPatchControllerTest extends TestCase
         // del ambiente en que corre la suite.
     }
 
-    private function invoke(?string $key, int $businessId)
+    private function invoke(?string $key, string $slug)
     {
         $request = $key ? $this->withHeader('Authorization', "Bearer {$key}") : $this;
 
-        return $request->postJson("/api/admin/businesses/{$businessId}/run-migration-patches");
+        return $request->postJson("/api/admin/businesses/{$slug}/run-migration-patches");
     }
 
     public function test_rejects_request_without_a_valid_key(): void
     {
         $business = Business::factory()->create();
 
-        $this->invoke(null, $business->id)->assertStatus(401);
-        $this->invoke('wrong-key', $business->id)->assertStatus(401);
+        $this->invoke(null, $business->slug)->assertStatus(401);
+        $this->invoke('wrong-key', $business->slug)->assertStatus(401);
     }
 
     public function test_returns_404_when_business_does_not_exist(): void
     {
-        $this->invoke('test-legacy-admin-key', 999999)->assertStatus(404);
+        $this->invoke('test-legacy-admin-key', 'slug-inexistente')->assertStatus(404);
+    }
+
+    public function test_resolves_the_business_by_slug_not_by_id(): void
+    {
+        // El caso real que rompio en produccion: BusinessDataExporter
+        // remapea ids al migrar (nunca preserva el original), asi que el id
+        // que pos-saas conoce del negocio no es su id aca - solo el slug
+        // viaja intacto. Un id crudo coincidiendo por casualidad con OTRO
+        // negocio de esta base no deberia disparar el endpoint equivocado.
+        $otro = Business::factory()->create();
+        $business = Business::factory()->create();
+        $this->assertNotSame($otro->slug, $business->slug);
+
+        $response = $this->invoke('test-legacy-admin-key', $business->slug);
+
+        $response->assertOk();
     }
 
     public function test_runs_the_three_commands_scoped_to_the_business(): void
@@ -48,7 +64,7 @@ class BusinessMigrationPatchControllerTest extends TestCase
         $business = Business::factory()->create();
         Expense::factory()->create(['business_id' => $business->id, 'payment_method' => 'Efectivo']);
 
-        $response = $this->invoke('test-legacy-admin-key', $business->id);
+        $response = $this->invoke('test-legacy-admin-key', $business->slug);
 
         $response->assertOk()->assertJsonStructure(['results' => [['command', 'ok', 'output']]]);
         $commands = collect($response->json('results'))->pluck('command')->all();

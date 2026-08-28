@@ -74,8 +74,12 @@ Route::get('/ai/tools/catalog', [AiToolCatalogController::class, 'index'])
     ->name('ai.tools.catalog');
 
 // Server-to-server: lo llama el superadmin de pos-saas (legacy) despues de
-// migrar un negocio - ver BusinessMigrationPatchController.
-Route::post('/admin/businesses/{business}/run-migration-patches', [BusinessMigrationPatchController::class, 'run'])
+// migrar un negocio - ver BusinessMigrationPatchController. Resuelve por
+// slug, no por id: BusinessDataExporter remapea los ids al exportar (nunca
+// preserva el original, ver su docblock), asi que el id que pos-saas
+// conoce del negocio no es el id de este mismo negocio aca - slug si viaja
+// intacto (columna copiada tal cual, UNIQUE en ambos schemas).
+Route::post('/admin/businesses/{business:slug}/run-migration-patches', [BusinessMigrationPatchController::class, 'run'])
     ->middleware('legacy.admin-key')
     ->name('admin.businesses.run-migration-patches');
 
