@@ -48,7 +48,7 @@ class SalesReportController extends Controller
             $request->string('from', today()->toDateString())->toString(),
             $request->string('to', today()->toDateString())->toString(),
             min(100, max(1, $request->integer('per_page', 20))),
-            $request->only(['status', 'payment_method', 'search']),
+            $request->only(['status', 'payment_method', 'search', 'sort', 'direction']),
         );
 
         return [

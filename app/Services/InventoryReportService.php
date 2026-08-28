@@ -9,6 +9,7 @@ use App\Models\ProductCategory;
 use App\Models\SaleItem;
 use App\Models\StockMovement;
 use App\Models\StockMovementReason;
+use App\Support\SortableQuery;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -57,8 +58,7 @@ class InventoryReportService
                 'ingredient:id,name,unit',
                 'reason:id,code,label',
                 'user:id,name',
-            ])
-            ->orderByDesc('created_at');
+            ]);
 
         if (! empty($filters['type'])) {
             $query->where('type', $filters['type']);
@@ -77,6 +77,17 @@ class InventoryReportService
         }
         if (! empty($filters['to'])) {
             $query->whereDate('created_at', '<=', $filters['to']);
+        }
+
+        $sort = SortableQuery::resolve($filters['sort'] ?? null, $filters['direction'] ?? null, [
+            'date' => 'created_at',
+            'type' => 'type',
+            'quantity' => 'quantity',
+        ]);
+        if ($sort) {
+            $query->orderBy(...$sort);
+        } else {
+            $query->orderByDesc('created_at');
         }
 
         return $query->paginate(40)->through(fn ($m) => $this->mapMovement($m));

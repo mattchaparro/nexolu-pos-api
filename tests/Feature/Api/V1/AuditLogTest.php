@@ -60,6 +60,36 @@ class AuditLogTest extends TestCase
             ->assertJsonPath('data.0.action', 'product.created');
     }
 
+    public function test_sorts_by_action(): void
+    {
+        $business = Business::factory()->create();
+        $user = $this->userWithPermission($business);
+
+        LogAction::create(['action' => 'sale.created', 'business_id' => $business->id]);
+        LogAction::create(['action' => 'expense.created', 'business_id' => $business->id]);
+
+        $ascending = $this->actingAs($user, 'sanctum')->getJson('/api/v1/audit-logs?sort=action&direction=asc');
+        $ascending->assertOk();
+        $this->assertSame(['expense.created', 'sale.created'], collect($ascending->json('data'))->pluck('action')->all());
+
+        $descending = $this->actingAs($user, 'sanctum')->getJson('/api/v1/audit-logs?sort=action&direction=desc');
+        $descending->assertOk();
+        $this->assertSame(['sale.created', 'expense.created'], collect($descending->json('data'))->pluck('action')->all());
+    }
+
+    public function test_ignores_unsupported_sort_and_falls_back_to_default(): void
+    {
+        $business = Business::factory()->create();
+        $user = $this->userWithPermission($business);
+
+        LogAction::create(['action' => 'product.created', 'business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/audit-logs?sort=not_a_real_column')
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+    }
+
     public function test_excludes_actions_taken_by_a_superadmin_impersonating_the_business(): void
     {
         $admin = $this->superadmin();

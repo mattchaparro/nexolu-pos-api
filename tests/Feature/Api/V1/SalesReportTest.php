@@ -346,6 +346,30 @@ class SalesReportTest extends TestCase
             ->assertJsonPath('data.0.id', $saleWithProduct->id);
     }
 
+    public function test_sales_history_sort_by_total(): void
+    {
+        [$business, $admin] = $this->admin();
+
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed',
+            'total' => 20000, 'closed_at' => '2026-03-01 12:00:00',
+        ]);
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed',
+            'total' => 90000, 'closed_at' => '2026-03-02 12:00:00',
+        ]);
+
+        $ascending = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/sales/history?from=2026-03-01&to=2026-03-31&sort=total&direction=asc');
+        $ascending->assertOk();
+        $this->assertSame([20000, 90000], collect($ascending->json('data'))->pluck('total')->all());
+
+        $descending = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/sales/history?from=2026-03-01&to=2026-03-31&sort=total&direction=desc');
+        $descending->assertOk();
+        $this->assertSame([90000, 20000], collect($descending->json('data'))->pluck('total')->all());
+    }
+
     public function test_sales_history_export_returns_csv(): void
     {
         [$business, $admin] = $this->admin();

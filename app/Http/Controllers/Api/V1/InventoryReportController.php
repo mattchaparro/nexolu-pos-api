@@ -26,7 +26,7 @@ class InventoryReportController extends Controller
         $business = $this->authorizedBusiness($request);
 
         $paginator = $this->service->movements($business, $request->only([
-            'type', 'reason_id', 'product_id', 'ingredient_id', 'from', 'to',
+            'type', 'reason_id', 'product_id', 'ingredient_id', 'from', 'to', 'sort', 'direction',
         ]));
 
         return [

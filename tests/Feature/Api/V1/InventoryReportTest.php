@@ -130,6 +130,48 @@ class InventoryReportTest extends TestCase
         $response->assertOk()->assertJsonPath('meta.total', 1);
     }
 
+    public function test_movements_sort_by_quantity(): void
+    {
+        [$business, $admin] = $this->adminWithInventory();
+
+        $product = Product::factory()->create(['business_id' => $business->id]);
+
+        StockMovement::factory()->create([
+            'business_id' => $business->id, 'product_id' => $product->id,
+            'type' => StockMovement::TYPE_ENTRY, 'quantity' => 5,
+        ]);
+        StockMovement::factory()->create([
+            'business_id' => $business->id, 'product_id' => $product->id,
+            'type' => StockMovement::TYPE_ENTRY, 'quantity' => 20,
+        ]);
+
+        $ascending = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/inventory/movements?sort=quantity&direction=asc');
+        $ascending->assertOk();
+        $this->assertSame([5, 20], collect($ascending->json('data'))->pluck('quantity')->all());
+
+        $descending = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/inventory/movements?sort=quantity&direction=desc');
+        $descending->assertOk();
+        $this->assertSame([20, 5], collect($descending->json('data'))->pluck('quantity')->all());
+    }
+
+    public function test_movements_ignores_unsupported_sort_and_falls_back_to_default(): void
+    {
+        [$business, $admin] = $this->adminWithInventory();
+
+        $product = Product::factory()->create(['business_id' => $business->id]);
+        StockMovement::factory()->create([
+            'business_id' => $business->id, 'product_id' => $product->id,
+            'type' => StockMovement::TYPE_ENTRY, 'quantity' => 1,
+        ]);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/inventory/movements?sort=not_a_real_column');
+
+        $response->assertOk()->assertJsonPath('meta.total', 1);
+    }
+
     public function test_movements_export_returns_csv(): void
     {
         [, $admin] = $this->adminWithInventory();

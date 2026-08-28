@@ -30,6 +30,38 @@ class ExpenseTest extends TestCase
             ->assertJsonCount(2, 'data');
     }
 
+    public function test_index_sorts_by_value(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        Expense::factory()->create(['business_id' => $business->id, 'value' => 15000]);
+        Expense::factory()->create(['business_id' => $business->id, 'value' => 50000]);
+
+        $ascending = $this->actingAs($user, 'sanctum')->getJson('/api/v1/expenses?sort=value&direction=asc');
+        $ascending->assertOk();
+        $this->assertSame(['15000.00', '50000.00'], collect($ascending->json('data'))->pluck('value')->all());
+
+        $descending = $this->actingAs($user, 'sanctum')->getJson('/api/v1/expenses?sort=value&direction=desc');
+        $descending->assertOk();
+        $this->assertSame(['50000.00', '15000.00'], collect($descending->json('data'))->pluck('value')->all());
+    }
+
+    public function test_index_ignores_unsupported_sort_and_falls_back_to_default(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        Expense::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/expenses?sort=not_a_real_column')
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+    }
+
     public function test_user_can_create_an_expense_with_a_global_type(): void
     {
         $business = Business::factory()->create();

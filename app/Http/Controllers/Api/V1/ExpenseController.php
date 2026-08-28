@@ -10,6 +10,7 @@ use App\Models\Expense;
 use App\Services\ExpenseService;
 use App\Services\ReminderService;
 use App\Support\AuditLogger;
+use App\Support\SortableQuery;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -27,7 +28,7 @@ class ExpenseController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Expense::with('type')->orderByDesc('date')->orderByDesc('id');
+        $query = Expense::with('type');
 
         if ($request->filled('date')) {
             $query->whereDate('date', $request->input('date'));
@@ -51,6 +52,17 @@ class ExpenseController extends Controller
 
         if ($request->filled('search')) {
             $query->where('description', 'like', '%'.$request->input('search').'%');
+        }
+
+        $sort = SortableQuery::resolve($request->string('sort')->toString() ?: null, $request->string('direction')->toString() ?: null, [
+            'date' => 'date',
+            'description' => 'description',
+            'value' => 'value',
+        ]);
+        if ($sort) {
+            $query->orderBy(...$sort);
+        } else {
+            $query->orderByDesc('date')->orderByDesc('id');
         }
 
         return ExpenseResource::collection($query->paginate(20)->withQueryString());

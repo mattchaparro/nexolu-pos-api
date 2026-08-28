@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\LogActionResource;
 use App\Support\AuditActionDictionary;
 use App\Support\AuditLogQuery;
+use App\Support\SortableQuery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -22,12 +23,19 @@ class AuditLogController extends Controller
 {
     public function index(Request $request): AnonymousResourceCollection
     {
-        return LogActionResource::collection(
-            AuditLogQuery::forBusiness($request, $request->user()->business_id)
-                ->latest()
-                ->paginate(30)
-                ->withQueryString()
-        );
+        $query = AuditLogQuery::forBusiness($request, $request->user()->business_id);
+
+        $sort = SortableQuery::resolve($request->string('sort')->toString() ?: null, $request->string('direction')->toString() ?: null, [
+            'date' => 'created_at',
+            'action' => 'action',
+        ]);
+        if ($sort) {
+            $query->orderBy(...$sort);
+        } else {
+            $query->latest();
+        }
+
+        return LogActionResource::collection($query->paginate(30)->withQueryString());
     }
 
     public function actions(): JsonResponse

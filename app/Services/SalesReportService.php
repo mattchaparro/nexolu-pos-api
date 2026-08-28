@@ -11,9 +11,11 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\ServicePayment;
 use App\Support\RevenueByPaymentMethod;
+use App\Support\SortableQuery;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class SalesReportService
 {
@@ -296,8 +298,18 @@ class SalesReportService
             });
         }
 
-        return $query->orderByRaw('COALESCE(closed_at, created_at) DESC')
-            ->paginate($perPage)
+        $sort = SortableQuery::resolve($filters['sort'] ?? null, $filters['direction'] ?? null, [
+            'date' => DB::raw('COALESCE(closed_at, created_at)'),
+            'total' => 'total',
+            'status' => 'status',
+        ]);
+        if ($sort) {
+            $query->orderBy(...$sort);
+        } else {
+            $query->orderByRaw('COALESCE(closed_at, created_at) DESC');
+        }
+
+        return $query->paginate($perPage)
             ->through(function ($s) use ($sameDay) {
                 $relevant = $s->closed_at ?? $s->created_at;
 
@@ -649,6 +661,12 @@ class SalesReportService
         }
         if (array_key_exists('search', $filters)) {
             $out['search'] = $filters['search'];
+        }
+        if (array_key_exists('sort', $filters)) {
+            $out['sort'] = $filters['sort'];
+        }
+        if (array_key_exists('direction', $filters)) {
+            $out['direction'] = $filters['direction'];
         }
 
         return $out;
