@@ -33,10 +33,10 @@ class RevenueByPaymentMethod
         Collection $layawayPayments,
     ): Collection {
         $totals = self::mergeTotals(
-            self::salesTotalsByMethod($revenueSales),
-            self::flatTotalsByMethod($paidReceivables),
-            self::flatTotalsByMethod($servicePayments),
-            self::flatTotalsByMethod($layawayPayments),
+            self::salesTotalsByMethod($revenueSales, $business),
+            self::flatTotalsByMethod($paidReceivables, $business),
+            self::flatTotalsByMethod($servicePayments, $business),
+            self::flatTotalsByMethod($layawayPayments, $business),
         );
 
         return self::labelled($business, $totals);
@@ -62,39 +62,49 @@ class RevenueByPaymentMethod
                 'label' => 'Ventas',
                 'total' => round((float) $revenueSales->sum('total'), 2),
                 'count' => $revenueSales->count(),
-                'by_payment_method' => self::labelled($business, self::salesTotalsByMethod($revenueSales))->values()->all(),
+                'by_payment_method' => self::labelled($business, self::salesTotalsByMethod($revenueSales, $business))->values()->all(),
             ],
             [
                 'key' => 'services',
                 'label' => 'Servicios',
                 'total' => round((float) $servicePayments->sum('amount'), 2),
                 'count' => $servicePayments->count(),
-                'by_payment_method' => self::labelled($business, self::flatTotalsByMethod($servicePayments))->values()->all(),
+                'by_payment_method' => self::labelled($business, self::flatTotalsByMethod($servicePayments, $business))->values()->all(),
             ],
             [
                 'key' => 'layaways',
                 'label' => 'Apartados',
                 'total' => round((float) $layawayPayments->sum('amount'), 2),
                 'count' => $layawayPayments->count(),
-                'by_payment_method' => self::labelled($business, self::flatTotalsByMethod($layawayPayments))->values()->all(),
+                'by_payment_method' => self::labelled($business, self::flatTotalsByMethod($layawayPayments, $business))->values()->all(),
             ],
             [
                 'key' => 'receivables',
                 'label' => 'Fiados cobrados',
                 'total' => round((float) $paidReceivables->sum('amount'), 2),
                 'count' => $paidReceivables->count(),
-                'by_payment_method' => self::labelled($business, self::flatTotalsByMethod($paidReceivables))->values()->all(),
+                'by_payment_method' => self::labelled($business, self::flatTotalsByMethod($paidReceivables, $business))->values()->all(),
             ],
         ];
     }
 
-    /** @return array<string, float> */
-    private static function salesTotalsByMethod(Collection $revenueSales): array
+    /**
+     * @return array<string, float>
+     */
+    private static function salesTotalsByMethod(Collection $revenueSales, ?Business $business): array
     {
         $totals = [];
         foreach ($revenueSales as $sale) {
             foreach ($sale->allocatedRevenueByPaymentMethod() as $methodId => $amount) {
-                $totals[$methodId] = ($totals[$methodId] ?? 0) + (float) $amount;
+                // Normalizar antes de acumular: sales/sale_payment_splits
+                // guardan a veces el vocabulario en espanol del legacy
+                // (`efectivo`) y a veces el normalizado (`cash`) segun que
+                // app escribio la fila - sin esto, un negocio con datos
+                // legacy terminaba viendo DOS filas "Efectivo" (una en $0,
+                // la otra con el total real) en vez de una sola sumada. Ver
+                // docs/CUTOVER_TODO.md #1.
+                $normalized = $business?->normalizePaymentMethodId($methodId) ?? $methodId;
+                $totals[$normalized] = ($totals[$normalized] ?? 0) + (float) $amount;
             }
         }
 
@@ -102,9 +112,9 @@ class RevenueByPaymentMethod
     }
 
     /** Agrupa cualquier coleccion con columnas `payment_method`/`amount` (Receivable, ServicePayment, LayawayPayment). */
-    private static function flatTotalsByMethod(Collection $entries): array
+    private static function flatTotalsByMethod(Collection $entries, ?Business $business): array
     {
-        return $entries->groupBy('payment_method')
+        return $entries->groupBy(fn ($entry) => $business?->normalizePaymentMethodId($entry->payment_method) ?? $entry->payment_method)
             ->map(fn (Collection $group) => (float) $group->sum('amount'))
             ->filter(fn ($total, $id) => $id !== null && $id !== '')
             ->all();

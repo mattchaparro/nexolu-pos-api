@@ -236,6 +236,37 @@ class SalesReportTest extends TestCase
         $this->assertSame(0, $layawaysByMethod['cash']['total']);
     }
 
+    public function test_daily_summary_merges_legacy_spanish_payment_method_into_configured_bucket(): void
+    {
+        // Bug relacionado al de sales history: sin normalizar, una venta
+        // guardada como 'efectivo' (vocabulario legacy) generaba una
+        // segunda fila "Efectivo" separada de la configurada ('cash'), en
+        // vez de sumarse a ella - ver docs/CUTOVER_TODO.md #1.
+        [$business, $admin] = $this->admin();
+        $date = today()->toDateString();
+
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed', 'total' => 40000,
+            'is_credit' => false, 'is_non_revenue' => false, 'payment_method' => 'cash',
+            'closed_at' => $date.' 09:00:00',
+        ]);
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed', 'total' => 25000,
+            'is_credit' => false, 'is_non_revenue' => false, 'payment_method' => 'efectivo',
+            'closed_at' => $date.' 10:00:00',
+        ]);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson("/api/v1/reports/sales/daily?date={$date}")
+            ->assertOk();
+
+        $channels = collect($response->json('channels'))->keyBy('key');
+        $salesByMethod = collect($channels['sales']['by_payment_method'])->keyBy('id');
+
+        $this->assertSame(65000, $salesByMethod['cash']['total']);
+        $this->assertFalse($salesByMethod->has('efectivo'), 'no debe existir un bucket separado "efectivo" - debe sumarse al de "cash"');
+    }
+
     public function test_daily_summary_supports_a_date_range_via_date_from_and_date_to(): void
     {
         [$business, $admin] = $this->admin();
@@ -344,6 +375,34 @@ class SalesReportTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.id', $saleWithProduct->id);
+    }
+
+    public function test_sales_history_payment_method_filter_matches_legacy_spanish_alias(): void
+    {
+        // Negocio configurado en ingles (default: cash/transfer/credit) pero
+        // con ventas guardadas por el legacy en espanol - bug real reportado:
+        // filtrar por "Efectivo" (id cash) no devolvia nada porque la venta
+        // esta guardada como payment_method='efectivo', no 'cash'.
+        [$business, $admin] = $this->admin();
+
+        $cashSpanish = Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed',
+            'payment_method' => 'efectivo', 'closed_at' => '2026-03-01 12:00:00',
+        ]);
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed',
+            'payment_method' => 'transferencia', 'closed_at' => '2026-03-01 12:00:00',
+        ]);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/sales/history?from=2026-03-01&to=2026-03-31&payment_method=cash');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.id', $cashSpanish->id)
+            // Normalizado al vocabulario configurado del negocio en la
+            // respuesta, no el string crudo "efectivo" guardado en la fila.
+            ->assertJsonPath('data.0.payment_method', 'cash');
     }
 
     public function test_sales_history_sort_by_total(): void

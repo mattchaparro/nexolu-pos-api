@@ -278,11 +278,18 @@ class SalesReportService
             if ($pm === 'mixed') {
                 $query->where('payment_method', 'mixed');
             } else {
-                $query->where(function ($q) use ($pm) {
-                    $q->where('payment_method', $pm)
+                // whereIn con los alias (no solo $pm): sales/sale_payment_splits
+                // guardan a veces el vocabulario en espanol del legacy
+                // (`efectivo`) y a veces el normalizado (`cash`) segun que app
+                // escribio la fila - una comparacion exacta perdia el 100% de
+                // las ventas de negocios con datos legacy (ver docs/CUTOVER_TODO.md #1,
+                // bug reportado: filtrar por "Efectivo" no devolvia nada).
+                $pmVariants = Business::paymentMethodIdWithAliases($pm);
+                $query->where(function ($q) use ($pmVariants) {
+                    $q->whereIn('payment_method', $pmVariants)
                         ->orWhere(fn ($q2) => $q2
                             ->where('payment_method', 'mixed')
-                            ->whereHas('paymentSplits', fn ($s) => $s->where('payment_method', $pm)));
+                            ->whereHas('paymentSplits', fn ($s) => $s->whereIn('payment_method', $pmVariants)));
                 });
             }
         }
@@ -310,16 +317,21 @@ class SalesReportService
         }
 
         return $query->paginate($perPage)
-            ->through(function ($s) use ($sameDay) {
+            ->through(function ($s) use ($sameDay, $business) {
                 $relevant = $s->closed_at ?? $s->created_at;
 
                 return [
                     'id' => $s->id,
                     'invoice_number' => $s->invoice_number,
                     'total' => (float) $s->total,
-                    'payment_method' => $s->payment_method,
+                    // Normalizado al vocabulario configurado del negocio (ver
+                    // Business::normalizePaymentMethodId()) - sin esto, una
+                    // venta guardada como "efectivo" no matcheaba ningun id
+                    // de paymentMethodOptions() del lado del frontend y se
+                    // mostraba el string crudo en vez de la label ("Efectivo").
+                    'payment_method' => $business->normalizePaymentMethodId($s->payment_method),
                     'payment_splits' => $s->paymentSplits->map(fn ($p) => [
-                        'payment_method' => $p->payment_method,
+                        'payment_method' => $business->normalizePaymentMethodId($p->payment_method),
                         'amount' => (float) $p->amount,
                     ])->values()->all(),
                     'status' => $s->status,
@@ -373,9 +385,10 @@ class SalesReportService
             if ($pm === 'mixed') {
                 $query->where('payment_method', 'mixed');
             } else {
-                $query->where(fn ($q) => $q->where('payment_method', $pm)
+                $pmVariants = Business::paymentMethodIdWithAliases($pm);
+                $query->where(fn ($q) => $q->whereIn('payment_method', $pmVariants)
                     ->orWhere(fn ($q2) => $q2->where('payment_method', 'mixed')
-                        ->whereHas('paymentSplits', fn ($s) => $s->where('payment_method', $pm))));
+                        ->whereHas('paymentSplits', fn ($s) => $s->whereIn('payment_method', $pmVariants))));
             }
         }
 
@@ -391,14 +404,14 @@ class SalesReportService
         return $query->orderByRaw('COALESCE(closed_at, created_at) DESC')
             ->limit(5000)
             ->get()
-            ->map(function ($s) use ($sameDay) {
+            ->map(function ($s) use ($sameDay, $business) {
                 $relevant = $s->closed_at ?? $s->created_at;
 
                 return [
                     'id' => $s->id,
                     'invoice_number' => $s->invoice_number,
                     'total' => (float) $s->total,
-                    'payment_method' => $s->payment_method,
+                    'payment_method' => $business->normalizePaymentMethodId($s->payment_method),
                     'status' => $s->status,
                     'is_non_revenue' => (bool) $s->is_non_revenue,
                     'is_credit' => (bool) $s->is_credit,

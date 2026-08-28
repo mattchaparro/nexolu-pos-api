@@ -369,6 +369,28 @@ class Business extends Model
     }
 
     /**
+     * Alias legacy <-> espanol de payment_method (cash<->efectivo,
+     * transfer<->transferencia, credit<->fiado) - ver docs/CUTOVER_TODO.md #1,
+     * el vocabulario diverge entre `sales`/`sale_payment_splits`/`receivables`
+     * (id en espanol o ingles segun que app escribio la fila) y lo que cada
+     * negocio tiene configurado hoy. Compartido por normalizePaymentMethodId()
+     * (arbitrario -> el id configurado de este negocio) y
+     * paymentMethodIdWithAliases() (id configurado -> todos los valores
+     * crudos que deberian contar como ese id al filtrar/agrupar).
+     */
+    private const PAYMENT_METHOD_ALIASES = [
+        'cash' => ['efectivo'],
+        'efectivo' => ['cash'],
+        'transfer' => ['transferencia', 'transferencias'],
+        'transferencia' => ['transfer'],
+        'transferencias' => ['transfer'],
+        'credit' => ['fiado', 'credito', 'crédito'],
+        'fiado' => ['credit'],
+        'credito' => ['credit'],
+        'crédito' => ['credit'],
+    ];
+
+    /**
      * Normaliza un payment_method id al id que este negocio tiene configurado.
      * Resuelve aliases legacy <-> espanol (cash<->efectivo, transfer<->transferencia, credit<->fiado).
      * Si el id ya esta configurado o no hay alias aplicable, lo retorna tal cual.
@@ -386,25 +408,30 @@ class Business extends Model
             return $idLower;
         }
 
-        $aliases = [
-            'cash' => ['efectivo'],
-            'efectivo' => ['cash'],
-            'transfer' => ['transferencia', 'transferencias'],
-            'transferencia' => ['transfer'],
-            'transferencias' => ['transfer'],
-            'credit' => ['fiado', 'credito', 'crédito'],
-            'fiado' => ['credit'],
-            'credito' => ['credit'],
-            'crédito' => ['credit'],
-        ];
-
-        foreach (($aliases[$idLower] ?? []) as $alias) {
+        foreach (self::PAYMENT_METHOD_ALIASES[$idLower] ?? [] as $alias) {
             if (in_array($alias, $configured, true)) {
                 return $alias;
             }
         }
 
         return $idLower;
+    }
+
+    /**
+     * El id mas sus alias conocidos (ver PAYMENT_METHOD_ALIASES) - para
+     * filtrar/agrupar por payment_method sin perder filas guardadas con el
+     * vocabulario viejo del legacy (`efectivo` cuando el negocio filtra por
+     * `cash`, etc. - ver docs/CUTOVER_TODO.md #1). Estatico porque los alias
+     * no dependen de la config de un negocio en particular, solo de que id
+     * pidio el caller.
+     *
+     * @return array<int, string>
+     */
+    public static function paymentMethodIdWithAliases(string $id): array
+    {
+        $idLower = strtolower($id);
+
+        return array_values(array_unique([$idLower, ...(self::PAYMENT_METHOD_ALIASES[$idLower] ?? [])]));
     }
 
     /**
