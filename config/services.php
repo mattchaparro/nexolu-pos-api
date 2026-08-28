@@ -49,6 +49,14 @@ return [
         'platform_api_key' => env('IA_CORE_PLATFORM_API_KEY'),
     ],
 
+    'legacy' => [
+        // Misma credencial simetrica en los dos sentidos: pos-saas (legacy)
+        // la usa para llamar POST /admin/businesses/{id}/run-migration-patches
+        // (superadmin, boton "Correr parches" en Businesses/Show.vue), este
+        // POS la usa aca para verificarla - ver EnsureValidLegacyAdminKey.
+        'admin_key' => env('LEGACY_ADMIN_API_KEY'),
+    ],
+
     // Nexolu Payments Core (servicio Python aparte, repo nexolu-payments-core):
     // pasarela de pagos unificada, este POS ya no le habla a Wompi directo.
     // api_key autentica las llamadas salientes de este POS al Core

@@ -7,6 +7,7 @@ use App\Http\Middleware\EnsureBusinessPermission;
 use App\Http\Middleware\EnsureCashShiftOpenForSales;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\EnsureValidIaCoreKey;
+use App\Http\Middleware\EnsureValidLegacyAdminKey;
 use App\Http\Middleware\SentryBusinessContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -32,6 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'can-access-purchases' => EnsureBusinessCanAccessPurchases::class,
             'superadmin' => EnsureSuperAdmin::class,
             'ia-core.key' => EnsureValidIaCoreKey::class,
+            'legacy.admin-key' => EnsureValidLegacyAdminKey::class,
             'permission' => EnsureBusinessPermission::class,
             'business-admin' => EnsureBusinessAdmin::class,
             'cash-shift.required-for-sales' => EnsureCashShiftOpenForSales::class,

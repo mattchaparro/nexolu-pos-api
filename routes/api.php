@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AiToolCatalogController;
 use App\Http\Controllers\Api\AiToolInvokeController;
+use App\Http\Controllers\Api\BusinessMigrationPatchController;
 use App\Http\Controllers\Api\NexoluCommsWebhookController;
 use App\Http\Controllers\Api\NotificationSnoozeController;
 use App\Http\Controllers\Api\PaymentsCoreWebhookController;
@@ -71,6 +72,12 @@ Route::post('/ai/tools/invoke', [AiToolInvokeController::class, 'invoke'])
 Route::get('/ai/tools/catalog', [AiToolCatalogController::class, 'index'])
     ->middleware('ia-core.key')
     ->name('ai.tools.catalog');
+
+// Server-to-server: lo llama el superadmin de pos-saas (legacy) despues de
+// migrar un negocio - ver BusinessMigrationPatchController.
+Route::post('/admin/businesses/{business}/run-migration-patches', [BusinessMigrationPatchController::class, 'run'])
+    ->middleware('legacy.admin-key')
+    ->name('admin.businesses.run-migration-patches');
 
 // Publico, sin auth: Meta llama a este endpoint directamente (GET para
 // verificar el webhook al configurarlo, POST para entregar mensajes/eventos).

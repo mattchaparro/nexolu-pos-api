@@ -100,6 +100,37 @@ class LegacyNormalizePaymentMethodsTest extends TestCase
         $this->assertSame('cash', $expense->fresh()->payment_method);
     }
 
+    public function test_it_runs_against_production_when_scoped_to_a_single_business(): void
+    {
+        app()->instance('env', 'production');
+
+        $business = Business::factory()->create();
+        $expense = Expense::factory()->create(['business_id' => $business->id, 'payment_method' => 'Efectivo']);
+
+        $this->artisan('legacy:normalize-payment-methods', ['--business' => $business->id])
+            ->expectsOutputToContain('expenses: 1 filas cambiaron.')
+            ->assertSuccessful();
+
+        $this->assertSame('cash', $expense->fresh()->payment_method);
+    }
+
+    public function test_business_scope_does_not_touch_other_businesses_rows(): void
+    {
+        app()->instance('env', 'local');
+
+        $businessA = Business::factory()->create();
+        $businessB = Business::factory()->create();
+        $expenseA = Expense::factory()->create(['business_id' => $businessA->id, 'payment_method' => 'Efectivo']);
+        $expenseB = Expense::factory()->create(['business_id' => $businessB->id, 'payment_method' => 'Efectivo']);
+
+        $this->artisan('legacy:normalize-payment-methods', ['--business' => $businessA->id])
+            ->expectsOutputToContain('expenses: 1 filas cambiaron.')
+            ->assertSuccessful();
+
+        $this->assertSame('cash', $expenseA->fresh()->payment_method);
+        $this->assertSame('Efectivo', $expenseB->fresh()->payment_method, 'no deberia haber tocado un negocio fuera del --business pedido');
+    }
+
     public function test_rows_belonging_to_a_deleted_business_are_skipped_safely(): void
     {
         app()->instance('env', 'local');

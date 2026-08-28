@@ -15,36 +15,30 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Unifica el vocabulario de payment_method (ver CUTOVER_TODO.md #1) a la
- * variante id-minuscula, SOLO sobre una COPIA de datos (local/dev, o un
- * ensayo en staging como SG) - nunca contra la base que sirve trafico real
- * del monolito legacy, que la sigue escribiendo (por eso el fix esta
- * marcado "pendiente" alla).
+ * variante id-minuscula.
  *
- * Guard (2026-08-20): se amplio de solo 'local' a 'local'+'staging' porque
- * el mismo comando se va a correr contra el droplet de produccion nueva el
- * dia del cutover real - pero SIEMPRE contra una base de respaldo separada
- * (ver PRODUCTION_CUTOVER.md § 4.1: `new-pos-saas`, nunca la `pos_saas` que
- * sirve trafico), con ese droplet corriendo APP_ENV=staging para ese
- * ensayo puntual. El guard protege el ambiente (nunca 'production'), no
- * garantiza por si solo que el DB_DATABASE correcto este seleccionado -
- * verificar eso a mano antes de correr sin --dry-run.
- *
- * A diferencia de lo que recomienda CUTOVER_TODO.md, esta normalizacion
- * queda deliberadamente desalineada de la validacion actual de
- * StoreExpenseRequest (que exige el enum capitalizado, igual que legacy):
- * es una decision consciente para tener datos locales consistentes con los
- * que ya usan sales/receivables, a costa de que un `POST /v1/expenses`
- * nuevo contra esta misma copia local siga escribiendo capitalizado. No
- * "arregla" el bug documentado, solo lo aisla a la copia importada.
+ * Guard (2026-08-28, reescrito): el cutover real terminó siendo negocio
+ * por negocio, no "big bang" (ver CUTOVER_PER_BUSINESS.md), así que ya no
+ * tiene sentido bloquear el comando entero fuera de local/staging - lo que
+ * hay que evitar es una corrida SIN scope (todos los negocios de una)
+ * contra la base que sirve trafico real. En local/staging sigue corriendo
+ * libre (con o sin --business, para pruebas). En cualquier otro ambiente
+ * (production incluido) EXIGE --business=ID - se niega a correr global.
+ * Pensado para dispararse recien despues de que `businesses:migrate` deja
+ * a ESE negocio en estado completed (ver
+ * Api\Admin\BusinessMigrationPatchController, que es quien lo llama en
+ * production hoy).
  */
-#[Signature('legacy:normalize-payment-methods {--dry-run : Solo reporta cuantas filas cambiarian, sin escribir}')]
-#[Description('Normaliza payment_method a id-minuscula en datos importados de legacy (local o staging, nunca production)')]
+#[Signature('legacy:normalize-payment-methods {--dry-run : Solo reporta cuantas filas cambiarian, sin escribir} {--business= : Limitar a un solo business_id}')]
+#[Description('Normaliza payment_method a id-minuscula - fuera de local/staging exige --business=ID')]
 class LegacyNormalizePaymentMethods extends Command
 {
     public function handle(): int
     {
-        if (! app()->environment(['local', 'staging'])) {
-            $this->error('Este comando solo corre con APP_ENV=local o staging, y siempre contra una copia de datos - nunca contra production (ver docblock de la clase).');
+        $onlyBusinessId = $this->option('business') !== null ? (int) $this->option('business') : null;
+
+        if (! app()->environment(['local', 'staging']) && $onlyBusinessId === null) {
+            $this->error('Fuera de local/staging hay que pasar --business=ID - nunca una corrida global contra production (ver docblock de la clase).');
 
             return self::FAILURE;
         }
@@ -59,7 +53,9 @@ class LegacyNormalizePaymentMethods extends Command
             'expenses' => Expense::class,
         ];
 
-        $businesses = Business::query()->get()->keyBy('id');
+        $businesses = Business::query()
+            ->when($onlyBusinessId, fn ($q) => $q->where('id', $onlyBusinessId))
+            ->get()->keyBy('id');
         $totalChanged = 0;
 
         foreach ($tables as $table => $modelClass) {
@@ -79,11 +75,13 @@ class LegacyNormalizePaymentMethods extends Command
                     ->orderBy('sale_payment_splits.id')
                     ->where('sale_payment_splits.payment_method', '!=', '')
                     ->whereNotNull('sale_payment_splits.payment_method')
+                    ->when($onlyBusinessId, fn ($q) => $q->where('sales.business_id', $onlyBusinessId))
                 : DB::table($table)
                     ->select('id as row_id', 'payment_method', 'business_id')
                     ->orderBy('id')
                     ->where('payment_method', '!=', '')
-                    ->whereNotNull('payment_method');
+                    ->whereNotNull('payment_method')
+                    ->when($onlyBusinessId, fn ($q) => $q->where('business_id', $onlyBusinessId));
 
             $query->chunk(500, function ($rows) use ($table, $businesses, $dryRun, &$changed) {
                 foreach ($rows as $row) {
