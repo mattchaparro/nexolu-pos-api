@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\V1\BillingProfileController;
 use App\Http\Controllers\Api\V1\BulkStockUpdateController;
 use App\Http\Controllers\Api\V1\BusinessController;
 use App\Http\Controllers\Api\V1\BusinessOverviewController;
+use App\Http\Controllers\Api\V1\BusinessPaymentGatewayController;
 use App\Http\Controllers\Api\V1\BusinessPaymentSourceController;
 use App\Http\Controllers\Api\V1\BusinessServiceWorkflowController;
 use App\Http\Controllers\Api\V1\BusinessStoreSettingsController;
@@ -297,6 +298,15 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // business-admin y no un permiso de inventario: abrir o cerrar la
         // tienda al publico es una decision del dueño, no del cajero.
         Route::middleware(['feature:online_store', 'business-admin'])->group(function () {
+            // La pasarela propia del negocio (Wompi o Bold). Bajo el mismo
+            // modulo que la tienda, aunque Bold ademas habilite el datafono:
+            // por ahora el unico consumidor es el cobro online.
+            Route::get('/payment-gateways', [BusinessPaymentGatewayController::class, 'index'])->name('payment-gateways.index');
+            Route::post('/payment-gateways', [BusinessPaymentGatewayController::class, 'store'])->name('payment-gateways.store');
+            Route::delete('/payment-gateways/{provider}', [BusinessPaymentGatewayController::class, 'destroy'])
+                ->whereIn('provider', ['wompi', 'bold'])
+                ->name('payment-gateways.destroy');
+
             Route::get('/store-settings', [BusinessStoreSettingsController::class, 'show'])->name('store-settings.show');
             Route::put('/store-settings', [BusinessStoreSettingsController::class, 'update'])->name('store-settings.update');
             // Ranuras fijas (logo, banner, hero, story), no una galeria: cada

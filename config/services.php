@@ -67,6 +67,11 @@ return [
         'api_key' => env('PAYMENTS_CORE_API_KEY'),
         'base_url' => env('PAYMENTS_CORE_BASE_URL', 'http://host.docker.internal:8003'),
         'webhook_secret' => env('PAYMENTS_CORE_WEBHOOK_SECRET'),
+        // Llave ADMINISTRATIVA, distinta de api_key: da de alta merchants e
+        // integraciones. Solo la usa BusinessPaymentGatewayService, cuando un
+        // comerciante conecta su propia pasarela. Nunca se expone a una ruta
+        // publica ni viaja al frontend.
+        'provisioning_key' => env('PAYMENTS_CORE_PROVISIONING_KEY'),
     ],
 
     // Nexolu Communications (servicio Python aparte, repo nexolu-comms-api):
