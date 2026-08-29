@@ -21,15 +21,18 @@ class BusinessFeaturePresets
     public const SETUP_PROFESSIONAL = 'professional_services';
 
     /**
-     * Banderas que NUNCA se encienden solas.
+     * Banderas que NUNCA se heredan del comodin de retrocompatibilidad.
      *
      * Business::hasFeature() devuelve `true` para cualquier bandera cuando el
      * negocio no tiene JSON de flags (retrocompatibilidad con los negocios
      * mas viejos de la plataforma). Eso es inofensivo para un modulo interno,
      * pero no para uno que publica datos hacia afuera: un negocio antiguo se
      * encontraria con su catalogo expuesto en internet sin haberlo pedido.
-     * Las banderas de esta lista se quedan apagadas hasta que alguien las
-     * encienda explicitamente desde SuperAdmin.
+     *
+     * Ojo con lo que esta lista significa hoy: `online_store` SI viene con el
+     * plan Full (ver full()), asi que un negocio Full con JSON de flags la
+     * tiene encendida. Lo que esta lista impide es que la herede un negocio
+     * SIN JSON, donde "todo encendido" es una suposicion, no una decision.
      *
      * @var list<string>
      */
@@ -186,9 +189,12 @@ class BusinessFeaturePresets
             'discounts' => false,
             'charges' => false,
             'reminders' => true,
-            // Apagada incluso en Full: la tienda publica se habilita negocio
-            // por negocio desde SuperAdmin, no viene con el plan (ver OPT_IN_ONLY).
-            'online_store' => false,
+            // Incluida en Full: vender por internet es parte de lo que se
+            // paga en este plan, no un tramite aparte con soporte. Encenderla
+            // NO publica nada: la tienda solo responde cuando el comerciante
+            // ademas activa `business_store_settings.is_active` y publica sus
+            // productos (ver ResolveStorefrontTenant).
+            'online_store' => true,
         ];
     }
 
@@ -261,7 +267,7 @@ class BusinessFeaturePresets
             ['key' => 'scheduling', 'label' => 'Agenda', 'description' => 'Calendario de citas, independiente del catálogo de servicios.', 'group' => 'Clientes y agenda'],
             ['key' => 'reminders', 'label' => 'Planificador de recordatorios', 'description' => 'Recordatorios internos con fecha de vencimiento.', 'group' => 'Clientes y agenda'],
 
-            ['key' => 'online_store', 'label' => 'Tienda online', 'description' => 'Publica un catálogo público en internet con el mismo inventario del POS, para que los clientes compren y paguen en línea. Apagada por defecto en ambos planes: se habilita negocio por negocio.', 'group' => 'Canales de venta'],
+            ['key' => 'online_store', 'label' => 'Tienda online', 'description' => 'Publica un catálogo público en internet con el mismo inventario del POS, para que los clientes compren y paguen en línea. Incluida en el plan Full; habilitarla no publica nada hasta que el comerciante active su tienda y publique productos.', 'group' => 'Canales de venta'],
         ];
 
         return array_map(fn (array $entry) => [

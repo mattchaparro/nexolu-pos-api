@@ -24,11 +24,17 @@ class FeatureCatalogTest extends TestCase
         $this->assertFalse($openTabs['basic']);
         $this->assertTrue($openTabs['full']);
 
-        // La tienda online no viene con ningun plan: se habilita negocio por negocio.
+        // La tienda online viene con el plan Full y no existe en Basico.
         $onlineStore = collect($response->json('features'))->firstWhere('key', 'online_store');
         $this->assertSame('Canales de venta', $onlineStore['group']);
         $this->assertFalse($onlineStore['basic']);
-        $this->assertFalse($onlineStore['full']);
+        $this->assertTrue($onlineStore['full']);
+
+        // Variaciones sigue siendo exclusiva de Full: es lo que el wizard de
+        // registro usa para recomendar el plan a quien vende por talla/color.
+        $variants = collect($response->json('features'))->firstWhere('key', 'variants');
+        $this->assertFalse($variants['basic']);
+        $this->assertTrue($variants['full']);
 
         $this->assertSame(65000, $response->json('plans.basic.price_cop'));
         $this->assertSame(85000, $response->json('plans.full.price_cop'));

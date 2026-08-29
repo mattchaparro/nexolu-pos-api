@@ -30,6 +30,11 @@ class BusinessStoreSettingsResource extends JsonResource
             'shipping_flat_fee' => (float) $this->shipping_flat_fee,
             'min_order_amount' => (float) $this->min_order_amount,
             'pickup_enabled' => (bool) $this->pickup_enabled,
+            // La pagina de inicio, tal cual esta guardada: con los ids de
+            // imagen SIN resolver, al reves que el Resource publico. El
+            // editor necesita el id para saber que foto esta elegida; el
+            // comprador necesita la URL para pintarla.
+            'home_blocks' => array_values($this->home_blocks ?? []),
             'order_email_enabled' => (bool) $this->order_email_enabled,
             'order_email' => $this->order_email,
             'terms' => $this->terms,

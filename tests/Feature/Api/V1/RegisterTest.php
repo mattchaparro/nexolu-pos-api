@@ -238,6 +238,65 @@ class RegisterTest extends TestCase
         $this->assertFalse($business->feature_flags['open_tabs']);
     }
 
+    public function test_the_full_plan_includes_the_online_store_and_variants_from_the_registration(): void
+    {
+        $this->postJson('/api/v1/register', [
+            'business_name' => 'Boutique Full',
+            'owner_name' => 'Sara Mora',
+            'email' => 'sara@example.com',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+            'plan' => 'full',
+            'whatsapp_number' => '3001234567',
+            'device_name' => 'phpunit',
+        ])->assertCreated();
+
+        $business = Business::where('name', 'Boutique Full')->first();
+        $this->assertTrue($business->feature_flags['online_store']);
+        $this->assertTrue($business->feature_flags['variants']);
+        $this->assertTrue($business->hasFeature('online_store'));
+    }
+
+    public function test_the_basic_plan_cannot_get_the_online_store_or_variants_from_the_registration(): void
+    {
+        $this->postJson('/api/v1/register', [
+            'business_name' => 'Tienda Basica Ambiciosa',
+            'owner_name' => 'Ivan Paz',
+            'email' => 'ivan@example.com',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+            'plan' => 'basic',
+            // Ninguna de las dos viene en Basico: prenderlas desde el registro
+            // publico se ignora, subir de plan es el unico camino.
+            'feature_flags' => ['online_store' => true, 'variants' => true],
+            'whatsapp_number' => '3001234567',
+            'device_name' => 'phpunit',
+        ])->assertCreated();
+
+        $business = Business::where('name', 'Tienda Basica Ambiciosa')->first();
+        $this->assertFalse($business->feature_flags['online_store']);
+        $this->assertFalse($business->feature_flags['variants']);
+    }
+
+    public function test_a_full_plan_business_can_opt_out_of_the_online_store_while_registering(): void
+    {
+        $this->postJson('/api/v1/register', [
+            'business_name' => 'Restaurante Sin Tienda',
+            'owner_name' => 'Hugo Vera',
+            'email' => 'hugo@example.com',
+            'password' => 'secret123',
+            'password_confirmation' => 'secret123',
+            'plan' => 'full',
+            'feature_flags' => ['online_store' => false],
+            'whatsapp_number' => '3001234567',
+            'device_name' => 'phpunit',
+        ])->assertCreated();
+
+        $business = Business::where('name', 'Restaurante Sin Tienda')->first();
+        $this->assertFalse($business->feature_flags['online_store']);
+        $this->assertTrue($business->feature_flags['variants']);
+    }
+
     public function test_registering_with_an_invalid_setup_mode_is_rejected(): void
     {
         $this->postJson('/api/v1/register', [

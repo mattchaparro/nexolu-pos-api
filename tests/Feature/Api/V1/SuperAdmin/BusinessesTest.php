@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\V1\SuperAdmin;
 
+use App\Mail\NewUserCredentialsMail;
 use App\Models\Business;
 use App\Models\LogAction;
 use App\Models\Product;
@@ -10,6 +11,7 @@ use App\Models\Sale;
 use App\Models\SupportTicket;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Mail;
 use Tests\Support\ActsAsSuperAdmin;
 use Tests\TestCase;
 
@@ -63,6 +65,111 @@ class BusinessesTest extends TestCase
 
         $this->assertDatabaseHas('users', ['email' => 'dueno@example.com', 'business_id' => $response->json('id')]);
         $this->assertDatabaseHas('log_actions', ['action' => 'superadmin.business.created']);
+    }
+
+    /**
+     * A diferencia del wizard publico (que solo puede APAGAR lo que el plan
+     * trae), el panel puede darle una funcion suelta a un negocio Basico -
+     * es lo que se pacta en una llamada de ventas.
+     */
+    public function test_superadmin_can_create_a_business_with_features_outside_its_plan(): void
+    {
+        $admin = $this->superadmin();
+
+        $response = $this->actingAs($admin, 'sanctum')->postJson('/api/v1/superadmin/businesses', [
+            'business_name' => 'Boutique Basica Con Tienda',
+            'owner_name' => 'Dueña Boutique',
+            'email' => 'boutique@example.com',
+            'password' => 'secret123',
+            'plan' => 'basic',
+            'feature_flags' => ['online_store' => true, 'variants' => true, 'expenses' => false],
+        ])->assertCreated();
+
+        $business = Business::find($response->json('id'));
+        $this->assertSame('basic', $business->subscription_plan);
+        $this->assertTrue($business->hasFeature('online_store'));
+        $this->assertTrue($business->hasFeature('variants'));
+        $this->assertFalse($business->hasFeature('expenses'));
+        // Las claves que no se tocaron siguen valiendo lo del plan.
+        $this->assertTrue($business->hasFeature('inventory'));
+    }
+
+    public function test_superadmin_can_create_a_business_already_paying(): void
+    {
+        $admin = $this->superadmin();
+
+        $response = $this->actingAs($admin, 'sanctum')->postJson('/api/v1/superadmin/businesses', [
+            'business_name' => 'Negocio Que Entra Pagando',
+            'owner_name' => 'Dueño Pago',
+            'email' => 'pago@example.com',
+            'password' => 'secret123',
+            'plan' => 'full',
+            'trial_days' => 0,
+            'activate_days' => 30,
+            'amount_cop' => 120000,
+            'custom_price_cop' => 120000,
+            'notes' => 'Cerrado por llamada.',
+        ])->assertCreated();
+
+        $business = Business::find($response->json('id'));
+        $this->assertNotNull($business->paid_until);
+        $this->assertTrue($business->paid_until->isFuture());
+        $this->assertSame(120000, (int) $business->custom_price_cop);
+
+        $this->assertDatabaseHas('saas_subscription_payments', [
+            'business_id' => $business->id,
+            'amount_cop' => 120000,
+            'days_granted' => 30,
+            'notes' => 'Cerrado por llamada.',
+        ]);
+    }
+
+    public function test_superadmin_can_choose_a_custom_trial_length(): void
+    {
+        $admin = $this->superadmin();
+
+        $response = $this->actingAs($admin, 'sanctum')->postJson('/api/v1/superadmin/businesses', [
+            'business_name' => 'Negocio Prueba Larga',
+            'owner_name' => 'Dueño Prueba',
+            'email' => 'prueba@example.com',
+            'password' => 'secret123',
+            'trial_days' => 45,
+        ])->assertCreated();
+
+        $business = Business::find($response->json('id'));
+        $this->assertSame(45, (int) now()->startOfDay()->diffInDays($business->trial_ends_at->startOfDay()));
+    }
+
+    public function test_superadmin_can_mail_the_owner_their_credentials_on_creation(): void
+    {
+        Mail::fake();
+        $admin = $this->superadmin();
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/v1/superadmin/businesses', [
+            'business_name' => 'Negocio Con Credenciales',
+            'owner_name' => 'Dueño Correo',
+            'email' => 'credenciales@example.com',
+            'password' => 'secret123',
+            'send_credentials' => true,
+        ])->assertCreated();
+
+        Mail::assertSent(NewUserCredentialsMail::class, fn ($mail) => $mail->hasTo('credenciales@example.com')
+            && $mail->plainPassword === 'secret123');
+    }
+
+    public function test_creating_a_business_without_asking_does_not_mail_credentials(): void
+    {
+        Mail::fake();
+        $admin = $this->superadmin();
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/v1/superadmin/businesses', [
+            'business_name' => 'Negocio Sin Credenciales',
+            'owner_name' => 'Dueño Callado',
+            'email' => 'sincredenciales@example.com',
+            'password' => 'secret123',
+        ])->assertCreated();
+
+        Mail::assertNotSent(NewUserCredentialsMail::class);
     }
 
     public function test_show_includes_stats_and_roles_summary(): void

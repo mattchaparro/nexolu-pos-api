@@ -13,6 +13,7 @@ use App\Http\Requests\Api\V1\SuperAdmin\UpdateBusinessConfigRequest;
 use App\Http\Requests\Api\V1\SuperAdmin\UpdateBusinessRequest;
 use App\Http\Resources\Api\V1\SuperAdmin\BusinessResource;
 use App\Http\Resources\Api\V1\SuperAdmin\SaasSubscriptionPaymentResource;
+use App\Mail\NewUserCredentialsMail;
 use App\Models\Business;
 use App\Models\LogAction;
 use App\Models\SaasSubscriptionPayment;
@@ -26,6 +27,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Mail;
 use Spatie\Permission\Models\Role;
 
 class BusinessesController extends Controller
@@ -160,13 +162,76 @@ class BusinessesController extends Controller
         ];
     }
 
+    /**
+     * Alta completa de un negocio: crea el negocio y su dueño, aplica los
+     * features pactados, el precio especial y, si el negocio entra pagando,
+     * la activacion con su pago registrado - todo en una sola pantalla, en
+     * vez de crear el negocio y despues entrar al detalle a repetir tres
+     * formularios mas.
+     *
+     * Cada paso reusa el mismo servicio que ya usan las acciones sueltas del
+     * detalle (registro, updateConfig, activate), a proposito: el alta no
+     * puede quedar con una semantica propia que se desincronice de ellas.
+     */
     public function store(StoreBusinessRequest $request): BusinessResource
     {
-        $data = $this->registrationService->register($request->validated());
+        $data = $request->validated();
 
-        AuditLogger::log('superadmin.business.created', ['business_id' => $data['business']->id]);
+        // Los flags van aparte de register(): el wizard publico solo puede
+        // APAGAR lo que el plan trae, y ese clamp vive dentro del servicio de
+        // registro. Un superadmin si puede darle una funcion suelta a un
+        // negocio Basico, asi que sus flags se aplican despues, por el mismo
+        // camino que la pestaña Features del detalle.
+        $result = $this->registrationService->register(collect($data)->except('feature_flags')->all());
+        $business = $result['business'];
+        $plan = $data['plan'] ?? $business->subscription_plan ?? 'basic';
 
-        return new BusinessResource($data['business']);
+        if (! empty($data['feature_flags'])) {
+            $business = $this->businessService->updateConfig($business, $plan, $data['feature_flags']);
+        }
+
+        if (! empty($data['custom_price_cop'])) {
+            $business->update(['custom_price_cop' => (int) $data['custom_price_cop']]);
+        }
+
+        if (! empty($data['activate_days'])) {
+            $this->businessService->activate($business, $request->user(), [
+                'days' => (int) $data['activate_days'],
+                'amount_cop' => $data['amount_cop'] ?? null,
+                'plan' => $plan,
+                'notes' => $data['notes'] ?? null,
+            ]);
+        }
+
+        if ($data['send_credentials'] ?? false) {
+            $this->mailOwnerCredentials($result['user'], $business, $data['password']);
+        }
+
+        AuditLogger::log('superadmin.business.created', [
+            'business_id' => $business->id,
+            'plan' => $plan,
+            'activated_days' => $data['activate_days'] ?? null,
+        ]);
+
+        // ->refresh() (no ->fresh()) para preservar wasRecentlyCreated: con una
+        // instancia nueva Laravel responderia 200 en vez de 201 - mismo detalle
+        // que en EmployeeController::store().
+        return new BusinessResource($business->refresh());
+    }
+
+    /**
+     * El dueño no eligio su contraseña (la puso el superadmin), asi que sin
+     * este correo no tiene forma de entrar. Silencioso igual que el resto de
+     * los envios de alta: un mailer sin configurar no puede tumbar un alta ya
+     * completada.
+     */
+    private function mailOwnerCredentials(User $owner, Business $business, string $plainPassword): void
+    {
+        try {
+            Mail::to($owner->email)->send(new NewUserCredentialsMail($owner, $business, $plainPassword, 'Administrador'));
+        } catch (\Throwable) {
+            //
+        }
     }
 
     public function update(UpdateBusinessRequest $request, Business $business): BusinessResource

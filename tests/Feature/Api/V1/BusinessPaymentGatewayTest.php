@@ -146,7 +146,11 @@ class BusinessPaymentGatewayTest extends TestCase
     {
         $this->fakeCoreOk();
 
-        $sinTienda = Business::factory()->create(['feature_flags' => BusinessFeaturePresets::full()]);
+        // Full con la tienda apagada a mano: es lo que queda cuando el negocio
+        // la desactiva en el registro o el superadmin se la quita.
+        $sinTienda = Business::factory()->create([
+            'feature_flags' => [...BusinessFeaturePresets::full(), 'online_store' => false],
+        ]);
         $this->assertFalse($sinTienda->hasFeature('online_store'));
 
         $user = User::factory()->create(['business_id' => $sinTienda->id, 'is_business_owner' => true]);

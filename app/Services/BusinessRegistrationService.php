@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Mail;
 class BusinessRegistrationService
 {
     /**
-     * @param  array{business_name: string, owner_name: string, email: string, password: string, phone?: ?string, whatsapp_number?: ?string, nit?: ?string, address?: ?string, setup_mode?: ?string, plan?: ?string, feature_flags?: ?array<string, bool>}  $data
+     * @param  array{business_name: string, owner_name: string, email: string, password: string, phone?: ?string, whatsapp_number?: ?string, nit?: ?string, address?: ?string, setup_mode?: ?string, plan?: ?string, feature_flags?: ?array<string, bool>, trial_days?: ?int}  $data
      * @return array{business: Business, user: User}
      */
     public function register(array $data): array
@@ -62,7 +62,10 @@ class BusinessRegistrationService
                 'whatsapp_number' => $data['whatsapp_number'] ?? null,
                 'nit' => $data['nit'] ?? null,
                 'address' => $data['address'] ?? null,
-                'trial_ends_at' => now()->addDays(Business::TRIAL_DAYS),
+                // El self-registro siempre usa la prueba estandar; el alta
+                // manual del superadmin puede pactar otra duracion (o cero
+                // dias, cuando el negocio entra pagando desde el primer dia).
+                'trial_ends_at' => now()->addDays((int) ($data['trial_days'] ?? Business::TRIAL_DAYS)),
                 'subscription_plan' => $plan,
                 'feature_flags' => $featureFlags,
             ]);

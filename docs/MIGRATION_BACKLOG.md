@@ -931,6 +931,35 @@ contra `pos-saas-legacy`. Cada ítem indica qué repo(s) toca
   "Agregar usuario" (modal nombre/correo/contraseña/rol), activar/desactivar
   por fila, y "Restablecer contraseña" (la muestra una sola vez, con botón
   de copiar - nunca se persiste en claro, igual que el backend).
+- ~~**Alta de un negocio desde cero en la UI**~~ ✅ Resuelto (2026-08-29):
+  `POST /superadmin/businesses` existía desde el primer corte pero ninguna
+  pantalla lo consumía - la única forma de crear un negocio era el registro
+  público, que además clampa los features contra el plan. `StoreBusinessRequest`
+  ahora acepta lo que se pacta en una llamada de ventas (`feature_flags`
+  sueltos y SIN clamp, `trial_days`, `activate_days`/`amount_cop`/`notes`
+  para el negocio que entra pagando, `custom_price_cop`, `whatsapp_number`
+  y `send_credentials`), y `store()` orquesta los mismos servicios que ya
+  usan las acciones sueltas del detalle (`BusinessRegistrationService` →
+  `SuperAdminBusinessService::updateConfig()` → `activate()`) en vez de
+  inventar una semántica propia. Frontend: botón "Crear negocio" en
+  `SuperAdminBusinessesView.vue` + `BusinessFormModal.vue` (datos, plan con
+  todos los interruptores del catálogo, suscripción), y al crearlo se abre
+  su detalle.
+- ~~**Variaciones y tienda online en el registro**~~ ✅ Resuelto
+  (2026-08-29): `online_store` pasó a venir encendida en `full()` (antes
+  estaba apagada en ambos planes y solo la prendía un superadmin negocio por
+  negocio). `OPT_IN_ONLY` sigue existiendo y sigue tapando el caso que le
+  importaba: un negocio SIN JSON de flags no la hereda del comodín de
+  retrocompatibilidad. Encenderla no publica nada - hace falta además
+  `business_store_settings.is_active` y productos publicados. `variants`
+  queda como exclusiva de Full (decisión del usuario); para que una tienda
+  de ropa no elija Básico sin darse cuenta, el paso 2 del wizard
+  (`RegisterView.vue`) abre con dos preguntas ("¿vendes por talla/color?",
+  "¿quieres vender por internet?") que recomiendan plan, marcan qué no
+  incluye Básico y avisan si lo elegido no cubre lo que el propio usuario
+  dijo necesitar. **Pendiente de decisión**: los negocios Full existentes
+  con `online_store: false` explícito en su JSON (los creados por el wizard)
+  no la reciben solos - haría falta un backfill, deliberadamente no hecho.
 - ~~**Documentación de planes y funciones + huecos de aplicación de
   banderas**~~ ✅ Resuelto (2026-08-13): auditoría completa de
   `BusinessFeaturePresets` contra el registro de legacy encontró 3 huecos

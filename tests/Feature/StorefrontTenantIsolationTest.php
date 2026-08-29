@@ -216,20 +216,41 @@ class StorefrontTenantIsolationTest extends TestCase
         $this->getJson("/api/test-storefront/{$legacy->slug}/products")->assertNotFound();
     }
 
-    public function test_online_store_is_off_by_default_in_both_plans(): void
+    public function test_online_store_comes_with_the_full_plan_but_never_with_basic(): void
     {
         $this->assertFalse(BusinessFeaturePresets::basic()['online_store']);
-        $this->assertFalse(BusinessFeaturePresets::full()['online_store']);
+        $this->assertTrue(BusinessFeaturePresets::full()['online_store']);
     }
 
     public function test_business_with_flags_but_without_the_key_falls_back_to_the_plan_default(): void
     {
-        $business = Business::factory()->create([
+        $basic = Business::factory()->create([
+            'subscription_plan' => 'basic',
+            'feature_flags' => ['inventory' => true],
+        ]);
+        $full = Business::factory()->create([
             'subscription_plan' => 'full',
             'feature_flags' => ['inventory' => true],
         ]);
 
-        $this->assertFalse($business->hasFeature('online_store'));
+        $this->assertFalse($basic->hasFeature('online_store'));
+        $this->assertTrue($full->hasFeature('online_store'));
+    }
+
+    /**
+     * Tener el modulo no publica nada: la tienda sigue devolviendo 404 hasta
+     * que el comerciante activa la suya. Es lo que hace que incluir
+     * `online_store` en el plan Full no exponga catalogos por sorpresa.
+     */
+    public function test_full_plan_business_that_never_activated_its_store_is_still_not_public(): void
+    {
+        $business = Business::factory()->create([
+            'subscription_plan' => 'full',
+            'feature_flags' => BusinessFeaturePresets::full(),
+        ]);
+
+        $this->assertTrue($business->hasFeature('online_store'));
+        $this->getJson("/api/test-storefront/{$business->slug}/products")->assertNotFound();
     }
 
     public function test_superadmin_can_turn_the_online_store_on_for_a_business(): void

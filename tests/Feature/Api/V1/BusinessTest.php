@@ -131,7 +131,7 @@ class BusinessTest extends TestCase
         // Basico: encendidas por defecto.
         $this->assertTrue($resolved['inventory']);
         $this->assertTrue($resolved['expenses']);
-        // Apagada en ambos planes: solo la enciende SuperAdmin.
+        // Exclusiva de Full: en Basico no se puede vender por internet.
         $this->assertFalse($resolved['online_store']);
         // Basico: apagadas por defecto (exclusivas de Full).
         $this->assertFalse($resolved['open_tabs']);
