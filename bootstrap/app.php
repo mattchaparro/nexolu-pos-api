@@ -8,6 +8,7 @@ use App\Http\Middleware\EnsureCashShiftOpenForSales;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\EnsureValidIaCoreKey;
 use App\Http\Middleware\EnsureValidLegacyAdminKey;
+use App\Http\Middleware\ResolveStorefrontTenant;
 use App\Http\Middleware\SentryBusinessContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -38,6 +39,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'business-admin' => EnsureBusinessAdmin::class,
             'cash-shift.required-for-sales' => EnsureCashShiftOpenForSales::class,
             'sentry.context' => SentryBusinessContext::class,
+            'storefront.tenant' => ResolveStorefrontTenant::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -36,8 +36,14 @@ class ProductResource extends JsonResource
             'price_varies_at_sale' => $this->price_varies_at_sale,
             'duration_minutes' => $this->duration_minutes,
             'sku' => $this->sku,
+            // URL desnormalizada de la foto principal, mantenida por
+            // ProductImageService::syncPrimaryImage(). Sirve para listados sin
+            // cargar la relacion; la galeria completa va en `images`.
             'image' => $this->image,
+            'images' => ProductImageResource::collection($this->whenLoaded('images')),
             'is_active' => $this->is_active,
+            'is_published' => (bool) $this->is_published,
+            'online_description' => $this->online_description,
             'ingredients' => IngredientResource::collection($this->whenLoaded('ingredients')),
             'has_recipe' => $this->hasRecipe(),
             'variants' => ProductVariantResource::collection($this->whenLoaded('variants')),

@@ -64,6 +64,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Product Images Disk
+    |--------------------------------------------------------------------------
+    |
+    | Disco donde ProductImageService guarda las fotos del catalogo. Arranca
+    | en el disco publico local para no depender de infraestructura externa
+    | mientras se construye el modulo; en produccion apunta a 's3', que ya
+    | soporta `endpoint` y por lo tanto sirve para DigitalOcean Spaces sin
+    | tocar codigo.
+    |
+    | Cambiar esta variable solo afecta a las fotos NUEVAS: cada fila de
+    | product_images recuerda en que disco se guardo (ver ProductImage::url()).
+    |
+    */
+
+    'product_images_disk' => env('PRODUCT_IMAGES_DISK', 'public'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Symbolic Links
     |--------------------------------------------------------------------------
     |

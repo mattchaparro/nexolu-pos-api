@@ -8,9 +8,11 @@
     "require": {
         "php": "^8.3",
         "barryvdh/laravel-dompdf": "^3.1",
+        "intervention/image": "^4.3",
         "laravel/framework": "^13.8",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
+        "league/flysystem-aws-s3-v3": "^3.35",
         "sentry/sentry-laravel": "^4.27",
         "spatie/laravel-permission": "^8.3"
     },

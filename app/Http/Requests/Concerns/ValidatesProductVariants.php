@@ -34,7 +34,11 @@ trait ValidatesProductVariants
                 'integer',
                 BusinessScopedExists::for('product_variants', $businessId),
             ],
-            'variants.*.sku' => ['required_with:variants', 'string', 'max:255'],
+            // Opcional: si no viene, ProductVariant::booted() lo deriva del
+            // producto padre (PROD-039-1, -2, ...), igual que Product ya hacia
+            // con el suyo. Exigirlo obligaba al comerciante a inventar un
+            // codigo por cada combinacion de talla x color antes de guardar.
+            'variants.*.sku' => ['sometimes', 'nullable', 'string', 'max:255'],
             'variants.*.price' => ['required_with:variants', 'numeric', 'min:0'],
             'variants.*.cost_price' => ['sometimes', 'numeric', 'min:0'],
             'variants.*.stock' => ['sometimes', 'integer', 'min:0'],

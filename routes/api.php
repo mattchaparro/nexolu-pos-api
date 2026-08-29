@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\V1\BusinessController;
 use App\Http\Controllers\Api\V1\BusinessOverviewController;
 use App\Http\Controllers\Api\V1\BusinessPaymentSourceController;
 use App\Http\Controllers\Api\V1\BusinessServiceWorkflowController;
+use App\Http\Controllers\Api\V1\BusinessStoreSettingsController;
 use App\Http\Controllers\Api\V1\BusinessTableController;
 use App\Http\Controllers\Api\V1\CashClosingController;
 use App\Http\Controllers\Api\V1\CashShiftController;
@@ -39,12 +40,15 @@ use App\Http\Controllers\Api\V1\InventoryReportController;
 use App\Http\Controllers\Api\V1\KitchenBoardController;
 use App\Http\Controllers\Api\V1\LayawayController;
 use App\Http\Controllers\Api\V1\OpenTabController;
+use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\PaymentMethodsController;
 use App\Http\Controllers\Api\V1\PlanCatalogController;
 use App\Http\Controllers\Api\V1\PosPaymentMethodController;
 use App\Http\Controllers\Api\V1\ProductAttributeController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
+use App\Http\Controllers\Api\V1\ProductImageController;
+use App\Http\Controllers\Api\V1\ProductVariantController;
 use App\Http\Controllers\Api\V1\PurchaseController;
 use App\Http\Controllers\Api\V1\ReceivableController;
 use App\Http\Controllers\Api\V1\ReminderController;
@@ -54,6 +58,8 @@ use App\Http\Controllers\Api\V1\ServiceOrderController;
 use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\StockMovementReasonController;
+use App\Http\Controllers\Api\V1\Storefront\StorefrontCatalogController;
+use App\Http\Controllers\Api\V1\Storefront\StorefrontOrderController;
 use App\Http\Controllers\Api\V1\SubscriptionController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\SupplierReportController;
@@ -117,6 +123,33 @@ Route::get('/public/receipts/{type}/{id}', [PublicReceiptController::class, 'sho
     ->whereNumber('id')
     ->middleware('signed')
     ->name('receipts.public.show');
+
+// Catalogo publico de la tienda online. SIN auth: quien llega es un
+// comprador anonimo. El aislamiento entre negocios lo garantiza
+// ResolveStorefrontTenant + el TenantContext, no cada consulta por separado
+// (ver StorefrontCatalogController). `throttle` porque es superficie abierta
+// a internet: sin el, cualquiera puede barrer el catalogo de todos los
+// negocios a la velocidad que quiera.
+Route::prefix('v1/storefront/{business}')
+    ->name('api.v1.storefront.')
+    ->middleware(['storefront.tenant', 'throttle:120,1'])
+    ->group(function () {
+        Route::get('/', [StorefrontCatalogController::class, 'settings'])->name('settings');
+        Route::get('/categories', [StorefrontCatalogController::class, 'categories'])->name('categories');
+        Route::get('/products', [StorefrontCatalogController::class, 'products'])->name('products.index');
+        // `{productId}` y no `{product}`: con ese nombre Laravel intentaria el
+        // binding implicito del modelo Product, que ignoraria el filtro de
+        // publicacion y devolveria productos que no estan en la tienda.
+        // Checkout y seguimiento. `throttle` mas estricto que el catalogo:
+        // crear pedidos es escritura desde internet abierto.
+        Route::post('/orders', [StorefrontOrderController::class, 'store'])
+            ->middleware('throttle:20,1')
+            ->name('orders.store');
+        Route::get('/orders/{token}', [StorefrontOrderController::class, 'show'])->name('orders.show');
+        Route::get('/products/{productId}', [StorefrontCatalogController::class, 'product'])
+            ->whereNumber('productId')
+            ->name('products.show');
+    });
 
 Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::get('/plans', [PlanCatalogController::class, 'index'])->name('plans.index');
@@ -259,6 +292,53 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::post('/products/{product}/duplicate', [ProductController::class, 'duplicate'])->name('products.duplicate');
             Route::apiResource('products', ProductController::class)->only(['store', 'update', 'destroy']);
         });
+
+        // Configuracion de la tienda online, del lado del comerciante.
+        // business-admin y no un permiso de inventario: abrir o cerrar la
+        // tienda al publico es una decision del dueño, no del cajero.
+        Route::middleware(['feature:online_store', 'business-admin'])->group(function () {
+            Route::get('/store-settings', [BusinessStoreSettingsController::class, 'show'])->name('store-settings.show');
+            Route::put('/store-settings', [BusinessStoreSettingsController::class, 'update'])->name('store-settings.update');
+            // Ranuras fijas (logo, banner, hero, story), no una galeria: cada
+            // imagen tiene su sitio en la tienda y reemplaza a la anterior.
+            Route::post('/store-settings/images/{slot}', [BusinessStoreSettingsController::class, 'uploadImage'])
+                ->whereIn('slot', ['logo', 'banner', 'hero', 'story'])
+                ->name('store-settings.images.store');
+            Route::delete('/store-settings/images/{slot}', [BusinessStoreSettingsController::class, 'deleteImage'])
+                ->whereIn('slot', ['logo', 'banner', 'hero', 'story'])
+                ->name('store-settings.images.destroy');
+        });
+
+        // Bandeja de pedidos online. Bajo el mismo modulo que la tienda: sin
+        // tienda no hay pedidos que atender.
+        Route::middleware('feature:online_store')->group(function () {
+            Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
+            Route::get('/orders/pending-count', [OrderController::class, 'pendingCount'])->name('orders.pending-count');
+            Route::get('/orders/{order}', [OrderController::class, 'show'])->whereNumber('order')->name('orders.show');
+            Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus'])
+                ->whereNumber('order')
+                ->name('orders.status');
+        });
+
+        // Fotos de producto. Atadas a la tienda online a proposito: son el
+        // unico dato del catalogo que existe para publicarse hacia afuera, y
+        // atarlas al modulo evita que un negocio que nunca va a vender por
+        // internet consuma almacenamiento. Un flag apagado esconde el modulo
+        // entero, igual que ingredients o variants.
+        //
+        // Se suben de a una (multipart) mientras se llena el formulario, no
+        // anidadas en el payload del producto.
+        Route::middleware('feature:online_store')->group(function () {
+            Route::middleware('permission:inventory.view')->group(function () {
+                Route::get('/products/{product}/images', [ProductImageController::class, 'index'])->name('products.images.index');
+            });
+            Route::middleware('permission:inventory.add')->group(function () {
+                Route::post('/products/{product}/images', [ProductImageController::class, 'store'])->name('products.images.store');
+                Route::put('/products/{product}/images/order', [ProductImageController::class, 'reorder'])->name('products.images.reorder');
+                Route::patch('/products/{product}/images/{image}', [ProductImageController::class, 'update'])->name('products.images.update');
+                Route::delete('/products/{product}/images/{image}', [ProductImageController::class, 'destroy'])->name('products.images.destroy');
+            });
+        });
         Route::middleware('permission:inventory.adjust')->group(function () {
             Route::post('/products/bulk-update', [BulkStockUpdateController::class, 'store'])->name('products.bulk-update');
         });
@@ -300,6 +380,11 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             });
             Route::middleware('permission:inventory.add')->group(function () {
                 Route::apiResource('product-attributes', ProductAttributeController::class)->only(['store', 'update', 'destroy']);
+                // Pausar/activar una variante suelta desde el listado del
+                // catalogo, sin reenviar el producto entero - ver el docblock
+                // de ProductVariantController.
+                Route::patch('/products/{product}/variants/{variant}/toggle', [ProductVariantController::class, 'toggle'])
+                    ->name('products.variants.toggle');
             });
         });
 

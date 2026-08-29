@@ -23,6 +23,46 @@ class ProductVariant extends Model
 {
     use BelongsToBusiness, HasFactory, SoftDeletes;
 
+    protected static function booted(): void
+    {
+        static::creating(function (ProductVariant $variant) {
+            if (! $variant->sku) {
+                $variant->sku = self::generateSkuForProduct($variant);
+            }
+        });
+    }
+
+    /**
+     * SKU derivado del producto padre: PROD-039-1, PROD-039-2, ...
+     *
+     * Product ya autogeneraba el suyo (ver Product::booted()) pero la
+     * variante no, y encima el sku era obligatorio al crearla: un
+     * comerciante con talla x color tenia que inventarse un codigo por cada
+     * combinacion antes de poder guardar. Se numera en vez de usar los
+     * valores del atributo porque el pivot de attribute_value se sincroniza
+     * DESPUES de crear la fila - aca todavia no se sabe si es la "S" o la
+     * "Roja".
+     */
+    public static function generateSkuForProduct(ProductVariant $variant): string
+    {
+        $base = Product::withoutGlobalScopes()->find($variant->product_id)?->sku
+            ?: 'VAR-'.$variant->product_id;
+
+        $taken = self::withoutGlobalScopes()
+            ->withTrashed()
+            ->where('business_id', $variant->business_id)
+            ->where('sku', 'like', $base.'-%')
+            ->pluck('sku')
+            ->all();
+
+        $next = 1;
+        while (in_array($base.'-'.$next, $taken, true)) {
+            $next++;
+        }
+
+        return $base.'-'.$next;
+    }
+
     protected function casts(): array
     {
         return [

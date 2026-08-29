@@ -137,6 +137,12 @@ class Business extends Model
         return $this->hasOne(BillingProfile::class);
     }
 
+    /** Configuracion de la tienda online. Null si nunca se abrio el modulo. */
+    public function storeSettings(): HasOne
+    {
+        return $this->hasOne(BusinessStoreSettings::class);
+    }
+
     public function products(): HasMany
     {
         return $this->hasMany(Product::class);
@@ -516,9 +522,11 @@ class Business extends Model
     {
         $flags = $this->feature_flags;
 
-        // Negocios muy antiguos sin JSON: todo habilitado (retrocompatibilidad).
+        // Negocios muy antiguos sin JSON: todo habilitado (retrocompatibilidad),
+        // salvo las banderas de opt-in explicito - un modulo que publica datos
+        // hacia afuera no se puede encender solo. Ver BusinessFeaturePresets::OPT_IN_ONLY.
         if ($flags === null || ! is_array($flags) || $flags === []) {
-            return true;
+            return ! in_array($feature, BusinessFeaturePresets::OPT_IN_ONLY, true);
         }
 
         if (array_key_exists($feature, $flags)) {

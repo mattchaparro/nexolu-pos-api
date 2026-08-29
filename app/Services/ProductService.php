@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Business;
 use App\Models\Product;
 use App\Models\ProductAttributeValue;
+use App\Models\User;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -15,6 +16,8 @@ use Illuminate\Validation\ValidationException;
  */
 class ProductService
 {
+    public function __construct(private StockService $stockService) {}
+
     /**
      * @param  array<string, mixed>  $data  ya validado, con category_id resuelto.
      *                                      'ingredients' (opcional) es una lista [{ingredient_id, quantity}, ...]
@@ -95,7 +98,12 @@ class ProductService
     }
 
     /** @param  array<string, mixed>  $data */
-    public function update(Business $business, Product $product, array $data): Product
+    /**
+     * @param  ?User  $actor  quien edita. Necesario para que un cambio de stock
+     *                        de variante quede auditado como StockMovement; sin
+     *                        el, el stock se escribe directo (ver syncVariants).
+     */
+    public function update(Business $business, Product $product, array $data, ?User $actor = null): Product
     {
         $ingredients = $this->extractIngredients($business, $data, $product);
         $variants = $this->extractVariants($business, $data, $ingredients, $product);
@@ -108,7 +116,7 @@ class ProductService
         }
 
         if ($variants !== null) {
-            $this->syncVariants($product, $variants);
+            $this->syncVariants($product, $variants, $actor);
         }
 
         return $product->fresh()->load('category', 'ingredients', 'variants.attributeValues.productAttribute');
@@ -283,14 +291,19 @@ class ProductService
      * Upsert por id (fila con id existente -> update(), sin id -> create());
      * las variantes de $product cuyo id no vino en $variants se borran
      * (soft-delete, ver ProductVariant::SoftDeletes - sale_items/
-     * stock_movements pueden seguir apuntando a una variante borrada). El
-     * stock/precio/costo/sku de cada fila se persiste directo, igual que el
-     * stock inicial de un producto normal - el ajuste auditado por
-     * StockMovement queda para una fase futura.
+     * stock_movements pueden seguir apuntando a una variante borrada).
+     *
+     * El stock de una variante QUE YA EXISTE no se escribe directo: la
+     * diferencia se registra como StockMovement de ajuste, igual que si se
+     * hubiera hecho desde el listado del catalogo. Antes se persistia a pelo
+     * y era el unico stock del sistema que cambiaba sin motivo, sin usuario y
+     * sin rastro en el historial. El stock de una variante NUEVA si va
+     * directo: es su stock inicial, mismo criterio que el de un producto
+     * recien creado.
      *
      * @param  list<array{id?: int, sku: string, price: float, cost_price?: float, stock?: int, low_stock_alert_threshold?: ?int, is_active?: bool, attribute_value_ids: list<int>}>  $variants
      */
-    private function syncVariants(Product $product, array $variants): void
+    private function syncVariants(Product $product, array $variants, ?User $actor = null): void
     {
         $keepIds = [];
 
@@ -305,7 +318,24 @@ class ProductService
 
             $variant = $id ? $product->variants()->find($id) : null;
             if ($variant) {
+                $newStock = $row['stock'] ?? null;
+
+                // Fuera del update(): lo mueve el StockMovement de abajo, y
+                // escribirlo aca ademas lo contaria dos veces.
+                if ($actor && $newStock !== null) {
+                    unset($row['stock']);
+                }
+
                 $variant->update($row);
+
+                if ($actor && $newStock !== null && (int) $newStock !== (int) $variant->stock) {
+                    $this->stockService->variantAdjust(
+                        $actor,
+                        $variant,
+                        (float) $newStock,
+                        'Ajuste desde la edición del producto',
+                    );
+                }
             } else {
                 $variant = $product->variants()->create($row);
             }

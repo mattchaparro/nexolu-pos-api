@@ -255,6 +255,14 @@ class ProductController extends Controller
 
         AuditLogger::log('product.created', ['product_id' => $product->id, 'name' => $product->name, 'price' => $product->price]);
 
+        // Con las variantes cargadas: el formulario las manda anidadas y sin
+        // id (no existen hasta este momento), asi que necesita la respuesta
+        // para saber que id le toco a cada combinacion y poder subirle su
+        // foto a la variante correcta - ver ProductFormView.vue.
+        if ($request->user()?->business?->hasFeature('variants')) {
+            $product->load('variants.attributeValues.productAttribute');
+        }
+
         return new ProductResource($product);
     }
 
@@ -266,6 +274,9 @@ class ProductController extends Controller
 
         return new ProductResource($product->load([
             'category',
+            // La galeria solo en el detalle: los listados se conforman con la
+            // foto principal desnormalizada en products.image.
+            'images',
             ...($ingredientsEnabled ? ['ingredients'] : []),
             ...($variantsEnabled ? ['variants.attributeValues.productAttribute'] : []),
         ]));
@@ -273,7 +284,7 @@ class ProductController extends Controller
 
     public function update(UpdateProductRequest $request, Product $product): ProductResource
     {
-        $product = $this->productService->update($request->user()->business, $product, $request->validated());
+        $product = $this->productService->update($request->user()->business, $product, $request->validated(), $request->user());
 
         AuditLogger::log('product.updated', ['product_id' => $product->id, 'name' => $product->name, 'price' => $product->price]);
 

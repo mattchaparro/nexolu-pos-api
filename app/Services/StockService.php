@@ -103,6 +103,68 @@ class StockService
     }
 
     /**
+     * Entrada/salida/ajuste manual de UNA variante.
+     *
+     * Contraparte de entry()/exit()/adjust() para el caso que
+     * assertStockIsManuallyManageable() ya mandaba aca ("ajusta el stock de
+     * cada variante, no el del producto") pero que no existia: hasta ahora
+     * el stock de una variante solo se podia cambiar reescribiendolo desde
+     * el formulario del producto (ver ProductService::syncVariants), sin
+     * motivo, sin usuario y sin rastro en el historial - era el unico stock
+     * del sistema que se movia sin StockMovement.
+     *
+     * product_id apunta al producto padre y product_variant_id a la
+     * variante, igual que registerVariantSale(): es la variante la que
+     * mueve el stock en StockMovement::booted().
+     */
+    public function variantEntry(User $user, ProductVariant $variant, float $quantity, ?string $notes = null, ?int $reasonId = null, ?float $unitCostCop = null): StockMovement
+    {
+        return StockMovement::create([
+            'product_id' => $variant->product_id,
+            'product_variant_id' => $variant->id,
+            'business_id' => $variant->business_id,
+            'type' => StockMovement::TYPE_ENTRY,
+            'stock_movement_reason_id' => $reasonId ?? StockMovementReason::systemIdForCode(StockMovementReason::CODE_MANUAL_IN),
+            'quantity' => abs($quantity),
+            'unit_cost_cop' => $unitCostCop,
+            'notes' => $notes,
+            'user_id' => $user->id,
+        ]);
+    }
+
+    public function variantExit(User $user, ProductVariant $variant, float $quantity, ?string $notes = null, ?int $reasonId = null, ?float $unitCostCop = null): StockMovement
+    {
+        return StockMovement::create([
+            'product_id' => $variant->product_id,
+            'product_variant_id' => $variant->id,
+            'business_id' => $variant->business_id,
+            'type' => StockMovement::TYPE_EXIT,
+            'stock_movement_reason_id' => $reasonId ?? StockMovementReason::systemIdForCode(StockMovementReason::CODE_MANUAL_OUT),
+            'quantity' => -abs($quantity),
+            'unit_cost_cop' => $unitCostCop,
+            'notes' => $notes,
+            'user_id' => $user->id,
+        ]);
+    }
+
+    /** Ajusta a un valor absoluto, registrando la diferencia. */
+    public function variantAdjust(User $user, ProductVariant $variant, float $newStock, ?string $notes = null, ?int $reasonId = null): StockMovement
+    {
+        $diff = $newStock - (float) $variant->stock;
+
+        return StockMovement::create([
+            'product_id' => $variant->product_id,
+            'product_variant_id' => $variant->id,
+            'business_id' => $variant->business_id,
+            'type' => StockMovement::TYPE_ADJUSTMENT,
+            'stock_movement_reason_id' => $reasonId ?? StockMovementReason::systemIdForCode(StockMovementReason::CODE_ADJUSTMENT),
+            'quantity' => $diff,
+            'notes' => $notes ?? 'Ajuste manual',
+            'user_id' => $user->id,
+        ]);
+    }
+
+    /**
      * Descuenta stock por la venta de un item (venta directa o cuenta
      * abierta - ambas son Sale). No hace nada si el producto no rastrea
      * stock, igual que el legacy. Tampoco mueve products.stock si el

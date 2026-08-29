@@ -52,6 +52,10 @@ class StoreProductRequest extends FormRequest
             ],
             'image' => ['sometimes', 'nullable', 'string', 'max:255'],
             'is_active' => ['sometimes', 'boolean'],
+            // Publicar en la tienda online es una decision explicita:
+            // arranca en false y nunca se enciende sola.
+            'is_published' => ['sometimes', 'boolean'],
+            'online_description' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'category_id' => [
                 'required',
                 BusinessScopedExists::for('product_categories', $businessId),

@@ -30,6 +30,8 @@ use Illuminate\Support\Facades\DB;
     'category_id',
     'image',
     'is_active',
+    'is_published',
+    'online_description',
     'business_id',
 ])]
 class Product extends Model
@@ -48,6 +50,7 @@ class Product extends Model
             'is_single_sale' => 'boolean',
             'is_service' => 'boolean',
             'price_varies_at_sale' => 'boolean',
+            'is_published' => 'boolean',
         ];
     }
 
@@ -154,6 +157,12 @@ class Product extends Model
     public function variants(): HasMany
     {
         return $this->hasMany(ProductVariant::class);
+    }
+
+    /** Fotos del catalogo, ya en el orden que definio el comerciante. */
+    public function images(): HasMany
+    {
+        return $this->hasMany(ProductImage::class)->orderBy('sort_order')->orderBy('id');
     }
 
     /**

@@ -20,6 +20,21 @@ class BusinessFeaturePresets
 
     public const SETUP_PROFESSIONAL = 'professional_services';
 
+    /**
+     * Banderas que NUNCA se encienden solas.
+     *
+     * Business::hasFeature() devuelve `true` para cualquier bandera cuando el
+     * negocio no tiene JSON de flags (retrocompatibilidad con los negocios
+     * mas viejos de la plataforma). Eso es inofensivo para un modulo interno,
+     * pero no para uno que publica datos hacia afuera: un negocio antiguo se
+     * encontraria con su catalogo expuesto en internet sin haberlo pedido.
+     * Las banderas de esta lista se quedan apagadas hasta que alguien las
+     * encienda explicitamente desde SuperAdmin.
+     *
+     * @var list<string>
+     */
+    public const OPT_IN_ONLY = ['online_store'];
+
     /** @return list<string> */
     public static function setupModes(): array
     {
@@ -141,6 +156,7 @@ class BusinessFeaturePresets
             'discounts' => false,
             'charges' => false,
             'reminders' => true,
+            'online_store' => false,
         ];
     }
 
@@ -170,6 +186,9 @@ class BusinessFeaturePresets
             'discounts' => false,
             'charges' => false,
             'reminders' => true,
+            // Apagada incluso en Full: la tienda publica se habilita negocio
+            // por negocio desde SuperAdmin, no viene con el plan (ver OPT_IN_ONLY).
+            'online_store' => false,
         ];
     }
 
@@ -241,6 +260,8 @@ class BusinessFeaturePresets
             ['key' => 'clients', 'label' => 'Directorio de clientes', 'description' => 'Ficha de cada cliente con su historial de compras.', 'group' => 'Clientes y agenda'],
             ['key' => 'scheduling', 'label' => 'Agenda', 'description' => 'Calendario de citas, independiente del catálogo de servicios.', 'group' => 'Clientes y agenda'],
             ['key' => 'reminders', 'label' => 'Planificador de recordatorios', 'description' => 'Recordatorios internos con fecha de vencimiento.', 'group' => 'Clientes y agenda'],
+
+            ['key' => 'online_store', 'label' => 'Tienda online', 'description' => 'Publica un catálogo público en internet con el mismo inventario del POS, para que los clientes compren y paguen en línea. Apagada por defecto en ambos planes: se habilita negocio por negocio.', 'group' => 'Canales de venta'],
         ];
 
         return array_map(fn (array $entry) => [

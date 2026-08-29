@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\ProductAttribute;
 use App\Models\ProductAttributeValue;
 use App\Models\ProductCategory;
+use App\Models\ProductVariant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
@@ -69,6 +70,52 @@ class ProductVariantTest extends TestCase
         $this->assertDatabaseHas('product_variants', ['product_id' => $product->id, 'sku' => 'CAM-S', 'stock' => 10]);
         $this->assertDatabaseHas('product_variants', ['product_id' => $product->id, 'sku' => 'CAM-M', 'stock' => 5]);
         $this->assertSame(0, $product->stock, 'products.stock queda fantasma para un producto con variantes');
+    }
+
+    public function test_variants_without_sku_get_one_derived_from_the_parent_product(): void
+    {
+        // Product ya autogeneraba su sku; la variante no, y ademas lo exigia,
+        // asi que un producto con talla x color obligaba a inventar un codigo
+        // por combinacion antes de poder guardar.
+        [$business, $user, $small, $medium] = $this->businessWithSizeAttribute();
+        $category = ProductCategory::factory()->create(['business_id' => $business->id]);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/products', [
+            'name' => 'Camiseta sin skus',
+            'price' => 50000,
+            'category_id' => $category->id,
+            'variants' => [
+                ['price' => 45000, 'stock' => 10, 'attribute_value_ids' => [$small->id]],
+                ['price' => 47000, 'stock' => 5, 'attribute_value_ids' => [$medium->id]],
+            ],
+        ])->assertCreated();
+
+        $product = Product::where('name', 'Camiseta sin skus')->firstOrFail();
+        $skus = ProductVariant::where('product_id', $product->id)->orderBy('id')->pluck('sku')->all();
+
+        $this->assertSame([$product->sku.'-1', $product->sku.'-2'], $skus);
+        $this->assertCount(2, array_unique($skus));
+        $this->assertCount(2, $response->json('variants'));
+    }
+
+    public function test_an_explicit_sku_still_wins_over_the_generated_one(): void
+    {
+        [$business, $user, $small, $medium] = $this->businessWithSizeAttribute();
+        $category = ProductCategory::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/products', [
+            'name' => 'Camiseta mixta',
+            'price' => 50000,
+            'category_id' => $category->id,
+            'variants' => [
+                ['sku' => 'MIA-S', 'price' => 45000, 'attribute_value_ids' => [$small->id]],
+                ['price' => 47000, 'attribute_value_ids' => [$medium->id]],
+            ],
+        ])->assertCreated();
+
+        $product = Product::where('name', 'Camiseta mixta')->firstOrFail();
+        $this->assertDatabaseHas('product_variants', ['product_id' => $product->id, 'sku' => 'MIA-S']);
+        $this->assertDatabaseHas('product_variants', ['product_id' => $product->id, 'sku' => $product->sku.'-1']);
     }
 
     public function test_rejects_duplicate_attribute_combinations(): void

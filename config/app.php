@@ -54,6 +54,20 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Storefront URL
+    |--------------------------------------------------------------------------
+    |
+    | Base publica de la tienda online (repo nexolu-store-front). Se usa para
+    | componer la direccion que el comerciante ve y comparte:
+    | {storefront_url}/{slug}. Vive aparte de APP_URL porque el storefront es
+    | otro despliegue, en otro dominio.
+    |
+    */
+
+    'storefront_url' => env('STOREFRONT_URL', 'http://localhost:5175'),
+
     // URL de nexolu-pos-front (SPA separada, no Blade/Inertia como el
     // legacy) - usado para armar links que un correo debe abrir en el
     // frontend, no en esta API (hoy solo el de restablecer contraseña, ver

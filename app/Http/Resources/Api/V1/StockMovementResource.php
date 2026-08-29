@@ -15,6 +15,10 @@ class StockMovementResource extends JsonResource
         return [
             'id' => $this->id,
             'product_id' => $this->product_id,
+            // product_id apunta siempre al producto padre, asi que sin esto
+            // el historial de un producto con variantes no deja distinguir
+            // que talla movio cada linea.
+            'product_variant_id' => $this->product_variant_id,
             'ingredient_id' => $this->ingredient_id,
             'type' => $this->type,
             'quantity' => $this->quantity,

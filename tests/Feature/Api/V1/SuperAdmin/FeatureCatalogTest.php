@@ -17,12 +17,18 @@ class FeatureCatalogTest extends TestCase
             ->getJson('/api/v1/superadmin/feature-catalog');
 
         $response->assertOk();
-        $this->assertCount(22, $response->json('features'));
+        $this->assertCount(23, $response->json('features'));
 
         $openTabs = collect($response->json('features'))->firstWhere('key', 'open_tabs');
         $this->assertSame('POS y ventas', $openTabs['group']);
         $this->assertFalse($openTabs['basic']);
         $this->assertTrue($openTabs['full']);
+
+        // La tienda online no viene con ningun plan: se habilita negocio por negocio.
+        $onlineStore = collect($response->json('features'))->firstWhere('key', 'online_store');
+        $this->assertSame('Canales de venta', $onlineStore['group']);
+        $this->assertFalse($onlineStore['basic']);
+        $this->assertFalse($onlineStore['full']);
 
         $this->assertSame(65000, $response->json('plans.basic.price_cop'));
         $this->assertSame(85000, $response->json('plans.full.price_cop'));

@@ -351,10 +351,26 @@ class SaleService
     }
 
     /**
+     * `delivery_fee_override` es para llamadores INTERNOS que ya cobraron el
+     * envio con otra tarifa (hoy: los pedidos de la tienda online, que cotizan
+     * `business_store_settings.shipping_flat_fee`, independiente del domicilio
+     * del mostrador). No sale del request HTTP a proposito -
+     * StoreSaleRequest no lo valida, asi que un cajero no puede fijar el
+     * monto del domicilio a mano; el resto de ventas sigue tomandolo de la
+     * configuracion del negocio como siempre.
+     *
      * @return array{is_non_revenue: bool, is_delivery: bool, delivery_fee: float}
      */
     private function resolveSaleFlags(Business $business, array $data): array
     {
+        if (array_key_exists('delivery_fee_override', $data)) {
+            return [
+                'is_non_revenue' => (bool) ($data['is_non_revenue'] ?? false),
+                'is_delivery' => (bool) ($data['is_delivery'] ?? false),
+                'delivery_fee' => (float) $data['delivery_fee_override'],
+            ];
+        }
+
         $isDelivery = (bool) $business->delivery_enabled && (bool) ($data['is_delivery'] ?? false);
         $deliveryFee = $isDelivery ? (float) $business->delivery_fee : 0.0;
 

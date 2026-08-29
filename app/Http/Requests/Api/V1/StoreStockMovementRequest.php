@@ -28,6 +28,15 @@ class StoreStockMovementRequest extends FormRequest
 
         return [
             'product_id' => ['required', 'integer', BusinessScopedExists::for('products', $businessId)],
+            // Presente = el movimiento es de esa variante y no del producto.
+            // Que pertenezca al product_id lo verifica el controller, que ya
+            // tiene ambos resueltos y escopeados al negocio.
+            'product_variant_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                BusinessScopedExists::for('product_variants', $businessId),
+            ],
             'type' => ['required', Rule::in([
                 StockMovement::TYPE_ENTRY,
                 StockMovement::TYPE_EXIT,

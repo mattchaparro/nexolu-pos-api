@@ -127,10 +127,12 @@ class BusinessTest extends TestCase
         $response = $this->actingAs($owner, 'sanctum')->getJson('/api/v1/business')->assertOk();
 
         $resolved = $response->json('resolved_features');
-        $this->assertCount(22, $resolved);
+        $this->assertCount(23, $resolved);
         // Basico: encendidas por defecto.
         $this->assertTrue($resolved['inventory']);
         $this->assertTrue($resolved['expenses']);
+        // Apagada en ambos planes: solo la enciende SuperAdmin.
+        $this->assertFalse($resolved['online_store']);
         // Basico: apagadas por defecto (exclusivas de Full).
         $this->assertFalse($resolved['open_tabs']);
         $this->assertFalse($resolved['services']);
@@ -171,7 +173,7 @@ class BusinessTest extends TestCase
 
         $this->assertTrue($resolved['open_tabs']);
         $this->assertTrue($resolved['clients']);
-        $this->assertCount(22, $resolved);
+        $this->assertCount(23, $resolved);
     }
 
     public function test_owner_can_update_their_business(): void

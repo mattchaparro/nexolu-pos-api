@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * hijas propias - se valida en Store/UpdateProductCategoryRequest, no aca,
  * para poder dar un mensaje de error especifico por campo.
  */
-#[Fillable(['name', 'description', 'icon', 'parent_id', 'business_id'])]
+#[Fillable(['name', 'description', 'icon', 'parent_id', 'is_published', 'sort_order', 'business_id'])]
 class ProductCategory extends Model
 {
     use BelongsToBusiness, HasFactory;

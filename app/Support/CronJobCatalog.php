@@ -35,6 +35,13 @@ class CronJobCatalog
             'command' => 'trials:notify-expiring',
         ],
         [
+            'key' => 'online_orders_expire',
+            'name' => 'Vencer pedidos online sin confirmar',
+            'description' => 'Libera la reserva de stock de los pedidos de la tienda que nadie confirmo en 24h.',
+            'schedule' => 'Cada 10 minutos',
+            'command' => 'orders:expire-stale',
+        ],
+        [
             'key' => 'audit_prune',
             'name' => 'Limpieza de logs de auditoria',
             'description' => 'Elimina registros de auditoria vencidos segun la retencion configurada.',
