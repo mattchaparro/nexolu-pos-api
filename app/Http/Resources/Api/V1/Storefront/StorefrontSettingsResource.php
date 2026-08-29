@@ -43,6 +43,10 @@ class StorefrontSettingsResource extends JsonResource
             'shipping_flat_fee' => (float) $this->shipping_flat_fee,
             'min_order_amount' => (float) $this->min_order_amount,
             'pickup_enabled' => (bool) $this->pickup_enabled,
+            // Si el comprador va a pagar en la pasarela o a coordinar el
+            // pago con la tienda. Solo el hecho, nunca con que proveedor:
+            // eso es informacion del comercio, no del comprador.
+            'accepts_online_payment' => $this->business?->activePaymentGateway() !== null,
             'terms' => $this->terms,
 
             'hero' => [
