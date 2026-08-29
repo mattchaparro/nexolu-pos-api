@@ -172,50 +172,57 @@ class BusinessStoreSettingsTest extends TestCase
             ->assertJsonValidationErrors('font_preset');
     }
 
+    /**
+     * El home paso de tres ranuras fijas (hero/trust/story, siempre en ese
+     * orden) a una LISTA ordenada de bloques -- ver StoreHomeBlocks. Este
+     * test describia el contrato viejo; el nuevo vive en
+     * StoreHomeBlocksTest, y aca queda el humo de que sigue publicandose.
+     */
     public function test_home_blocks_are_saved_and_published(): void
     {
         [$business, $owner] = $this->ownerWithModule();
 
         $this->actingAs($owner, 'sanctum')->putJson('/api/v1/store-settings', [
             'is_active' => true,
-            'hero_enabled' => true,
-            'hero_title' => 'Café de finca, tostado cerca de ti',
-            'hero_highlight' => 'cerca de ti',
-            'trust_enabled' => true,
-            'trust_items' => [
-                ['icon' => 'truck', 'title' => 'Envío a domicilio', 'text' => 'Entrega en 24-48h.'],
-                ['icon' => 'store', 'title' => 'Recogida en tienda', 'text' => 'Calle 45 #12-30.'],
+            'home_blocks' => [
+                ['id' => 'b1', 'type' => 'hero', 'title' => 'Café de finca, tostado cerca de ti', 'highlight' => 'cerca de ti'],
+                ['id' => 'b2', 'type' => 'trust', 'items' => [
+                    ['icon' => 'truck', 'title' => 'Envío a domicilio', 'text' => 'Entrega en 24-48h.'],
+                    ['icon' => 'store', 'title' => 'Recogida en tienda', 'text' => 'Calle 45 #12-30.'],
+                ]],
+                ['id' => 'b3', 'type' => 'story', 'title' => 'Compramos directo', 'stats' => [['value' => '3', 'label' => 'Fincas aliadas']]],
             ],
-            'story_enabled' => true,
-            'story_title' => 'Compramos directo, sin intermediarios',
-            'story_stats' => [['value' => '3', 'label' => 'Fincas aliadas']],
         ])->assertOk();
 
         $this->getJson("/api/v1/storefront/{$business->slug}")
             ->assertOk()
-            ->assertJsonPath('hero.enabled', true)
-            ->assertJsonPath('hero.highlight', 'cerca de ti')
-            ->assertJsonPath('trust.enabled', true)
-            ->assertJsonCount(2, 'trust.items')
-            ->assertJsonPath('story.stats.0.label', 'Fincas aliadas');
+            ->assertJsonCount(3, 'home_blocks')
+            ->assertJsonPath('home_blocks.0.highlight', 'cerca de ti')
+            ->assertJsonCount(2, 'home_blocks.1.items')
+            ->assertJsonPath('home_blocks.2.stats.0.label', 'Fincas aliadas');
     }
 
-    public function test_a_block_without_content_is_not_published_even_if_enabled(): void
+    /**
+     * Un bloque apagado no llega al comprador. (Antes esto se probaba con
+     * "encendido pero vacio"; con la lista, un bloque sin contenido
+     * directamente no se agrega.)
+     */
+    public function test_a_disabled_block_is_not_published(): void
     {
-        // Encender el hero sin titular dejaria un hueco vacio arriba de la
-        // tienda: el Resource decide que hay algo que dibujar, no el front.
         [$business, $owner] = $this->ownerWithModule();
 
         $this->actingAs($owner, 'sanctum')->putJson('/api/v1/store-settings', [
             'is_active' => true,
-            'hero_enabled' => true,
-            'trust_enabled' => true,
+            'home_blocks' => [
+                ['id' => 'b1', 'type' => 'cta', 'title' => 'Visible'],
+                ['id' => 'b2', 'type' => 'cta', 'title' => 'Apagado', 'enabled' => false],
+            ],
         ])->assertOk();
 
         $this->getJson("/api/v1/storefront/{$business->slug}")
             ->assertOk()
-            ->assertJsonPath('hero.enabled', false)
-            ->assertJsonPath('trust.enabled', false);
+            ->assertJsonCount(1, 'home_blocks')
+            ->assertJsonPath('home_blocks.0.title', 'Visible');
     }
 
     public function test_the_trust_strip_is_capped_at_three_items(): void

@@ -2,9 +2,11 @@
 
 namespace App\Http\Resources\Api\V1\Storefront;
 
+use App\Models\BusinessStoreImage;
 use App\Models\BusinessStoreSettings;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Identidad publica de la tienda: lo que necesita el storefront para pintarse
@@ -49,30 +51,9 @@ class StorefrontSettingsResource extends JsonResource
             'accepts_online_payment' => $this->business?->activePaymentGateway() !== null,
             'terms' => $this->terms,
 
-            'hero' => [
-                // Sin titular no hay hero que dibujar, aunque este encendido.
-                'enabled' => (bool) $this->hero_enabled && filled($this->hero_title),
-                'eyebrow' => $this->hero_eyebrow,
-                'title' => $this->hero_title,
-                'highlight' => $this->hero_highlight,
-                'subtitle' => $this->hero_subtitle,
-                'cta_label' => $this->hero_cta_label,
-                'image_url' => $this->heroImageUrl(),
-            ],
-
-            'trust' => [
-                'enabled' => (bool) $this->trust_enabled && filled($this->trust_items),
-                'items' => array_values($this->trust_items ?? []),
-            ],
-
-            'story' => [
-                'enabled' => (bool) $this->story_enabled && filled($this->story_title),
-                'eyebrow' => $this->story_eyebrow,
-                'title' => $this->story_title,
-                'body' => $this->story_body,
-                'image_url' => $this->storyImageUrl(),
-                'stats' => array_values($this->story_stats ?? []),
-            ],
+            // El home: la lista ordenada de bloques, ya con las imagenes
+            // resueltas a URL. La tienda solo pinta; no busca nada.
+            'home_blocks' => $this->resolvedBlocks(),
 
             'contact' => [
                 'address' => $this->address,
@@ -86,5 +67,92 @@ class StorefrontSettingsResource extends JsonResource
                 'description' => $this->seo_description ?: $this->description,
             ],
         ];
+    }
+
+    /**
+     * Los bloques listos para pintar: sin los apagados, sin los vacios, y
+     * con `image_id` ya convertido a URL.
+     *
+     * Se resuelve aca y no en la tienda porque el storefront no tiene -- ni
+     * debe tener -- forma de consultar la biblioteca de imagenes de un
+     * comercio.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function resolvedBlocks(): array
+    {
+        $blocks = $this->home_blocks ?? [];
+        if ($blocks === []) {
+            return [];
+        }
+
+        $urls = $this->imageUrls($blocks);
+        $resueltos = [];
+
+        foreach ($blocks as $block) {
+            if (($block['enabled'] ?? true) === false) {
+                continue;
+            }
+
+            if (array_key_exists('image_id', $block)) {
+                $block['image_url'] = $urls[$block['image_id']]['url'] ?? null;
+                unset($block['image_id']);
+            }
+
+            if (array_key_exists('image_ids', $block)) {
+                // Una imagen borrada de la biblioteca simplemente desaparece
+                // del bloque, en vez de dejar un hueco roto en la galeria.
+                $block['images'] = array_values(array_filter(array_map(
+                    fn ($id) => $urls[$id] ?? null,
+                    $block['image_ids'] ?? [],
+                )));
+                unset($block['image_ids']);
+            }
+
+            // `image_path` es de los bloques migrados desde las ranuras
+            // viejas (hero/story), que guardaban la ruta directa.
+            if (filled($block['image_path'] ?? null)) {
+                $block['image_url'] = Storage::disk($this->disk ?: 'public')->url($block['image_path']);
+            }
+            unset($block['image_path'], $block['enabled']);
+
+            $resueltos[] = $block;
+        }
+
+        return $resueltos;
+    }
+
+    /**
+     * Todas las imagenes que referencian los bloques, en UNA consulta.
+     *
+     * @param  list<array<string, mixed>>  $blocks
+     * @return array<int, array{url: ?string, thumbnail_url: ?string, alt: ?string}>
+     */
+    private function imageUrls(array $blocks): array
+    {
+        $ids = [];
+        foreach ($blocks as $block) {
+            if (isset($block['image_id'])) {
+                $ids[] = (int) $block['image_id'];
+            }
+            foreach ($block['image_ids'] ?? [] as $id) {
+                $ids[] = (int) $id;
+            }
+        }
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return BusinessStoreImage::withoutGlobalScopes()
+            ->where('business_id', $this->business_id)
+            ->whereIn('id', array_unique($ids))
+            ->get()
+            ->mapWithKeys(fn (BusinessStoreImage $image) => [$image->id => [
+                'url' => $image->url(),
+                'thumbnail_url' => $image->thumbnailUrl(),
+                'alt' => $image->alt,
+            ]])
+            ->all();
     }
 }

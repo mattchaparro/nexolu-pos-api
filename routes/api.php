@@ -323,6 +323,13 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         });
 
         Route::middleware(['feature:online_store', 'business-admin'])->group(function () {
+            // Biblioteca de imagenes del home (las de los bloques). Las
+            // ranuras fijas de logo/banner siguen abajo.
+            Route::get('/store-settings/images', [BusinessStoreSettingsController::class, 'images'])->name('store-settings.images.index');
+            Route::post('/store-settings/images', [BusinessStoreSettingsController::class, 'storeImage'])->name('store-settings.images.upload');
+            Route::delete('/store-settings/images/id/{image}', [BusinessStoreSettingsController::class, 'destroyImage'])
+                ->whereNumber('image')->name('store-settings.images.delete');
+
             Route::get('/store-settings', [BusinessStoreSettingsController::class, 'show'])->name('store-settings.show');
             Route::put('/store-settings', [BusinessStoreSettingsController::class, 'update'])->name('store-settings.update');
             // Ranuras fijas (logo, banner, hero, story), no una galeria: cada

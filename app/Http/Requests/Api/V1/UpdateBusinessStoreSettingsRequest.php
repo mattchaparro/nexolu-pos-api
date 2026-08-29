@@ -3,9 +3,11 @@
 namespace App\Http\Requests\Api\V1;
 
 use App\Models\BusinessStoreSettings;
+use App\Support\StoreHomeBlocks;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdateBusinessStoreSettingsRequest extends FormRequest
 {
@@ -35,6 +37,14 @@ class UpdateBusinessStoreSettingsRequest extends FormRequest
             'shipping_flat_fee' => ['sometimes', 'numeric', 'min:0'],
             'min_order_amount' => ['sometimes', 'numeric', 'min:0'],
             'pickup_enabled' => ['sometimes', 'boolean'],
+            // El home: una lista ordenada de bloques tipados. Cada tipo
+            // trae sus reglas de StoreHomeBlocks para que agregar un bloque
+            // nuevo no obligue a tocar este archivo.
+            'home_blocks' => ['sometimes', 'array', 'max:'.StoreHomeBlocks::MAX_BLOCKS],
+            'home_blocks.*.id' => ['required', 'string', 'max:40'],
+            'home_blocks.*.type' => ['required', Rule::in(StoreHomeBlocks::types())],
+            'home_blocks.*.enabled' => ['sometimes', 'boolean'],
+
             'order_email_enabled' => ['sometimes', 'boolean'],
             // Vacio = al correo del dueño (ver OrderService::notifyMerchant).
             'order_email' => ['sometimes', 'nullable', 'email', 'max:255'],
@@ -84,5 +94,65 @@ class UpdateBusinessStoreSettingsRequest extends FormRequest
             'trust_items.max' => 'La franja admite hasta 3 servicios.',
             'story_stats.max' => 'Puedes destacar hasta 4 cifras.',
         ];
+    }
+
+    /**
+     * Reglas dependientes del TIPO de cada bloque.
+     *
+     * Laravel no sabe validar "segun el valor de otro campo del mismo
+     * elemento del array", asi que las reglas de cada tipo se agregan aca,
+     * ya sabiendo que tipo declaro cada bloque.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $blocks = $this->input('home_blocks');
+        if (! is_array($blocks)) {
+            return;
+        }
+
+        $porTipo = [];
+        $reglas = [];
+
+        foreach ($blocks as $index => $block) {
+            $type = is_array($block) ? ($block['type'] ?? null) : null;
+            if (! is_string($type) || ! isset(StoreHomeBlocks::rules()[$type])) {
+                continue;
+            }
+
+            $porTipo[$type] = ($porTipo[$type] ?? 0) + 1;
+
+            foreach (StoreHomeBlocks::rules()[$type] as $campo => $regla) {
+                $reglas["home_blocks.{$index}.{$campo}"] = $regla;
+            }
+        }
+
+        $validator->addRules($reglas);
+
+        // Dos portadas seguidas no es personalizacion, es una pagina rota.
+        $validator->after(function ($validator) use ($porTipo) {
+            foreach (StoreHomeBlocks::MAX_PER_TYPE as $type => $max) {
+                if (($porTipo[$type] ?? 0) > $max) {
+                    $validator->errors()->add(
+                        'home_blocks',
+                        "Solo puede haber {$max} bloque de tipo '{$type}' en la página."
+                    );
+                }
+            }
+        });
+    }
+
+    /** Descarta campos que el tipo del bloque no declara. */
+    protected function passedValidation(): void
+    {
+        if (! is_array($this->input('home_blocks'))) {
+            return;
+        }
+
+        $this->merge([
+            'home_blocks' => array_values(array_map(
+                fn (array $block) => StoreHomeBlocks::prune($block),
+                $this->input('home_blocks'),
+            )),
+        ]);
     }
 }
