@@ -3,7 +3,6 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Mail\NewOnlineOrderMail;
-use App\Mail\OnlineOrderStatusMail;
 use App\Models\Business;
 use App\Models\BusinessStoreSettings;
 use App\Models\Order;
@@ -19,6 +18,7 @@ use App\Services\OrderService;
 use App\Support\BusinessFeaturePresets;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -428,9 +428,20 @@ class StorefrontOrderTest extends TestCase
     // Avisos al comprador
     // -----------------------------------------------------------------
 
+    /** Los avisos al comprador salen por el Communications Core. */
+    private function fakeComms(): void
+    {
+        config([
+            'services.comms_core.base_url' => 'http://comms.test',
+            'services.comms_core.api_key' => 'comms-key',
+        ]);
+        Http::fake(['http://comms.test/*' => Http::response(['results' => []], 200)]);
+    }
+
     public function test_the_buyer_is_told_the_order_arrived(): void
     {
         Mail::fake();
+        $this->fakeComms();
         $product = $this->publishedProduct(['stock' => 5, 'price' => 10000]);
 
         $this->checkout([
@@ -438,11 +449,50 @@ class StorefrontOrderTest extends TestCase
             'customer_email' => 'ana@compradora.test',
         ])->assertCreated();
 
-        Mail::assertQueued(
-            OnlineOrderStatusMail::class,
-            fn (OnlineOrderStatusMail $mail) => $mail->hasTo('ana@compradora.test')
-                && $mail->templateKey === 'pedido_recibido',
-        );
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/notifications/send')
+            && $request['reference'] === 'pedido_recibido'
+            && $request['to']['email'] === 'ana@compradora.test'
+            && str_contains((string) $request['html'], 'Pedido recibido'));
+    }
+
+    /**
+     * Lo que motivo unificar el envio: si WhatsApp y correo van en dos
+     * llamadas, una puede salir y la otra no, y el comprador recibe la
+     * mitad del aviso.
+     */
+    public function test_whatsapp_and_email_go_in_a_single_transaction(): void
+    {
+        Mail::fake();
+        $this->fakeComms();
+        config(['services.whatsapp.templates.pedido_recibido.name' => 'pedido_recibido_v1']);
+
+        $product = $this->publishedProduct(['stock' => 5, 'price' => 10000]);
+        $this->checkout([
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            'customer_email' => 'ana@compradora.test',
+        ])->assertCreated();
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/notifications/send')
+            && $request['channels'] === ['whatsapp', 'email']
+            && $request['to']['whatsapp'] !== null
+            && $request['to']['email'] === 'ana@compradora.test'
+            && $request['whatsapp_template']['name'] === 'pedido_recibido_v1');
+    }
+
+    /** Sin plantilla aprobada en Meta, el aviso sale solo por correo. */
+    public function test_without_an_approved_template_only_email_goes_out(): void
+    {
+        Mail::fake();
+        $this->fakeComms();
+        $product = $this->publishedProduct(['stock' => 5, 'price' => 10000]);
+
+        $this->checkout([
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            'customer_email' => 'ana@compradora.test',
+        ])->assertCreated();
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/notifications/send')
+            && $request['channels'] === ['email']);
     }
 
     public function test_the_buyer_is_told_when_the_order_is_confirmed(): void
@@ -456,15 +506,14 @@ class StorefrontOrderTest extends TestCase
 
         // Fake despues del checkout: interesa el aviso de la confirmacion.
         Mail::fake();
+        $this->fakeComms();
 
         $this->actingAs($this->owner, 'sanctum')
             ->patchJson("/api/v1/orders/{$order->id}/status", ['status' => Order::STATUS_CONFIRMED])
             ->assertOk();
 
-        Mail::assertQueued(
-            OnlineOrderStatusMail::class,
-            fn (OnlineOrderStatusMail $mail) => $mail->templateKey === 'pedido_confirmado',
-        );
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/notifications/send')
+            && $request['reference'] === 'pedido_confirmado');
     }
 
     /**
@@ -474,11 +523,13 @@ class StorefrontOrderTest extends TestCase
     public function test_an_order_without_an_email_still_works(): void
     {
         Mail::fake();
+        $this->fakeComms();
         $product = $this->publishedProduct(['stock' => 5, 'price' => 10000]);
 
         $this->checkout(['items' => [['product_id' => $product->id, 'quantity' => 1]]])->assertCreated();
 
-        Mail::assertNotQueued(OnlineOrderStatusMail::class);
+        // Sin correo ni plantilla no queda ningun canal: no se llama al Core.
+        Http::assertNothingSent();
     }
 
     /** Estados internos: al comprador no le dicen nada y no se le escribe. */
@@ -496,12 +547,13 @@ class StorefrontOrderTest extends TestCase
             ->assertOk();
 
         Mail::fake();
+        $this->fakeComms();
 
         $this->actingAs($this->owner, 'sanctum')
             ->patchJson("/api/v1/orders/{$order->id}/status", ['status' => Order::STATUS_PREPARING])
             ->assertOk();
 
-        Mail::assertNotQueued(OnlineOrderStatusMail::class);
+        Http::assertNothingSent();
     }
 
     public function test_an_invalid_transition_is_rejected(): void

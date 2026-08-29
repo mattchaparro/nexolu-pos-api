@@ -4,10 +4,8 @@ namespace App\Services;
 
 use App\Mail\OnlineOrderStatusMail;
 use App\Models\Order;
-use App\Services\Messaging\Contracts\MessagingChannel;
 use App\Support\ChannelPhone;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 
 /**
  * Avisos al COMPRADOR sobre su pedido.
@@ -27,7 +25,7 @@ use Illuminate\Support\Facades\Mail;
  */
 class OnlineOrderNotifier
 {
-    public function __construct(private MessagingChannel $whatsapp) {}
+    public function __construct(private CommsNotificationService $comms) {}
 
     public function sendReceived(Order $order): void
     {
@@ -54,11 +52,51 @@ class OnlineOrderNotifier
         };
     }
 
+    /**
+     * Manda WhatsApp y correo en UNA sola transaccion contra el Core.
+     *
+     * Con dos llamadas separadas, si una sale y la otra no, el comprador
+     * recibe la mitad del aviso y el Core las cuenta como envios sueltos
+     * que nadie relaciona.
+     */
     private function notify(Order $order, string $templateKey): void
     {
         try {
-            $this->sendWhatsapp($order, $templateKey);
-            $this->sendEmail($order, $templateKey);
+            $channels = [];
+            $to = [];
+
+            $phone = ChannelPhone::normalize((string) $order->customer_phone);
+            $template = $this->whatsappTemplate($order, $templateKey);
+            if ($phone !== null && $template !== null) {
+                $channels[] = 'whatsapp';
+                $to['whatsapp'] = $phone;
+            }
+
+            $email = filter_var((string) $order->customer_email, FILTER_VALIDATE_EMAIL)
+                ? (string) $order->customer_email
+                : null;
+            if ($email !== null) {
+                $channels[] = 'email';
+                $to['email'] = $email;
+            }
+
+            if ($channels === []) {
+                return;
+            }
+
+            $mail = new OnlineOrderStatusMail($order->loadMissing('items'), $templateKey, $this->storeName($order));
+
+            $this->comms->send(
+                channels: $channels,
+                to: $to,
+                subject: $email !== null ? $mail->envelope()->subject : null,
+                // El HTML lo sigue armando el Mailable: la plantilla vive en
+                // un solo lugar, se mande por donde se mande.
+                html: $email !== null ? $mail->render() : null,
+                whatsappTemplate: $template,
+                businessId: $order->business_id,
+                reference: $templateKey,
+            );
         } catch (\Throwable $e) {
             Log::warning('online_order.buyer_notification_failed', [
                 'order_id' => $order->id,
@@ -68,26 +106,24 @@ class OnlineOrderNotifier
         }
     }
 
-    private function sendWhatsapp(Order $order, string $templateKey): bool
+    /**
+     * La plantilla lista para el Core, o null si no hay ninguna aprobada
+     * todavia -- en ese caso el aviso sale solo por correo.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function whatsappTemplate(Order $order, string $templateKey): ?array
     {
         $template = config("services.whatsapp.templates.{$templateKey}");
         if (! filled($template['name'] ?? null)) {
-            return false;
+            return null;
         }
 
-        $phone = ChannelPhone::normalize((string) $order->customer_phone);
-        if ($phone === null) {
-            return false;
-        }
-
-        return $this->whatsapp->sendTemplate(
-            $phone,
-            $template['name'],
-            $template['lang'] ?? 'es_CO',
-            $this->components($order, $templateKey),
-            $order->business_id,
-            $templateKey,
-        );
+        return [
+            'name' => $template['name'],
+            'language' => $template['lang'] ?? 'es_CO',
+            'components' => $this->components($order, $templateKey),
+        ];
     }
 
     /**
@@ -110,19 +146,6 @@ class OnlineOrderNotifier
         }
 
         return [['type' => 'body', 'parameters' => $parameters]];
-    }
-
-    private function sendEmail(Order $order, string $templateKey): bool
-    {
-        if (! filter_var((string) $order->customer_email, FILTER_VALIDATE_EMAIL)) {
-            return false;
-        }
-
-        Mail::to($order->customer_email)->queue(
-            new OnlineOrderStatusMail($order->loadMissing('items'), $templateKey, $this->storeName($order))
-        );
-
-        return true;
     }
 
     private function storeName(Order $order): string

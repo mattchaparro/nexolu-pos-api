@@ -2,8 +2,7 @@
 
 namespace App\Mail\Transport;
 
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Http;
+use App\Services\CommsNotificationService;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Mailer\SentMessage;
 use Symfony\Component\Mailer\Transport\AbstractTransport;
@@ -38,41 +37,20 @@ class CommsTransport extends AbstractTransport
             return;
         }
 
-        $payload = array_filter([
-            'business_id' => $this->header($email, 'X-Nexolu-Business-Id'),
-            'reference' => $this->header($email, 'X-Nexolu-Email-Type'),
-            'channels' => ['email'],
-            'to' => ['email' => $to],
-            'subject' => $email->getSubject(),
-            'html' => $email->getHtmlBody(),
-            'text' => $email->getTextBody(),
-        ], fn ($value) => $value !== null && $value !== []);
+        $businessId = $this->header($email, 'X-Nexolu-Business-Id');
 
-        try {
-            $response = Http::withToken((string) config('services.comms_core.api_key'))
-                ->timeout(15)
-                ->baseUrl(rtrim((string) config('services.comms_core.base_url'), '/'))
-                ->post('/v1/notifications/send', $payload);
-        } catch (ConnectionException $e) {
-            // No se relanza: un correo que no sale nunca debe tumbar la
-            // operacion que lo disparo (una venta, un alta de empleado). Se
-            // registra y sigue -- mismo criterio que ya usa el canal de
-            // WhatsApp del Core.
-            Log::warning('comms.email: no se pudo contactar al Communications Core', [
-                'reference' => $payload['reference'] ?? null,
-                'message' => $e->getMessage(),
-            ]);
-
-            return;
-        }
-
-        if ($response->failed()) {
-            Log::warning('comms.email: el Communications Core rechazo el envio', [
-                'reference' => $payload['reference'] ?? null,
-                'status' => $response->status(),
-                'body' => $response->json('detail') ?? $response->body(),
-            ]);
-        }
+        // Delega en CommsNotificationService para que la forma del payload
+        // viva en un solo sitio: aca es un canal, en los avisos de pedido
+        // son dos en la misma transaccion.
+        app(CommsNotificationService::class)->send(
+            channels: ['email'],
+            to: ['email' => $to],
+            subject: $email->getSubject(),
+            html: $email->getHtmlBody(),
+            text: $email->getTextBody(),
+            businessId: $businessId !== null ? (int) $businessId : null,
+            reference: $this->header($email, 'X-Nexolu-Email-Type'),
+        );
     }
 
     /**
