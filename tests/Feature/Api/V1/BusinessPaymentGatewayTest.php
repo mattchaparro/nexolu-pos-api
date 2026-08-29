@@ -135,13 +135,40 @@ class BusinessPaymentGatewayTest extends TestCase
         }
     }
 
-    public function test_a_business_without_the_module_cannot_reach_it(): void
+    /**
+     * Lo contrario de lo que asumia la primera version de este test: conectar
+     * una pasarela NO depende del modulo de tienda online. La misma llave de
+     * Bold habilita el cobro con datafono, asi que le sirve a un negocio que
+     * solo vende en mostrador. Atarla a `online_store` dejaba ese caso -- que
+     * es la mayoria -- sin poder configurarla.
+     */
+    public function test_a_business_without_an_online_store_can_still_connect_one(): void
     {
-        $other = Business::factory()->create(['feature_flags' => BusinessFeaturePresets::full()]);
-        $user = User::factory()->create(['business_id' => $other->id, 'is_business_owner' => true]);
+        $this->fakeCoreOk();
+
+        $sinTienda = Business::factory()->create(['feature_flags' => BusinessFeaturePresets::full()]);
+        $this->assertFalse($sinTienda->hasFeature('online_store'));
+
+        $user = User::factory()->create(['business_id' => $sinTienda->id, 'is_business_owner' => true]);
         $user->assignRole('admin');
 
-        $this->actingAs($user, 'sanctum')->getJson('/api/v1/payment-gateways')->assertForbidden();
+        $this->actingAs($user, 'sanctum')->getJson('/api/v1/payment-gateways')->assertOk();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/payment-gateways', [
+                'provider_slug' => 'bold',
+                'credentials' => ['identity_key' => 'ident_abc', 'secret_key' => 'sec_abc'],
+            ])
+            ->assertCreated();
+    }
+
+    /** Conectar una pasarela es del dueño, no del cajero. */
+    public function test_an_employee_cannot_connect_one(): void
+    {
+        $employee = User::factory()->create(['business_id' => $this->business->id, 'is_business_owner' => false]);
+        $employee->assignRole('employee');
+
+        $this->actingAs($employee, 'sanctum')->getJson('/api/v1/payment-gateways')->assertForbidden();
     }
 
     public function test_disconnecting_turns_it_off(): void

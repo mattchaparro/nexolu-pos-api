@@ -13,6 +13,11 @@ use RuntimeException;
 /**
  * La pasarela propia del negocio: conectarla, ver su estado, desconectarla.
  *
+ * NO depende del modulo de tienda online. La misma llave de Bold habilita el
+ * cobro con datafono, asi que conectar una pasarela le sirve a un negocio
+ * que solo vende en mostrador. Por eso vive en Ajustes -> Ventas, junto a
+ * los medios de pago, y no dentro de la tienda.
+ *
  * Nunca devuelve secretos. Las llaves del proveedor se mandan una vez, se
  * guardan cifradas en el Payments Core y desde aca no se pueden volver a
  * leer -- ni siquiera por el dueño. Si las pierde, las saca de nuevo del

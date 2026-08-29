@@ -297,16 +297,23 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // Configuracion de la tienda online, del lado del comerciante.
         // business-admin y no un permiso de inventario: abrir o cerrar la
         // tienda al publico es una decision del dueño, no del cajero.
-        Route::middleware(['feature:online_store', 'business-admin'])->group(function () {
-            // La pasarela propia del negocio (Wompi o Bold). Bajo el mismo
-            // modulo que la tienda, aunque Bold ademas habilite el datafono:
-            // por ahora el unico consumidor es el cobro online.
+        // La pasarela propia del negocio (Wompi o Bold). FUERA del modulo de
+        // tienda online a proposito: la misma llave de Bold habilita el cobro
+        // con datafono, asi que le sirve a un negocio que solo vende en
+        // mostrador y nunca va a abrir una tienda. Atarla a `online_store`
+        // dejaba ese caso sin poder configurarla. Vive junto a los medios de
+        // pago, en Ajustes -> Ventas.
+        //
+        // business-admin igual: conectar una pasarela es del dueño.
+        Route::middleware('business-admin')->group(function () {
             Route::get('/payment-gateways', [BusinessPaymentGatewayController::class, 'index'])->name('payment-gateways.index');
             Route::post('/payment-gateways', [BusinessPaymentGatewayController::class, 'store'])->name('payment-gateways.store');
             Route::delete('/payment-gateways/{provider}', [BusinessPaymentGatewayController::class, 'destroy'])
                 ->whereIn('provider', ['wompi', 'bold'])
                 ->name('payment-gateways.destroy');
+        });
 
+        Route::middleware(['feature:online_store', 'business-admin'])->group(function () {
             Route::get('/store-settings', [BusinessStoreSettingsController::class, 'show'])->name('store-settings.show');
             Route::put('/store-settings', [BusinessStoreSettingsController::class, 'update'])->name('store-settings.update');
             // Ranuras fijas (logo, banner, hero, story), no una galeria: cada
