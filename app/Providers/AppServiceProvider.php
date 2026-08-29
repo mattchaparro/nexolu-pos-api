@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Listeners\LogSentEmail;
+use App\Mail\Transport\CommsTransport;
 use App\Services\Messaging\Contracts\MessagingChannel;
 use App\Services\Messaging\Contracts\MessagingCostReporter;
 use App\Services\WhatsApp\Contracts\ChannelOtpSender;
@@ -17,6 +18,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -61,6 +63,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // El correo tambien sale por el Communications Core, no por SMTP:
+        // un solo servicio con las credenciales y un solo lugar donde ver
+        // que se envio. Va en boot() y no en register(): el MailManager
+        // todavia no existe cuando corre register().
+        //
+        // Se registra siempre; cual se usa lo decide MAIL_MAILER (en local
+        // sigue siendo `log`).
+        Mail::extend('comms', fn (array $config) => new CommsTransport);
+
         // This API returns resources at the response root (no "data" envelope),
         // matching the {token, user} shape already used by the login endpoint.
         JsonResource::withoutWrapping();

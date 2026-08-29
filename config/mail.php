@@ -37,6 +37,13 @@ return [
 
     'mailers' => [
 
+        // Sale por el Nexolu Communications Core, igual que el WhatsApp.
+        // Ver App\Mail\Transport\CommsTransport: es un transporte, asi que
+        // todos los Mailables del repo lo usan sin cambiar nada.
+        'comms' => [
+            'transport' => 'comms',
+        ],
+
         'smtp' => [
             'transport' => 'smtp',
             'scheme' => env('MAIL_SCHEME'),
