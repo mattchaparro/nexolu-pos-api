@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Mail\NewOnlineOrderMail;
+use App\Mail\OnlineOrderStatusMail;
 use App\Models\Business;
 use App\Models\BusinessStoreSettings;
 use App\Models\Order;
@@ -11,6 +12,7 @@ use App\Models\ProductAttribute;
 use App\Models\ProductAttributeValue;
 use App\Models\ProductCategory;
 use App\Models\ProductVariant;
+use App\Models\Sale;
 use App\Models\StockMovement;
 use App\Models\User;
 use App\Services\OrderService;
@@ -370,7 +372,7 @@ class StorefrontOrderTest extends TestCase
             ->patchJson("/api/v1/orders/{$order->id}/status", ['status' => Order::STATUS_CONFIRMED])
             ->assertOk();
 
-        $sale = \App\Models\Sale::withoutGlobalScopes()->findOrFail($order->fresh()->sale_id);
+        $sale = Sale::withoutGlobalScopes()->findOrFail($order->fresh()->sale_id);
         $this->assertEqualsWithDelta(50000, (float) $sale->total, 0.01, 'La venta cobra lo cotizado');
         $this->assertEqualsWithDelta(5000, (float) $sale->delivery_fee, 0.01, 'El envio es el de la tienda');
         $this->assertEqualsWithDelta(0, (float) $sale->service_charge_amount, 0.01, 'La tienda no cotiza propina');
@@ -420,6 +422,86 @@ class StorefrontOrderTest extends TestCase
         $this->checkout(['items' => [['product_id' => $product->id, 'quantity' => 1]]])->assertCreated();
 
         Mail::assertNothingQueued();
+    }
+
+    // -----------------------------------------------------------------
+    // Avisos al comprador
+    // -----------------------------------------------------------------
+
+    public function test_the_buyer_is_told_the_order_arrived(): void
+    {
+        Mail::fake();
+        $product = $this->publishedProduct(['stock' => 5, 'price' => 10000]);
+
+        $this->checkout([
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            'customer_email' => 'ana@compradora.test',
+        ])->assertCreated();
+
+        Mail::assertQueued(
+            OnlineOrderStatusMail::class,
+            fn (OnlineOrderStatusMail $mail) => $mail->hasTo('ana@compradora.test')
+                && $mail->templateKey === 'pedido_recibido',
+        );
+    }
+
+    public function test_the_buyer_is_told_when_the_order_is_confirmed(): void
+    {
+        $product = $this->publishedProduct(['stock' => 5, 'price' => 10000]);
+        $this->checkout([
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            'customer_email' => 'ana@compradora.test',
+        ])->assertCreated();
+        $order = Order::withoutGlobalScopes()->where('business_id', $this->business->id)->firstOrFail();
+
+        // Fake despues del checkout: interesa el aviso de la confirmacion.
+        Mail::fake();
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->patchJson("/api/v1/orders/{$order->id}/status", ['status' => Order::STATUS_CONFIRMED])
+            ->assertOk();
+
+        Mail::assertQueued(
+            OnlineOrderStatusMail::class,
+            fn (OnlineOrderStatusMail $mail) => $mail->templateKey === 'pedido_confirmado',
+        );
+    }
+
+    /**
+     * Comprar como invitado significa que puede haber dejado solo el
+     * telefono. Sin correo no se manda correo, y el pedido sigue igual.
+     */
+    public function test_an_order_without_an_email_still_works(): void
+    {
+        Mail::fake();
+        $product = $this->publishedProduct(['stock' => 5, 'price' => 10000]);
+
+        $this->checkout(['items' => [['product_id' => $product->id, 'quantity' => 1]]])->assertCreated();
+
+        Mail::assertNotQueued(OnlineOrderStatusMail::class);
+    }
+
+    /** Estados internos: al comprador no le dicen nada y no se le escribe. */
+    public function test_the_buyer_is_not_told_about_internal_statuses(): void
+    {
+        $product = $this->publishedProduct(['stock' => 5, 'price' => 10000]);
+        $this->checkout([
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            'customer_email' => 'ana@compradora.test',
+        ])->assertCreated();
+        $order = Order::withoutGlobalScopes()->where('business_id', $this->business->id)->firstOrFail();
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->patchJson("/api/v1/orders/{$order->id}/status", ['status' => Order::STATUS_CONFIRMED])
+            ->assertOk();
+
+        Mail::fake();
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->patchJson("/api/v1/orders/{$order->id}/status", ['status' => Order::STATUS_PREPARING])
+            ->assertOk();
+
+        Mail::assertNotQueued(OnlineOrderStatusMail::class);
     }
 
     public function test_an_invalid_transition_is_rejected(): void

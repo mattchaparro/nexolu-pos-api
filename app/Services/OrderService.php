@@ -307,6 +307,18 @@ class OrderService
     }
 
     /**
+     * Avisa al comprador de un cambio de estado que le importa.
+     *
+     * Se llama DESPUES de que la transicion ya se guardo, y aparte de
+     * `transition()`, para que un fallo de WhatsApp o de correo no deshaga
+     * un cambio de estado que el comerciante ya dio por hecho.
+     */
+    public function notifyBuyer(Order $order, string $status): void
+    {
+        app(OnlineOrderNotifier::class)->sendForStatus($order, $status);
+    }
+
+    /**
      * Crea la venta del pedido confirmado.
      *
      * Va por SaleService y no escribiendo `sales` a mano, para que un pedido

@@ -58,6 +58,8 @@ class OrderController extends Controller
             $data['payment_method'] ?? null,
         );
 
+        $this->orders->notifyBuyer($updated, $data['status']);
+
         AuditLogger::log('online_order.status_changed', [
             'order_id' => $order->id,
             'number' => $order->number,

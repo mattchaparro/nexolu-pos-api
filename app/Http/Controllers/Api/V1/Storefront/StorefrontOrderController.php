@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Storefront\StoreStorefrontOrderRequest;
 use App\Http\Resources\Api\V1\Storefront\StorefrontOrderResource;
 use App\Models\Order;
+use App\Services\OnlineOrderNotifier;
 use App\Services\OrderService;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
@@ -33,6 +34,8 @@ class StorefrontOrderController extends Controller
         // OrderService::attachPaymentLink).
         $order = $this->orders->attachPaymentLink($order);
         $this->orders->notifyMerchant($order);
+        // Y al comprador, que hasta ahora no recibia nada despues de comprar.
+        app(OnlineOrderNotifier::class)->sendReceived($order);
 
         return new StorefrontOrderResource($order);
     }

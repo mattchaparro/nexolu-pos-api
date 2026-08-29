@@ -188,6 +188,7 @@ class PaymentsCoreWebhookController extends Controller
                 $this->onlinePaymentMethodFor($business),
             );
             $order->forceFill(['paid_at' => now()])->save();
+            app(OrderService::class)->notifyBuyer($order->fresh(['items']), Order::STATUS_CONFIRMED);
         } catch (Throwable $e) {
             // Nunca se rechaza un pago ya cobrado: el pedido queda pendiente
             // y el comerciante lo resuelve a mano desde la bandeja.

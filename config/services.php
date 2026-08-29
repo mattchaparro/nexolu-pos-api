@@ -170,6 +170,33 @@ return [
                 'description' => 'Recordatorio 2 horas antes de una cita. Sin crear en Meta todavía.',
                 'triggered_by' => 'appointments:send-two-hour-reminders',
             ],
+
+            // Tienda online. Las tres van al COMPRADOR, a su telefono, no a
+            // un usuario del negocio con canal vinculado. Sin plantilla
+            // aprobada en Meta no se manda nada y no falla: el correo
+            // (OnlineOrderStatusMail) cubre mientras tanto.
+            //
+            // Variables, en orden: {{1}} nombre del comprador,
+            // {{2}} nombre de la tienda, {{3}} numero de pedido,
+            // {{4}} total (solo en pedido_recibido).
+            'pedido_recibido' => [
+                'name' => env('WHATSAPP_TEMPLATE_PEDIDO_RECIBIDO', ''),
+                'lang' => 'es_CO',
+                'description' => 'Al comprador: su pedido llegó a la tienda. Sin crear en Meta todavía.',
+                'triggered_by' => 'OnlineOrderNotifier::sendReceived',
+            ],
+            'pedido_confirmado' => [
+                'name' => env('WHATSAPP_TEMPLATE_PEDIDO_CONFIRMADO', ''),
+                'lang' => 'es_CO',
+                'description' => 'Al comprador: la tienda confirmó su pedido. Sin crear en Meta todavía.',
+                'triggered_by' => 'OnlineOrderNotifier::sendConfirmed',
+            ],
+            'pedido_enviado' => [
+                'name' => env('WHATSAPP_TEMPLATE_PEDIDO_ENVIADO', ''),
+                'lang' => 'es_CO',
+                'description' => 'Al comprador: su pedido va en camino. Sin crear en Meta todavía.',
+                'triggered_by' => 'OnlineOrderNotifier::sendShipped',
+            ],
         ],
 
         // WhatsApp Flows publicados en Meta, para confirmar borradores de
