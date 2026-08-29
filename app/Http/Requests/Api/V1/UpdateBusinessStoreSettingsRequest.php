@@ -35,6 +35,9 @@ class UpdateBusinessStoreSettingsRequest extends FormRequest
             'shipping_flat_fee' => ['sometimes', 'numeric', 'min:0'],
             'min_order_amount' => ['sometimes', 'numeric', 'min:0'],
             'pickup_enabled' => ['sometimes', 'boolean'],
+            'order_email_enabled' => ['sometimes', 'boolean'],
+            // Vacio = al correo del dueño (ver OrderService::notifyMerchant).
+            'order_email' => ['sometimes', 'nullable', 'email', 'max:255'],
             'terms' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'seo_title' => ['sometimes', 'nullable', 'string', 'max:255'],
             'seo_description' => ['sometimes', 'nullable', 'string', 'max:255'],

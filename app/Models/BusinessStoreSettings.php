@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Storage;
     'business_id', 'is_active', 'store_name', 'description', 'disk', 'logo_path', 'banner_path',
     'primary_color', 'surface_color', 'accent_color', 'font_preset',
     'whatsapp_number', 'shipping_flat_fee', 'min_order_amount', 'pickup_enabled',
+    'order_email_enabled', 'order_email',
     'terms', 'seo_title', 'seo_description',
     'hero_enabled', 'hero_eyebrow', 'hero_title', 'hero_highlight', 'hero_subtitle',
     'hero_cta_label', 'hero_image_path',
@@ -54,6 +55,7 @@ class BusinessStoreSettings extends Model
         return [
             'is_active' => 'boolean',
             'pickup_enabled' => 'boolean',
+            'order_email_enabled' => 'boolean',
             'shipping_flat_fee' => 'decimal:2',
             'min_order_amount' => 'decimal:2',
             'hero_enabled' => 'boolean',

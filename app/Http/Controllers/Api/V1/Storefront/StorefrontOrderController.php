@@ -28,6 +28,7 @@ class StorefrontOrderController extends Controller
         abort_unless($business !== null, 404);
 
         $order = $this->orders->createFromStorefront($business, $request->validated());
+        $this->orders->notifyMerchant($order);
 
         return new StorefrontOrderResource($order);
     }

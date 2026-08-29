@@ -67,6 +67,11 @@ use Illuminate\Validation\ValidationException;
 ])]
 class Business extends Model
 {
+    /** Ver clientLimit(). */
+    public const CLIENT_LIMIT_FULL = 2000;
+
+    public const CLIENT_LIMIT_ONLINE_STORE = 20000;
+
     use HasFactory, SoftDeletes;
 
     const TRIAL_DAYS = 14;
@@ -506,6 +511,27 @@ class Business extends Model
                 'payment_method' => 'Metodo de pago no permitido para este negocio.',
             ]);
         }
+    }
+
+    /**
+     * Cuantos clientes puede registrar este negocio.
+     *
+     * El tope existe para que el plan basico no se use como CRM ilimitado,
+     * pero una tienda online lo vuelve absurdo: cada comprador es una ficha
+     * nueva y 50 se llenan en semanas. Con la tienda encendida el tope se
+     * levanta - el comerciante ya esta pagando por vender por internet, y
+     * perder el historial de quien le compro no es una palanca comercial
+     * razonable, es un dato roto.
+     */
+    public function clientLimit(): int
+    {
+        if ($this->hasFeature('online_store')) {
+            return self::CLIENT_LIMIT_ONLINE_STORE;
+        }
+
+        return $this->subscription_plan === 'full'
+            ? self::CLIENT_LIMIT_FULL
+            : Client::LIMIT_PER_BUSINESS;
     }
 
     public function chargesConfig(): array

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Mail\NewOnlineOrderMail;
 use App\Models\Business;
 use App\Models\Client;
 use App\Models\Order;
@@ -12,6 +13,7 @@ use App\Models\Sale;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -244,7 +246,7 @@ class OrderService
         // El tope de clientes por negocio no puede tumbar una venta: si esta
         // lleno, el pedido sigue adelante sin ficha.
         $count = Client::withoutGlobalScopes()->where('business_id', $business->id)->count();
-        if ($count >= Client::LIMIT_PER_BUSINESS) {
+        if ($count >= $business->clientLimit()) {
             return null;
         }
 
@@ -351,6 +353,35 @@ class OrderService
             'apply_service_charge' => false,
             'apply_ipoconsumo' => false,
         ]);
+    }
+
+    /**
+     * Avisa al comerciante que entro un pedido.
+     *
+     * Se llama DESPUES de la transaccion y no dentro: un fallo del correo no
+     * puede tumbar un pedido que el comprador ya dio por hecho. Va a la cola
+     * por lo mismo.
+     */
+    public function notifyMerchant(Order $order): bool
+    {
+        $business = $order->business;
+        $settings = $business?->storeSettings()->withoutGlobalScopes()->first();
+
+        if ($business === null || $settings === null || ! $settings->order_email_enabled) {
+            return false;
+        }
+
+        // Sin correo propio configurado, al del dueño: el que siempre existe.
+        $to = $settings->order_email
+            ?: $business->users()->where('is_business_owner', true)->value('email');
+
+        if (! filter_var((string) $to, FILTER_VALIDATE_EMAIL)) {
+            return false;
+        }
+
+        Mail::to($to)->queue(new NewOnlineOrderMail($business, $order->loadMissing('items')));
+
+        return true;
     }
 
     public function recordStatus(Order $order, ?string $from, string $to, ?int $userId, ?string $note): void

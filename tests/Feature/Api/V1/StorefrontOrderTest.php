@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Mail\NewOnlineOrderMail;
 use App\Models\Business;
 use App\Models\BusinessStoreSettings;
 use App\Models\Order;
@@ -16,6 +17,7 @@ use App\Services\OrderService;
 use App\Support\BusinessFeaturePresets;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -372,6 +374,52 @@ class StorefrontOrderTest extends TestCase
         $this->assertEqualsWithDelta(50000, (float) $sale->total, 0.01, 'La venta cobra lo cotizado');
         $this->assertEqualsWithDelta(5000, (float) $sale->delivery_fee, 0.01, 'El envio es el de la tienda');
         $this->assertEqualsWithDelta(0, (float) $sale->service_charge_amount, 0.01, 'La tienda no cotiza propina');
+    }
+
+    // -----------------------------------------------------------------
+    // Aviso al comerciante
+    // -----------------------------------------------------------------
+
+    public function test_a_new_order_emails_the_owner(): void
+    {
+        Mail::fake();
+        $product = $this->publishedProduct(['stock' => 5, 'price' => 10000]);
+
+        $this->checkout(['items' => [['product_id' => $product->id, 'quantity' => 1]]])->assertCreated();
+
+        Mail::assertQueued(
+            NewOnlineOrderMail::class,
+            fn (NewOnlineOrderMail $mail) => $mail->hasTo($this->owner->email),
+        );
+    }
+
+    public function test_the_store_can_send_the_alert_somewhere_else(): void
+    {
+        Mail::fake();
+        BusinessStoreSettings::withoutGlobalScopes()
+            ->where('business_id', $this->business->id)
+            ->update(['order_email' => 'despachos@tienda.test']);
+
+        $product = $this->publishedProduct(['stock' => 5, 'price' => 10000]);
+        $this->checkout(['items' => [['product_id' => $product->id, 'quantity' => 1]]])->assertCreated();
+
+        Mail::assertQueued(
+            NewOnlineOrderMail::class,
+            fn (NewOnlineOrderMail $mail) => $mail->hasTo('despachos@tienda.test'),
+        );
+    }
+
+    public function test_the_alert_can_be_turned_off(): void
+    {
+        Mail::fake();
+        BusinessStoreSettings::withoutGlobalScopes()
+            ->where('business_id', $this->business->id)
+            ->update(['order_email_enabled' => false]);
+
+        $product = $this->publishedProduct(['stock' => 5, 'price' => 10000]);
+        $this->checkout(['items' => [['product_id' => $product->id, 'quantity' => 1]]])->assertCreated();
+
+        Mail::assertNothingQueued();
     }
 
     public function test_an_invalid_transition_is_rejected(): void

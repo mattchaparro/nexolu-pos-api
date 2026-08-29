@@ -30,6 +30,8 @@ class BusinessStoreSettingsResource extends JsonResource
             'shipping_flat_fee' => (float) $this->shipping_flat_fee,
             'min_order_amount' => (float) $this->min_order_amount,
             'pickup_enabled' => (bool) $this->pickup_enabled,
+            'order_email_enabled' => (bool) $this->order_email_enabled,
+            'order_email' => $this->order_email,
             'terms' => $this->terms,
             'seo_title' => $this->seo_title,
             'seo_description' => $this->seo_description,

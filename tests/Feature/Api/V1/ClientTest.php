@@ -5,6 +5,7 @@ namespace Tests\Feature\Api\V1;
 use App\Models\Business;
 use App\Models\Client;
 use App\Models\User;
+use App\Support\BusinessFeaturePresets;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
@@ -137,6 +138,31 @@ class ClientTest extends TestCase
             ->assertStatus(422);
 
         $this->assertDatabaseMissing('clients', ['name' => 'Cliente Extra']);
+    }
+
+    /**
+     * El tope de 50 fichas se llena en semanas en cuanto un negocio vende
+     * por internet: cada comprador es un cliente nuevo. Quedarse sin poder
+     * registrarlos deja el CRM a medias justo en el canal que mas datos
+     * genera, asi que la tienda encendida levanta el tope.
+     */
+    public function test_a_business_with_an_online_store_is_not_capped_at_the_basic_limit(): void
+    {
+        $business = Business::factory()->create([
+            'subscription_plan' => 'basic',
+            'feature_flags' => [
+                ...BusinessFeaturePresets::basic(),
+                'clients' => true,
+                'online_store' => true,
+            ],
+        ]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        Client::factory()->count(Client::LIMIT_PER_BUSINESS)->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/clients', ['name' => 'Compradora 51'])
+            ->assertCreated();
     }
 
     public function test_user_cannot_view_a_client_from_another_business(): void
