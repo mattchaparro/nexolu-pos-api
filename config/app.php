@@ -64,9 +64,23 @@ return [
     | {storefront_url}/{slug}. Vive aparte de APP_URL porque el storefront es
     | otro despliegue, en otro dominio.
     |
+    | El default es la direccion REAL y no localhost a proposito. Con
+    | localhost por defecto, un ambiente que se olvide de definirla no falla:
+    | rompe en silencio tres cosas distintas, y dos son graves.
+    |
+    |   1. El boton "Abrir tienda" del POS manda al comerciante a localhost.
+    |   2. El `callback_url` del link de pago sale como http://localhost:...
+    |      Bold exige HTTPS y lo rechaza; Wompi acepta y devuelve al
+    |      comprador a localhost DESPUES de cobrarle.
+    |   3. El enlace de seguimiento de los correos al comprador apunta a
+    |      localhost - y es la unica llave que tiene para volver a su pedido.
+    |
+    | Quien desarrolla en local ya define STOREFRONT_URL en su .env (ver
+    | .env.example), asi que el default solo aplica a quien se olvido.
+    |
     */
 
-    'storefront_url' => env('STOREFRONT_URL', 'http://localhost:5175'),
+    'storefront_url' => env('STOREFRONT_URL', 'https://tienda.nexolu.co'),
 
     // URL de nexolu-pos-front (SPA separada, no Blade/Inertia como el
     // legacy) - usado para armar links que un correo debe abrir en el
