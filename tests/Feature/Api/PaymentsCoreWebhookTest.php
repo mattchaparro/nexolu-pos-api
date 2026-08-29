@@ -6,9 +6,14 @@ use App\Mail\SubscriptionPaymentResultMail;
 use App\Mail\SubscriptionPaymentSuperadminNoticeMail;
 use App\Models\AiMessagePackCheckoutOrder;
 use App\Models\Business;
+use App\Models\BusinessPaymentGateway;
+use App\Models\Order;
+use App\Models\Product;
 use App\Models\SaasSubscriptionPayment;
+use App\Models\Sale;
 use App\Models\SubscriptionCheckoutOrder;
 use App\Models\User;
+use App\Support\BusinessFeaturePresets;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Testing\TestResponse;
@@ -34,12 +39,12 @@ class PaymentsCoreWebhookTest extends TestCase
         config(['services.payments_core.webhook_secret' => self::SECRET]);
     }
 
-    private function sign(string $body, string $timestamp): string
+    private function sign(string $body, string $timestamp, ?string $secret = null): string
     {
-        return hash_hmac('sha256', $timestamp.'.'.$body, self::SECRET);
+        return hash_hmac('sha256', $timestamp.'.'.$body, $secret ?? self::SECRET);
     }
 
-    private function postSigned(array $payload): TestResponse
+    private function postSigned(array $payload, ?string $secret = null): TestResponse
     {
         $body = json_encode($payload);
         $timestamp = (string) now()->timestamp;
@@ -52,11 +57,116 @@ class PaymentsCoreWebhookTest extends TestCase
             [],
             [
                 'HTTP_X-Nexolu-Timestamp' => $timestamp,
-                'HTTP_X-Nexolu-Signature' => $this->sign($body, $timestamp),
+                'HTTP_X-Nexolu-Signature' => $this->sign($body, $timestamp, $secret),
                 'CONTENT_TYPE' => 'application/json',
             ],
             $body,
         );
+    }
+
+    // -----------------------------------------------------------------
+    // Pedidos de la tienda online: los firma la pasarela DEL NEGOCIO, no
+    // la integracion de Nexolu.
+    // -----------------------------------------------------------------
+
+    /** @return array{0: Order, 1: string} */
+    private function onlineOrderWithGateway(string $secret = 'secreto-del-negocio'): array
+    {
+        $business = Business::factory()->create([
+            'subscription_plan' => 'full',
+            'feature_flags' => [...BusinessFeaturePresets::full(), 'online_store' => true],
+            'payment_methods' => [['id' => 'cash', 'label' => 'Efectivo'], ['id' => 'card', 'label' => 'Tarjeta']],
+        ]);
+        User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+
+        BusinessPaymentGateway::create([
+            'business_id' => $business->id,
+            'provider_slug' => 'bold',
+            'payments_core_merchant_id' => 'mch_1',
+            'integration_api_key' => 'nxl_key',
+            'webhook_secret' => $secret,
+            'is_active' => true,
+        ]);
+
+        $product = Product::factory()->create([
+            'business_id' => $business->id,
+            'is_published' => true,
+            'is_active' => true,
+            'is_service' => false,
+            'track_stock' => true,
+            'stock' => 5,
+            'price' => 20000,
+        ]);
+
+        $order = Order::create([
+            'business_id' => $business->id,
+            'number' => 1,
+            'status' => Order::STATUS_PENDING,
+            'subtotal' => 20000,
+            'total' => 20000,
+            'customer_name' => 'Ana',
+            'customer_phone' => '3001234567',
+            'is_pickup' => true,
+            'public_token' => 'tok'.uniqid(),
+            'payment_provider' => 'bold',
+            'payment_reference' => 'pay_'.uniqid(),
+        ]);
+        $order->items()->create([
+            'business_id' => $business->id,
+            'product_id' => $product->id,
+            'product_name' => $product->name,
+            'quantity' => 1,
+            'unit_price' => 20000,
+            'subtotal' => 20000,
+        ]);
+
+        return [$order, $secret];
+    }
+
+    public function test_an_approved_online_payment_creates_the_sale(): void
+    {
+        [$order, $secret] = $this->onlineOrderWithGateway();
+
+        $this->postSigned(
+            ['event' => 'payment.approved', 'reference' => $order->payment_reference],
+            $secret,
+        )->assertOk();
+
+        $order->refresh();
+        $this->assertSame(Order::STATUS_CONFIRMED, $order->status);
+        $this->assertNotNull($order->sale_id, 'La venta nace cuando entra la plata');
+        $this->assertNotNull($order->paid_at);
+    }
+
+    /**
+     * Lo que de verdad protege esto: un evento firmado con el secreto de
+     * Nexolu (o de otro negocio) no puede confirmar el pedido de este.
+     */
+    public function test_an_online_payment_signed_with_the_wrong_secret_is_rejected(): void
+    {
+        [$order] = $this->onlineOrderWithGateway();
+
+        $this->postSigned(
+            ['event' => 'payment.approved', 'reference' => $order->payment_reference],
+            self::SECRET,
+        )->assertStatus(401);
+
+        $this->assertSame(Order::STATUS_PENDING, $order->fresh()->status);
+        $this->assertNull($order->fresh()->sale_id);
+    }
+
+    public function test_repeating_the_approved_event_does_not_create_a_second_sale(): void
+    {
+        [$order, $secret] = $this->onlineOrderWithGateway();
+        $payload = ['event' => 'payment.approved', 'reference' => $order->payment_reference];
+
+        $this->postSigned($payload, $secret)->assertOk();
+        $firstSaleId = $order->fresh()->sale_id;
+
+        $this->postSigned($payload, $secret)->assertOk();
+
+        $this->assertSame($firstSaleId, $order->fresh()->sale_id, 'Un reintento del Core no vuelve a facturar');
+        $this->assertSame(1, Sale::withoutGlobalScopes()->where('id', $firstSaleId)->count());
     }
 
     public function test_rejects_a_request_with_an_invalid_signature(): void

@@ -28,6 +28,10 @@ class StorefrontOrderController extends Controller
         abort_unless($business !== null, 404);
 
         $order = $this->orders->createFromStorefront($business, $request->validated());
+        // El link de pago se pide despues de crear el pedido, no antes: si
+        // la pasarela esta caida el pedido igual queda registrado (ver
+        // OrderService::attachPaymentLink).
+        $order = $this->orders->attachPaymentLink($order);
         $this->orders->notifyMerchant($order);
 
         return new StorefrontOrderResource($order);

@@ -6,10 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Mail\SubscriptionPaymentResultMail;
 use App\Mail\SubscriptionPaymentSuperadminNoticeMail;
 use App\Models\AiMessagePackCheckoutOrder;
+use App\Models\Business;
+use App\Models\BusinessPaymentGateway;
+use App\Models\Order;
 use App\Models\SaasSubscriptionPayment;
 use App\Models\SubscriptionCheckoutOrder;
 use App\Models\User;
 use App\Services\AiMessagePackService;
+use App\Services\OrderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -42,18 +46,24 @@ class PaymentsCoreWebhookController extends Controller
 
     public function handle(Request $request): JsonResponse
     {
-        if (! $this->hasValidSignature($request)) {
-            Log::warning('payments_core.webhook: firma invalida', ['ip' => $request->ip()]);
-
-            return response()->json(['error' => 'invalid_signature'], 401);
-        }
-
         $payload = $request->json()->all();
         $reference = (string) ($payload['reference'] ?? '');
         $event = (string) ($payload['event'] ?? '');
 
         if ($reference === '') {
             return response()->json(['error' => 'missing_reference'], 422);
+        }
+
+        // La referencia se lee ANTES de verificar la firma, y esta bien: no
+        // concede nada por si sola, solo dice CON QUE SECRETO hay que
+        // verificar. Desde que cada negocio tiene su propia pasarela ya no
+        // hay un unico secreto: un pedido de la tienda lo firma la
+        // integracion de ESE negocio, no la de Nexolu.
+        $secret = $this->resolveWebhookSecret($reference);
+        if ($secret === null || ! $this->hasValidSignature($request, $secret)) {
+            Log::warning('payments_core.webhook: firma invalida', ['ip' => $request->ip()]);
+
+            return response()->json(['error' => 'invalid_signature'], 401);
         }
 
         match ($event) {
@@ -66,9 +76,32 @@ class PaymentsCoreWebhookController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    private function hasValidSignature(Request $request): bool
+    /**
+     * Con que secreto se firma esta referencia.
+     *
+     * Un pedido de la tienda online lo firma la integracion del NEGOCIO
+     * (cobra el, la plata es suya). Una suscripcion o un pack de IA los
+     * firma la integracion de Nexolu (cobramos nosotros). Usar el secreto
+     * equivocado no es solo un 401: seria aceptar como valido un evento
+     * firmado por otra integracion.
+     */
+    private function resolveWebhookSecret(string $reference): ?string
     {
-        $secret = (string) config('services.payments_core.webhook_secret');
+        $order = Order::withoutGlobalScopes()->where('payment_reference', $reference)->first();
+        if ($order !== null) {
+            $gateway = BusinessPaymentGateway::withoutGlobalScopes()
+                ->where('business_id', $order->business_id)
+                ->where('provider_slug', $order->payment_provider)
+                ->first();
+
+            return $gateway?->webhook_secret;
+        }
+
+        return (string) config('services.payments_core.webhook_secret') ?: null;
+    }
+
+    private function hasValidSignature(Request $request, string $secret): bool
+    {
         $timestamp = (string) $request->header('X-Nexolu-Timestamp');
         $signature = (string) $request->header('X-Nexolu-Signature');
 
@@ -86,6 +119,13 @@ class PaymentsCoreWebhookController extends Controller
      */
     private function approve(string $reference, array $payload): void
     {
+        $onlineOrder = Order::withoutGlobalScopes()->where('payment_reference', $reference)->first();
+        if ($onlineOrder !== null) {
+            $this->approveOnlineOrder($onlineOrder, $payload);
+
+            return;
+        }
+
         if (SubscriptionCheckoutOrder::where('order_key', $reference)->exists()) {
             $this->approveSubscription($reference, $payload);
 
@@ -93,6 +133,83 @@ class PaymentsCoreWebhookController extends Controller
         }
 
         $this->approvePack($reference, $payload);
+    }
+
+    /**
+     * Un pedido de la tienda pagado: aca nace la venta.
+     *
+     * Es la regla del proyecto -- la `Sale` se crea cuando la plata entro,
+     * no cuando el comprador apreto "hacer pedido". Se delega en
+     * `OrderService::transition` para que pase por `SaleService` y
+     * `StockService` exactamente igual que una venta de mostrador, con sus
+     * movimientos de stock auditados.
+     *
+     * Idempotente por el estado: si el Core reintenta, el pedido ya no esta
+     * en `pending` y `canTransitionTo` corta.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function approveOnlineOrder(Order $order, array $payload): void
+    {
+        if ($order->status !== Order::STATUS_PENDING) {
+            return;
+        }
+
+        $business = Business::withoutGlobalScopes()->find($order->business_id);
+        // `sales.user_id` es NOT NULL y en una venta online no hay cajero:
+        // el vendedor es el dueño del negocio.
+        $owner = $business?->users()->where('is_business_owner', true)->first();
+        if ($business === null || $owner === null) {
+            Log::error('online_order.webhook: sin dueño para facturar', ['order_id' => $order->id]);
+
+            return;
+        }
+
+        try {
+            app(OrderService::class)->transition(
+                $owner,
+                $order,
+                Order::STATUS_CONFIRMED,
+                'Pago aprobado por '.($order->payment_provider ?? 'la pasarela'),
+                $this->onlinePaymentMethodFor($business),
+            );
+            $order->forceFill(['paid_at' => now()])->save();
+        } catch (Throwable $e) {
+            // Nunca se rechaza un pago ya cobrado: el pedido queda pendiente
+            // y el comerciante lo resuelve a mano desde la bandeja.
+            Log::error('online_order.webhook: no se pudo facturar', [
+                'order_id' => $order->id,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Con que medio se registra una venta cobrada por la pasarela.
+     *
+     * El catalogo de medios lo define cada negocio, asi que no se puede
+     * fijar uno por codigo (asi se rompio el confirmar manual: 'transfer'
+     * cableado contra un negocio que no lo tenia). Se busca el mas parecido
+     * a "pago electronico" entre los habilitados y, si no hay ninguno, se
+     * cae al primero que no sea fiado -- el proveedor real igual queda
+     * registrado en `orders.payment_provider`.
+     */
+    private function onlinePaymentMethodFor(Business $business): ?string
+    {
+        $allowed = $business->allowedPaymentMethodIds();
+        foreach (['card', 'tarjeta', 'transfer', 'transferencia', 'nequi', 'daviplata'] as $preferred) {
+            if (in_array($preferred, $allowed, true)) {
+                return $preferred;
+            }
+        }
+
+        foreach ($allowed as $method) {
+            if (! $business->isCreditPaymentMethod($method)) {
+                return $method;
+            }
+        }
+
+        return null;
     }
 
     /**

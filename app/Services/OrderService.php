@@ -13,6 +13,7 @@ use App\Models\Sale;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -382,6 +383,69 @@ class OrderService
         Mail::to($to)->queue(new NewOnlineOrderMail($business, $order->loadMissing('items')));
 
         return true;
+    }
+
+    /**
+     * Pide el link de pago de un pedido y lo guarda.
+     *
+     * Se hace DESPUES de crear el pedido y fuera de su transaccion: si la
+     * pasarela esta caida, el pedido igual queda registrado y el
+     * comerciante puede cobrarlo por fuera. Al reves -- perder el pedido
+     * porque la pasarela no respondio -- seria perder la venta entera.
+     *
+     * Devuelve el pedido con `payment_url` si se pudo, sin el si no.
+     */
+    public function attachPaymentLink(Order $order): Order
+    {
+        $business = $order->business;
+        $gateway = $business?->activePaymentGateway();
+        if ($gateway === null) {
+            return $order;
+        }
+
+        try {
+            $link = app(PaymentsCoreService::class)
+                ->usingGateway($gateway)
+                ->createPaymentLink(
+                    amountCop: (int) round((float) $order->total),
+                    description: "Pedido #{$order->number} - ".($business->name ?? 'Tienda'),
+                    customer: [
+                        'email' => (string) ($order->customer_email ?? ''),
+                        'full_name' => (string) $order->customer_name,
+                    ],
+                    redirectUrl: $this->trackingUrl($business, $order),
+                    metadata: ['order_id' => $order->id, 'business_id' => $business->id],
+                    // El link muere cuando muere la reserva de stock: dejarlo
+                    // vivo mas tiempo permitiria pagar algo que ya se libero.
+                    expiresInMinutes: self::RESERVATION_MINUTES,
+                );
+        } catch (\Throwable $e) {
+            // No se propaga: el pedido ya existe y el comprador ya lo dio por
+            // hecho. Queda sin link y el comerciante lo cobra por fuera.
+            Log::warning('online_order.payment_link_failed', [
+                'order_id' => $order->id,
+                'provider' => $gateway->provider_slug,
+                'message' => $e->getMessage(),
+            ]);
+
+            return $order;
+        }
+
+        $order->forceFill([
+            'payment_provider' => $gateway->provider_slug,
+            'payment_reference' => $link['reference'] ?? null,
+            'payment_url' => $link['payment_url'] ?? null,
+        ])->save();
+
+        return $order;
+    }
+
+    /** A donde vuelve el comprador despues de pagar. */
+    private function trackingUrl(Business $business, Order $order): string
+    {
+        $base = rtrim((string) config('app.storefront_url'), '/');
+
+        return "{$base}/{$business->slug}/pedido/{$order->public_token}";
     }
 
     public function recordStatus(Order $order, ?string $from, string $to, ?int $userId, ?string $note): void

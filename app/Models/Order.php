@@ -21,12 +21,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'customer_name', 'customer_phone', 'customer_email',
     'is_pickup', 'shipping_address', 'shipping_city', 'shipping_notes',
     'public_token', 'expires_at', 'confirmed_at', 'sale_id', 'client_id',
+    'payment_provider', 'payment_reference', 'payment_url', 'paid_at',
 ])]
 class Order extends Model
 {
     use BelongsToBusiness, HasFactory;
 
-    /** Recien creado, esperando que el comerciante lo confirme. */
+    /**
+     * Recien creado. Si el negocio no cobra en linea, espera a que el
+     * comerciante lo confirme a mano; si cobra, espera el pago.
+     */
     public const STATUS_PENDING = 'pending';
 
     /** Confirmado: existe la venta y el stock ya salio. */
@@ -72,6 +76,7 @@ class Order extends Model
             'is_pickup' => 'boolean',
             'expires_at' => 'datetime',
             'confirmed_at' => 'datetime',
+            'paid_at' => 'datetime',
         ];
     }
 

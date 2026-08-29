@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\BusinessPaymentGateway;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
@@ -18,6 +19,82 @@ use RuntimeException;
  */
 class PaymentsCoreService
 {
+    /**
+     * Credenciales de la pasarela PROPIA de un negocio, cuando el cobro es
+     * suyo y no de Nexolu.
+     *
+     * Nulo = ruta global: la `PAYMENTS_CORE_API_KEY` del `.env`, que es la
+     * integracion de Nexolu y se usa para cobrar suscripciones y packs de
+     * IA. Ese camino queda intacto -- confundirlos seria cobrarle al
+     * comerciante lo que compro su cliente.
+     */
+    private ?BusinessPaymentGateway $gateway = null;
+
+    /**
+     * Devuelve una COPIA apuntando a la pasarela del negocio. Copia y no
+     * mutacion porque el servicio se resuelve del contenedor y es
+     * compartido: dejarlo apuntando al negocio de la request anterior
+     * mandaria el cobro de un comercio con las credenciales de otro.
+     */
+    public function usingGateway(BusinessPaymentGateway $gateway): self
+    {
+        $clone = clone $this;
+        $clone->gateway = $gateway;
+
+        return $clone;
+    }
+
+    /**
+     * Crea un link de pago hospedado y devuelve a donde mandar al comprador.
+     *
+     * Es el flujo de la tienda online: no hay datos de tarjeta pasando por
+     * el storefront, solo una URL. Bold ademas no soporta otra cosa (no
+     * tokeniza tarjetas).
+     *
+     * Como siempre, esta respuesta NO confirma el pago: el estado final
+     * llega por webhook.
+     *
+     * @param  array{email: string, full_name: string}  $customer
+     * @param  array<string, mixed>  $metadata
+     * @return array<string, mixed>
+     */
+    public function createPaymentLink(
+        int $amountCop,
+        string $description,
+        array $customer,
+        string $redirectUrl,
+        array $metadata = [],
+        ?int $expiresInMinutes = null,
+    ): array {
+        $provider = $this->gateway?->provider_slug;
+        if ($provider === null) {
+            throw new RuntimeException('No hay una pasarela del negocio configurada para cobrar en linea.');
+        }
+
+        try {
+            $response = $this->client()->post('/v1/payments/links', array_filter([
+                'amount_cop' => $amountCop,
+                'currency' => 'COP',
+                'description' => $description,
+                'redirect_url' => $redirectUrl,
+                'customer' => $customer,
+                'metadata' => $metadata,
+                'provider' => $provider,
+                'expires_in_minutes' => $expiresInMinutes,
+            ], fn ($value) => $value !== null));
+        } catch (ConnectionException $e) {
+            throw new RuntimeException('No se pudo contactar a Payments Core.', previous: $e);
+        }
+
+        if ($response->failed()) {
+            throw new RuntimeException(
+                $response->json('detail') ?? $response->json('error') ?? 'El Payments Core no pudo crear el link de pago.'
+            );
+        }
+
+        return $response->json();
+    }
+
     /**
      * El Core es quien genera y devuelve la `reference` (campo `reference`
      * de la respuesta) - este metodo nunca la envia, el Core la rechaza
@@ -177,10 +254,18 @@ class PaymentsCoreService
     private function client(): PendingRequest
     {
         $baseUrl = config('services.payments_core.base_url');
-        $apiKey = config('services.payments_core.api_key');
+        // La llave del negocio gana sobre la global. La URL base es la misma
+        // para los dos: un solo Payments Core, integraciones distintas.
+        $apiKey = $this->gateway?->integration_api_key ?: config('services.payments_core.api_key');
 
-        if (! $baseUrl || ! $apiKey) {
-            throw new RuntimeException('Payments Core no esta configurado (falta PAYMENTS_CORE_BASE_URL o PAYMENTS_CORE_API_KEY).');
+        if (! $baseUrl) {
+            throw new RuntimeException('Payments Core no esta configurado (falta PAYMENTS_CORE_BASE_URL).');
+        }
+
+        if (! $apiKey) {
+            throw new RuntimeException($this->gateway !== null
+                ? 'La pasarela de este negocio no tiene credenciales configuradas.'
+                : 'Payments Core no esta configurado (falta PAYMENTS_CORE_API_KEY).');
         }
 
         return Http::withToken($apiKey)

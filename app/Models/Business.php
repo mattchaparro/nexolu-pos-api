@@ -148,6 +148,26 @@ class Business extends Model
         return $this->hasOne(BusinessStoreSettings::class);
     }
 
+    public function paymentGateways(): HasMany
+    {
+        return $this->hasMany(BusinessPaymentGateway::class);
+    }
+
+    /**
+     * La pasarela con la que este negocio le cobra a sus compradores, si
+     * tiene una lista. Si conecto las dos, gana Bold: la misma llave le
+     * sirve para el datafono, asi que es la que mas probablemente este
+     * puesta a proposito.
+     */
+    public function activePaymentGateway(): ?BusinessPaymentGateway
+    {
+        return $this->paymentGateways()
+            ->where('is_active', true)
+            ->orderByRaw("FIELD(provider_slug, 'bold', 'wompi')")
+            ->get()
+            ->first(fn (BusinessPaymentGateway $gateway) => $gateway->isUsable());
+    }
+
     public function products(): HasMany
     {
         return $this->hasMany(Product::class);

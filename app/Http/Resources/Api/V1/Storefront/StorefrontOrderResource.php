@@ -30,6 +30,9 @@ class StorefrontOrderResource extends JsonResource
             'subtotal' => (float) $this->subtotal,
             'shipping_fee' => (float) $this->shipping_fee,
             'total' => (float) $this->total,
+            // A donde mandar al comprador a pagar, si el negocio cobra en
+            // linea. Nulo = coordina el pago con la tienda por fuera.
+            'payment_url' => $this->payment_url,
             'customer_name' => $this->customer_name,
             'is_pickup' => (bool) $this->is_pickup,
             'shipping_address' => $this->shipping_address,

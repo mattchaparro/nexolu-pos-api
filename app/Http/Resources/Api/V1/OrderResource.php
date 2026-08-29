@@ -32,6 +32,8 @@ class OrderResource extends JsonResource
             'shipping_address' => $this->shipping_address,
             'shipping_city' => $this->shipping_city,
             'shipping_notes' => $this->shipping_notes,
+            'payment_provider' => $this->payment_provider,
+            'paid_at' => $this->paid_at?->toIso8601String(),
             'sale_id' => $this->sale_id,
             'client_id' => $this->client_id,
             'confirmed_at' => $this->confirmed_at?->toIso8601String(),
