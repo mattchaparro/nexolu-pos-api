@@ -43,6 +43,9 @@ $logCronRun('expenses:register-scheduled', 'scheduled_expenses')->dailyAt('00:05
 // Cada 10 min: la reserva de un pedido sin confirmar vence a las 24h, y
 // mantenerla mas tiempo del debido significa no vender algo que si hay.
 $logCronRun('orders:expire-stale', 'online_orders_expire')->everyTenMinutes();
+// Cobros de datafono que nadie resolvio: sin esto quedan "esperando al
+// cliente" para siempre y ensucian la caja del dia siguiente.
+$logCronRun('terminals:expire-stale', 'terminal_charges_expire')->everyTenMinutes();
 // Cada 5 min, mismo motivo que low_stock_alerts arriba: la hora la elige
 // cada negocio (default 20:00, ver NotificationTypes), no todos a la vez.
 $logCronRun('notifications:send-daily-whatsapp-summary', 'daily_whatsapp_summary')->everyFiveMinutes();

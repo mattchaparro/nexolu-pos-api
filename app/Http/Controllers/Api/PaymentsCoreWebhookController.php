@@ -11,9 +11,11 @@ use App\Models\BusinessPaymentGateway;
 use App\Models\Order;
 use App\Models\SaasSubscriptionPayment;
 use App\Models\SubscriptionCheckoutOrder;
+use App\Models\TerminalCharge;
 use App\Models\User;
 use App\Services\AiMessagePackService;
 use App\Services\OrderService;
+use App\Services\TerminalChargeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -87,11 +89,13 @@ class PaymentsCoreWebhookController extends Controller
      */
     private function resolveWebhookSecret(string $reference): ?string
     {
-        $order = Order::withoutGlobalScopes()->where('payment_reference', $reference)->first();
-        if ($order !== null) {
+        $businessId = Order::withoutGlobalScopes()->where('payment_reference', $reference)->value('business_id')
+            ?? TerminalCharge::withoutGlobalScopes()->where('reference', $reference)->value('business_id');
+
+        if ($businessId !== null) {
             $gateway = BusinessPaymentGateway::withoutGlobalScopes()
-                ->where('business_id', $order->business_id)
-                ->where('provider_slug', $order->payment_provider)
+                ->where('business_id', $businessId)
+                ->where('is_active', true)
                 ->first();
 
             return $gateway?->webhook_secret;
@@ -119,6 +123,16 @@ class PaymentsCoreWebhookController extends Controller
      */
     private function approve(string $reference, array $payload): void
     {
+        $terminalCharge = TerminalCharge::withoutGlobalScopes()->where('reference', $reference)->first();
+        if ($terminalCharge !== null) {
+            // Aprobado, pero SIN venta todavia: la crea la caja cuando lo
+            // consume (ver TerminalChargeService::redeem). El cajero puede
+            // seguir agregando items mientras el cliente paga.
+            app(TerminalChargeService::class)->resolve($terminalCharge, TerminalCharge::STATUS_APPROVED);
+
+            return;
+        }
+
         $onlineOrder = Order::withoutGlobalScopes()->where('payment_reference', $reference)->first();
         if ($onlineOrder !== null) {
             $this->approveOnlineOrder($onlineOrder, $payload);
@@ -320,6 +334,17 @@ class PaymentsCoreWebhookController extends Controller
      */
     private function fail(string $reference, array $payload): void
     {
+        $terminalCharge = TerminalCharge::withoutGlobalScopes()->where('reference', $reference)->first();
+        if ($terminalCharge !== null) {
+            app(TerminalChargeService::class)->resolve(
+                $terminalCharge,
+                TerminalCharge::STATUS_DECLINED,
+                'La tarjeta fue rechazada en el datáfono.',
+            );
+
+            return;
+        }
+
         if (SubscriptionCheckoutOrder::where('order_key', $reference)->exists()) {
             $this->failSubscription($reference, $payload);
 

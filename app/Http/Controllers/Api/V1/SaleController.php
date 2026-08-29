@@ -9,11 +9,13 @@ use App\Http\Resources\Api\V1\SaleResource;
 use App\Models\Sale;
 use App\Services\ReceiptPdfService;
 use App\Services\SaleService;
+use App\Services\TerminalChargeService;
 use App\Support\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 
 class SaleController extends Controller
 {
@@ -34,7 +36,23 @@ class SaleController extends Controller
 
     public function store(StoreSaleRequest $request): SaleResource
     {
-        $sale = $this->saleService->createSale($request->user(), $request->validated());
+        $data = $request->validated();
+        $reference = $data['terminal_charge_reference'] ?? null;
+        unset($data['terminal_charge_reference']);
+
+        // Todo junto en una transaccion: si el cobro del datafono no cierra
+        // con el total, la venta se deshace. Al reves -- validar el monto
+        // antes de crear la venta -- obligaria a confiar en un total que
+        // manda el cliente, que es justo lo que no se puede hacer.
+        $sale = DB::transaction(function () use ($request, $data, $reference) {
+            $sale = $this->saleService->createSale($request->user(), $data);
+
+            if ($reference) {
+                app(TerminalChargeService::class)->redeem($reference, $sale);
+            }
+
+            return $sale;
+        });
 
         AuditLogger::log($request->user()->hasRole('admin') ? 'sale.created' : 'sale.created.employee', [
             'sale_id' => $sale->id,

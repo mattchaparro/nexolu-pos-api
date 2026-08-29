@@ -96,6 +96,83 @@ class PaymentsCoreService
     }
 
     /**
+     * Los datafonos que el comercio expuso a la API.
+     *
+     * Una lista vacia casi siempre significa que el comerciante no habilito
+     * "Conexiones API" en su app del proveedor, no que no tenga aparatos.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function listTerminals(): array
+    {
+        $provider = $this->gateway?->provider_slug;
+        if ($provider === null) {
+            throw new RuntimeException('No hay una pasarela del negocio configurada.');
+        }
+
+        try {
+            $response = $this->client()->get('/v1/payments/terminals', ['provider' => $provider]);
+        } catch (ConnectionException $e) {
+            throw new RuntimeException('No se pudo contactar a Payments Core.', previous: $e);
+        }
+
+        if ($response->failed()) {
+            throw new RuntimeException(
+                $response->json('detail') ?? 'El Payments Core no pudo consultar los datafonos.'
+            );
+        }
+
+        return $response->json('terminals') ?? [];
+    }
+
+    /**
+     * Hace aparecer el monto en la pantalla de un datafono.
+     *
+     * NO confirma el pago: el cliente todavia tiene que pasar la tarjeta y
+     * el resultado llega por webhook. Tampoco hay tiempo maximo -- si el
+     * aparato esta bloqueado, el proveedor encola el cobro.
+     *
+     * @param  array<string, mixed>  $metadata
+     * @return array<string, mixed>
+     */
+    public function chargeOnTerminal(
+        int $amountCop,
+        string $description,
+        string $terminalSerial,
+        string $terminalModel,
+        string $sellerEmail,
+        array $metadata = [],
+    ): array {
+        $provider = $this->gateway?->provider_slug;
+        if ($provider === null) {
+            throw new RuntimeException('No hay una pasarela del negocio configurada.');
+        }
+
+        try {
+            $response = $this->client()->post('/v1/payments/terminals/charge', [
+                'amount_cop' => $amountCop,
+                'currency' => 'COP',
+                'description' => $description,
+                'terminal_serial' => $terminalSerial,
+                'terminal_model' => $terminalModel,
+                'seller_email' => $sellerEmail,
+                'metadata' => $metadata,
+                'provider' => $provider,
+            ]);
+        } catch (ConnectionException $e) {
+            throw new RuntimeException('No se pudo contactar a Payments Core.', previous: $e);
+        }
+
+        if ($response->failed()) {
+            throw new RuntimeException(
+                $response->json('detail') ?? 'El datafono no acepto el cobro.'
+            );
+        }
+
+        return $response->json();
+    }
+
+    /**
      * El Core es quien genera y devuelve la `reference` (campo `reference`
      * de la respuesta) - este metodo nunca la envia, el Core la rechaza
      * silenciosamente si se manda (el schema no la acepta). El llamador

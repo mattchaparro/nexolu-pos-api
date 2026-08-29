@@ -34,6 +34,9 @@ class StoreSaleRequest extends FormRequest
         return [
             ...$this->saleItemRules(),
             'payment_method' => ['nullable', 'string', 'max:50', Rule::in($business?->allowedPaymentMethodIds() ?? [])],
+            // Cobro ya aprobado en un datafono. El monto y la validez se
+            // comprueban en el servidor: el cliente solo manda la referencia.
+            'terminal_charge_reference' => ['sometimes', 'nullable', 'string', 'max:80'],
             'payment_splits' => ['sometimes', 'nullable', 'array'],
             'payment_splits.*.method' => ['required_with:payment_splits', 'string', 'max:50'],
             'payment_splits.*.amount' => ['nullable', 'numeric', 'min:0'],

@@ -65,6 +65,7 @@ use App\Http\Controllers\Api\V1\SubscriptionController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\SupplierReportController;
 use App\Http\Controllers\Api\V1\SupportTicketController;
+use App\Http\Controllers\Api\V1\TerminalChargeController;
 use App\Http\Controllers\Api\WhatsappWebhookController;
 use App\Services\ReceiptPdfService;
 use Illuminate\Support\Facades\Route;
@@ -305,7 +306,15 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // pago, en Ajustes -> Ventas.
         //
         // business-admin igual: conectar una pasarela es del dueño.
+        // Cobro con datafono. NO es business-admin: cobrar es del cajero.
+        // Sincronizar la lista si, porque toca la configuracion.
+        Route::get('/terminals', [TerminalChargeController::class, 'terminals'])->name('terminals.index');
+        Route::post('/terminals/charges', [TerminalChargeController::class, 'store'])->name('terminals.charges.store');
+        Route::get('/terminals/charges/{reference}', [TerminalChargeController::class, 'show'])->name('terminals.charges.show');
+        Route::delete('/terminals/charges/{reference}', [TerminalChargeController::class, 'destroy'])->name('terminals.charges.destroy');
+
         Route::middleware('business-admin')->group(function () {
+            Route::post('/terminals/sync', [TerminalChargeController::class, 'sync'])->name('terminals.sync');
             Route::get('/payment-gateways', [BusinessPaymentGatewayController::class, 'index'])->name('payment-gateways.index');
             Route::post('/payment-gateways', [BusinessPaymentGatewayController::class, 'store'])->name('payment-gateways.store');
             Route::delete('/payment-gateways/{provider}', [BusinessPaymentGatewayController::class, 'destroy'])
