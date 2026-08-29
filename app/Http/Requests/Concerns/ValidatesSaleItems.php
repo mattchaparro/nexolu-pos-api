@@ -28,6 +28,11 @@ trait ValidatesSaleItems
                 'required',
                 BusinessScopedExists::for('products', $businessId),
             ],
+            'items.*.product_variant_id' => [
+                'nullable',
+                'integer',
+                BusinessScopedExists::for('product_variants', $businessId),
+            ],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'items.*.unit_price' => ['nullable', 'numeric', 'min:0'],
             'items.*.discount_id' => [
@@ -59,10 +64,12 @@ trait ValidatesSaleItems
         // receta con track_stock=true rechazaba la venta con "stock
         // insuficiente" sin importar cuanto insumo hubiera disponible.
         $ingredientsEnabled = (bool) $this->user()?->business?->hasFeature('ingredients');
+        $variantsEnabled = (bool) $this->user()?->business?->hasFeature('variants');
 
         $products = Product::where('business_id', $this->user()?->business_id)
             ->whereIn('id', collect($items)->pluck('product_id')->filter()->values())
             ->when($ingredientsEnabled, fn ($q) => $q->with('ingredients'))
+            ->when($variantsEnabled, fn ($q) => $q->with('variants'))
             ->get()
             ->keyBy('id');
 
@@ -74,6 +81,23 @@ trait ValidatesSaleItems
                 continue;
             }
 
+            $variantId = $item['product_variant_id'] ?? null;
+            $variant = $variantId ? $product->variants->firstWhere('id', (int) $variantId) : null;
+
+            if ($variantsEnabled && $product->hasVariants()) {
+                if (! $variantId) {
+                    $validator->errors()->add("items.{$i}.product_variant_id", 'Selecciona una variante para «'.$product->name.'».');
+
+                    continue;
+                }
+
+                if (! $variant || ! $variant->is_active) {
+                    $validator->errors()->add("items.{$i}.product_variant_id", 'Variante inválida para «'.$product->name.'».');
+
+                    continue;
+                }
+            }
+
             if ($product->price_varies_at_sale
                 && (! array_key_exists('unit_price', $item) || $item['unit_price'] === '' || $item['unit_price'] === null)) {
                 $validator->errors()->add("items.{$i}.unit_price", 'Indica el precio para «'.$product->name.'».');
@@ -82,8 +106,11 @@ trait ValidatesSaleItems
             }
 
             $quantity = (int) ($item['quantity'] ?? 0);
-            $availableStock = ProductAvailability::effectiveStock($product, $ingredientsEnabled);
-            if ($product->track_stock && $quantity > $availableStock) {
+            $availableStock = $variant
+                ? ProductAvailability::effectiveVariantStock($variant)
+                : ProductAvailability::effectiveStock($product, $ingredientsEnabled, $variantsEnabled);
+
+            if (($variant ? true : $product->track_stock) && $quantity > $availableStock) {
                 $validator->errors()->add(
                     "items.{$i}.quantity",
                     'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $availableStock.').'

@@ -59,6 +59,24 @@ class DailyOverviewInsightTest extends TestCase
         $this->assertNull($data['most_urgent_product']);
     }
 
+    /**
+     * Regresion: lowStockProducts() filtraba por kind === 'product', asi que
+     * un item kind === 'product_variant' (ver LowStockAlertReport) quedaba
+     * excluido en silencio de este resumen diario aunque estuviera bajo su
+     * propio umbral.
+     */
+    public function test_includes_low_stock_variants_among_products_running_out(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['variants' => true]]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'track_stock' => true, 'stock' => 0, 'is_active' => true, 'is_single_sale' => false]);
+        $product->variants()->create(['business_id' => $business->id, 'sku' => 'CAM-S', 'price' => 45000, 'stock' => 1, 'low_stock_alert_threshold' => 5]);
+
+        $data = $this->insight()->gatherData($business->id);
+
+        $this->assertCount(1, $data['products_running_out']);
+        $this->assertStringContainsString($product->name, $data['products_running_out'][0]);
+    }
+
     public function test_rejects_generated_text_that_names_the_wrong_weekday(): void
     {
         $data = ['weekday' => 'lunes'];

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Business;
 use App\Models\Discount;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SalePartialPayment;
@@ -66,7 +67,7 @@ class OpenTabService
             // pierde wasRecentlyCreated, con lo que el controller devolveria
             // 200 en vez de 201 al crear (JsonResource infiere el status del
             // modelo). Mismo cuidado que ya tuvimos en SaleService::createSale.
-            return $sale->load('items.product', 'table');
+            return $sale->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'table');
         });
     }
 
@@ -83,7 +84,7 @@ class OpenTabService
             $sale->increment('total', $addedTotal);
             $sale->update(['kitchen_status' => 'pending', 'kitchen_updated_at' => now()]);
 
-            return $sale->fresh()->load('items.product');
+            return $sale->fresh()->load('items.product', 'items.productVariant.attributeValues.productAttribute');
         });
     }
 
@@ -100,25 +101,34 @@ class OpenTabService
         return DB::transaction(function () use ($user, $sale, $items) {
             $business = $sale->business;
             $ingredientsEnabled = $business->hasFeature('ingredients');
+            $variantsEnabled = $business->hasFeature('variants');
             $sale->loadMissing('items');
 
-            $currentQtyByProduct = $sale->items
-                ->groupBy('product_id')
+            // Clave compuesta product_id:product_variant_id (no solo
+            // product_id) - dos variantes distintas del mismo producto son
+            // lineas independientes, cada una con su propio delta de stock.
+            $lineKey = fn (int $productId, ?int $variantId) => $productId.':'.($variantId ?? 0);
+
+            $currentQtyByLine = $sale->items
+                ->groupBy(fn (SaleItem $item) => $lineKey((int) $item->product_id, $item->product_variant_id))
                 ->map(fn ($group) => (int) $group->sum('quantity'));
 
-            $desiredQtyByProduct = collect($items)
+            $desiredQtyByLine = collect($items)
                 ->filter(fn ($item) => (int) ($item['product_id'] ?? 0) > 0)
-                ->groupBy(fn ($item) => (int) $item['product_id'])
+                ->groupBy(fn ($item) => $lineKey((int) $item['product_id'], ! empty($item['product_variant_id']) ? (int) $item['product_variant_id'] : null))
                 ->map(fn ($group) => (int) $group->sum(fn ($row) => (int) ($row['quantity'] ?? 0)))
                 ->filter(fn ($qty) => $qty > 0);
 
-            if ($desiredQtyByProduct->isEmpty()) {
+            if ($desiredQtyByLine->isEmpty()) {
                 throw ValidationException::withMessages([
                     'items' => 'La cuenta debe tener al menos un producto.',
                 ]);
             }
 
-            $productIds = $currentQtyByProduct->keys()->merge($desiredQtyByProduct->keys())->unique()->values();
+            $lineKeys = $currentQtyByLine->keys()->merge($desiredQtyByLine->keys())->unique()->values();
+            $productIds = $lineKeys->map(fn (string $key) => (int) explode(':', $key)[0])->unique()->values();
+            $variantIds = $lineKeys->map(fn (string $key) => (int) explode(':', $key)[1])->filter()->unique()->values();
+
             $products = Product::where('business_id', $business->id)
                 ->whereIn('id', $productIds)
                 ->when($ingredientsEnabled, fn ($query) => $query->with('ingredients'))
@@ -126,33 +136,52 @@ class OpenTabService
                 ->get()
                 ->keyBy('id');
 
-            foreach ($productIds as $productId) {
+            $variants = $variantsEnabled && $variantIds->isNotEmpty()
+                ? ProductVariant::where('business_id', $business->id)->whereIn('id', $variantIds)->lockForUpdate()->get()->keyBy('id')
+                : collect();
+
+            foreach ($lineKeys as $key) {
+                [$productId, $variantId] = array_map('intval', explode(':', $key));
                 $product = $products->get($productId);
                 if (! $product) {
                     continue;
                 }
 
-                $delta = (int) ($desiredQtyByProduct[$productId] ?? 0) - (int) ($currentQtyByProduct[$productId] ?? 0);
-                if ($delta === 0 || ! $product->track_stock) {
+                $variant = $variantId ? $variants->get($variantId) : null;
+                $delta = (int) ($desiredQtyByLine[$key] ?? 0) - (int) ($currentQtyByLine[$key] ?? 0);
+                $trackStock = $variant ? true : $product->track_stock;
+                if ($delta === 0 || ! $trackStock) {
                     continue;
                 }
 
                 if ($delta > 0) {
-                    $availableStock = ProductAvailability::effectiveStock($product, $ingredientsEnabled);
+                    $availableStock = $variant
+                        ? ProductAvailability::effectiveVariantStock($variant)
+                        : ProductAvailability::effectiveStock($product, $ingredientsEnabled, $variantsEnabled);
                     if ($delta > $availableStock) {
                         throw ValidationException::withMessages([
                             'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $availableStock.').',
                         ]);
                     }
-                    $this->stockService->registerSale($user, $product, $delta, $sale);
-                    $this->stockService->registerIngredientsConsumption($user, $product, $delta, $sale);
+                    if ($variant) {
+                        $this->stockService->registerVariantSale($user, $variant, $delta, $sale);
+                    } else {
+                        $this->stockService->registerSale($user, $product, $delta, $sale);
+                        $this->stockService->registerIngredientsConsumption($user, $product, $delta, $sale);
+                    }
                 } else {
-                    $this->stockService->registerSaleReversal(
-                        $user, $product, abs($delta), $sale, 'Reduccion de cantidad al sincronizar cuenta abierta'
-                    );
-                    $this->stockService->restoreIngredientsConsumption(
-                        $user, $product, abs($delta), $sale, 'Reduccion de cantidad al sincronizar cuenta abierta'
-                    );
+                    if ($variant) {
+                        $this->stockService->registerVariantSaleReversal(
+                            $user, $variant, abs($delta), $sale, 'Reduccion de cantidad al sincronizar cuenta abierta'
+                        );
+                    } else {
+                        $this->stockService->registerSaleReversal(
+                            $user, $product, abs($delta), $sale, 'Reduccion de cantidad al sincronizar cuenta abierta'
+                        );
+                        $this->stockService->restoreIngredientsConsumption(
+                            $user, $product, abs($delta), $sale, 'Reduccion de cantidad al sincronizar cuenta abierta'
+                        );
+                    }
                 }
             }
 
@@ -169,7 +198,10 @@ class OpenTabService
                 }
 
                 $product = $products->get($productId);
-                $unitPrice = SaleLineUnitPrice::resolve($product, $item);
+                $variantId = ! empty($item['product_variant_id']) ? (int) $item['product_variant_id'] : null;
+                $variant = $variantId ? $variants->get($variantId) : null;
+
+                $unitPrice = $variant ? (float) $variant->price : SaleLineUnitPrice::resolve($product, $item);
                 $subtotal = $unitPrice * $quantity;
 
                 [$discountId, $discountAmount] = $discountsEnabled
@@ -179,9 +211,10 @@ class OpenTabService
                 SaleItem::create([
                     'sale_id' => $sale->id,
                     'product_id' => $productId,
+                    'product_variant_id' => $variant?->id,
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
-                    'unit_cost_at_sale' => (float) $product->cost_price,
+                    'unit_cost_at_sale' => (float) ($variant ? $variant->cost_price : $product->cost_price),
                     'subtotal' => $subtotal,
                     'discount_id' => $discountId,
                     'discount_amount' => $discountAmount,
@@ -198,7 +231,7 @@ class OpenTabService
                 'kitchen_updated_at' => now(),
             ]);
 
-            return $sale->fresh()->load('items.product');
+            return $sale->fresh()->load('items.product', 'items.productVariant.attributeValues.productAttribute');
         });
     }
 
@@ -354,7 +387,7 @@ class OpenTabService
             $this->saleService->ensureInvoiceNumber($fresh);
             $this->saleService->syncReceivable($fresh->fresh());
 
-            return $fresh->fresh()->load('items.product', 'paymentSplits');
+            return $fresh->fresh()->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'paymentSplits');
         });
     }
 
@@ -376,10 +409,25 @@ class OpenTabService
             }
 
             $ingredientsEnabled = $sale->business->hasFeature('ingredients');
-            $sale->loadMissing($ingredientsEnabled ? 'items.product.ingredients' : 'items.product');
+            $sale->loadMissing([
+                $ingredientsEnabled ? 'items.product.ingredients' : 'items.product',
+                'items.productVariant',
+            ]);
             foreach ($sale->items as $item) {
+                if ($item->quantity <= 0) {
+                    continue;
+                }
+
+                if ($item->productVariant) {
+                    $this->stockService->registerVariantSaleReversal(
+                        $user, $item->productVariant, (int) $item->quantity, $sale, 'Cancelacion de cuenta abierta'
+                    );
+
+                    continue;
+                }
+
                 $product = $item->product;
-                if ($product && $item->quantity > 0) {
+                if ($product) {
                     $this->stockService->registerSaleReversal(
                         $user, $product, (int) $item->quantity, $sale, 'Cancelacion de cuenta abierta'
                     );

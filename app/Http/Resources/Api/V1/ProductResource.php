@@ -28,7 +28,7 @@ class ProductResource extends JsonResource
             // empleado que vende (ver routes/api.php), pero eso no debe
             // filtrar el margen del negocio a un cajero sin ese permiso.
             'cost_price' => $this->when($request->user()?->hasBusinessPermission('inventory.view') === true, $this->cost_price),
-            'stock' => $this->displayStock(),
+            'stock' => $this->displayStock($request),
             'low_stock_alert_threshold' => $this->low_stock_alert_threshold,
             'track_stock' => $this->track_stock,
             'is_single_sale' => $this->is_single_sale,
@@ -40,13 +40,17 @@ class ProductResource extends JsonResource
             'is_active' => $this->is_active,
             'ingredients' => IngredientResource::collection($this->whenLoaded('ingredients')),
             'has_recipe' => $this->hasRecipe(),
+            'variants' => ProductVariantResource::collection($this->whenLoaded('variants')),
+            'has_variants' => $this->hasVariants(),
             // Puerto de Admin\InventoryController::buildIndexProps() del legacy
-            // (can_manage_stock ahi): un producto de venta unica o con receta
-            // no tiene un numero de stock que un humano pueda escribir a mano -
-            // el de venta unica siempre es 1/0, y el de receta sale de sus
-            // ingredientes (ver displayStock()) - el frontend usa esto para
-            // ocultar Agregar/Retirar/Ajustar en vez de duplicar la regla.
-            'can_manage_stock' => ! $this->is_single_sale && ! $this->hasRecipe(),
+            // (can_manage_stock ahi): un producto de venta unica, con receta,
+            // o con variantes no tiene un numero de stock que un humano pueda
+            // escribir a mano directo sobre el producto - el de venta unica
+            // siempre es 1/0, el de receta sale de sus ingredientes, y el de
+            // variantes se administra por variante (ver displayStock()) - el
+            // frontend usa esto para ocultar Agregar/Retirar/Ajustar en vez
+            // de duplicar la regla.
+            'can_manage_stock' => ! $this->is_single_sale && ! $this->hasRecipe() && ! $this->hasVariants(),
         ];
     }
 
@@ -64,13 +68,15 @@ class ProductResource extends JsonResource
 
     /**
      * products.stock es una columna "fantasma" para un producto con receta
-     * (nunca se decrementa, ver ProductAvailability) - lo que se muestra ahi
-     * es cuantas unidades se pueden preparar ahora mismo con el stock actual
-     * de sus ingredientes, no el valor crudo de la columna.
+     * o con variantes (nunca se decrementa, ver ProductAvailability) - lo
+     * que se muestra ahi es la disponibilidad real (unidades preparables
+     * desde los ingredientes, o suma de stock de variantes activas), no el
+     * valor crudo de la columna.
      */
-    private function displayStock(): int|string
+    private function displayStock(Request $request): int|string
     {
-        $computed = ProductAvailability::effectiveStock($this->resource, $this->hasRecipe());
+        $variantsEnabled = $request->user()?->business?->hasFeature('variants') === true;
+        $computed = ProductAvailability::effectiveStock($this->resource, $this->hasRecipe(), $variantsEnabled);
 
         return is_finite($computed) ? (int) $computed : $this->stock;
     }

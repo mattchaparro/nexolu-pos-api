@@ -82,6 +82,33 @@ class InventoryReportTest extends TestCase
             ]);
     }
 
+    /**
+     * Cubre InventoryReportService::summary() variant-aware (tarea de
+     * Reportes): products.stock/price/cost_price quedan "fantasma" para un
+     * producto con variantes, asi que la valorizacion debe sumar por
+     * separado el stock*precio/costo de las variantes activas del negocio.
+     */
+    public function test_summary_includes_variant_stock_value_when_variants_feature_enabled(): void
+    {
+        $business = Business::factory()->create([
+            'feature_flags' => ['inventory_advanced' => true, 'variants' => true],
+        ]);
+        [$business, $admin] = $this->adminWithInventory($business);
+
+        $product = Product::factory()->create(['business_id' => $business->id, 'track_stock' => true, 'stock' => 0, 'price' => 0, 'cost_price' => 0]);
+        $product->variants()->create(['business_id' => $business->id, 'sku' => 'VAR-1', 'price' => 1000, 'cost_price' => 600, 'stock' => 10]);
+        $product->variants()->create(['business_id' => $business->id, 'sku' => 'VAR-2', 'price' => 1200, 'cost_price' => 700, 'stock' => 5, 'is_active' => false]);
+
+        $response = $this->actingAs($admin, 'sanctum')->getJson('/api/v1/reports/inventory/summary');
+
+        // Solo la variante activa aporta: 10*1000 retail, 10*600 costo. La
+        // inactiva (VAR-2) no debe sumar nada.
+        $response->assertOk()->assertJson([
+            'inventory_retail_cop' => 10000.0,
+            'inventory_cost_products_cop' => 6000.0,
+        ]);
+    }
+
     // ─── movements ────────────────────────────────────────────────────────────
 
     public function test_movements_returns_paginated_movements(): void

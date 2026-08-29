@@ -221,7 +221,7 @@ class DailyOverviewInsight implements AiInsightDefinition, HasSuggestedAction, V
         // StockUrgency), no por cercania al umbral, y cada item ya trae
         // 'coverage_days' calculado.
         $products = LowStockAlertReport::forBusiness($business)['items']
-            ->filter(fn (array $item) => $item['kind'] === 'product')
+            ->filter(fn (array $item) => in_array($item['kind'], ['product', 'product_variant'], true))
             ->values();
 
         $names = $products->take(3)->pluck('name')->filter()->values()->all();

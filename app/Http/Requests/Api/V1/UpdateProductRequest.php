@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Http\Requests\Concerns\ValidatesProductVariants;
 use App\Models\Product;
 use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -11,6 +12,8 @@ use Illuminate\Validation\Validator;
 
 class UpdateProductRequest extends FormRequest
 {
+    use ValidatesProductVariants;
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -61,6 +64,7 @@ class UpdateProductRequest extends FormRequest
                 BusinessScopedExists::for('ingredients', $businessId),
             ],
             'ingredients.*.quantity' => ['required_with:ingredients', 'numeric', 'min:0.001'],
+            ...$this->variantRules(),
         ];
     }
 
@@ -68,6 +72,7 @@ class UpdateProductRequest extends FormRequest
     {
         $validator->after(function (Validator $v) {
             $this->validateIngredientsRules($v);
+            $this->validateVariantsRules($v);
         });
     }
 
@@ -101,6 +106,36 @@ class UpdateProductRequest extends FormRequest
 
         if ($isSingleSale) {
             $v->errors()->add('is_single_sale', 'Quita primero la receta de ingredientes para usar venta única.');
+        }
+    }
+
+    private function validateVariantsRules(Validator $v): void
+    {
+        if (! $this->user()?->business?->hasFeature('variants')) {
+            return;
+        }
+
+        $product = $this->route('product');
+
+        // Mismo criterio "estado efectivo" que validateIngredientsRules():
+        // lo que vino en el payload si se mando, si no lo que el producto ya
+        // tiene guardado - permite quitar variantes y marcar
+        // is_service/is_single_sale en la misma request.
+        $effectiveVariants = $this->has('variants')
+            ? $this->input('variants', [])
+            : ($product instanceof Product ? $product->variants()->get(['product_variants.id'])->all() : []);
+
+        $effectiveIngredients = $this->has('ingredients')
+            ? $this->input('ingredients', [])
+            : ($product instanceof Product ? $product->ingredients()->get(['ingredients.id'])->all() : []);
+
+        $isService = $this->boolean('is_service', $product instanceof Product ? $product->is_service : false);
+        $isSingleSale = $this->boolean('is_single_sale', $product instanceof Product ? $product->is_single_sale : false);
+
+        $this->validateVariantExclusionRules($v, $effectiveVariants, $isService, $isSingleSale, $effectiveIngredients);
+
+        if ($this->has('variants')) {
+            $this->validateVariantPayloadRules($v);
         }
     }
 }

@@ -19,6 +19,7 @@ class PurchaseLine extends Model
     protected $fillable = [
         'purchase_id',
         'product_id',
+        'product_variant_id',
         'ingredient_id',
         'quantity',
         'line_total_cop',
@@ -43,6 +44,11 @@ class PurchaseLine extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function productVariant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class);
     }
 
     public function ingredient(): BelongsTo

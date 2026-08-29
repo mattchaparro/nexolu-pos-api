@@ -59,6 +59,7 @@ class BusinessFeaturePresets
             'inventory_advanced' => false,
             'ingredients' => false,
             'kitchen_board' => false,
+            'variants' => false,
         ]);
     }
 
@@ -70,6 +71,7 @@ class BusinessFeaturePresets
             'inventory_advanced' => false,
             'ingredients' => false,
             'kitchen_board' => false,
+            'variants' => false,
         ]);
     }
 
@@ -121,6 +123,7 @@ class BusinessFeaturePresets
             'inventory' => true,
             'inventory_advanced' => false,
             'ingredients' => false,
+            'variants' => false,
             'expenses' => true,
             'managerial_accounting' => false,
             'cash_closing' => true,
@@ -149,6 +152,7 @@ class BusinessFeaturePresets
             'inventory' => true,
             'inventory_advanced' => true,
             'ingredients' => true,
+            'variants' => true,
             'expenses' => true,
             'managerial_accounting' => true,
             'cash_closing' => true,
@@ -218,6 +222,7 @@ class BusinessFeaturePresets
             ['key' => 'inventory', 'label' => 'Inventario básico', 'description' => 'Lleva el stock de cada producto y lo descuenta automáticamente con cada venta.', 'group' => 'Inventario'],
             ['key' => 'inventory_advanced', 'label' => 'Inventario avanzado (compras/proveedores)', 'description' => 'Habilita compras a proveedores, historial de costos y ajustes manuales de stock.', 'group' => 'Inventario'],
             ['key' => 'ingredients', 'label' => 'Ingredientes y recetas', 'description' => 'Permite definir recetas y descontar ingredientes del inventario al vender un producto preparado.', 'group' => 'Inventario'],
+            ['key' => 'variants', 'label' => 'Variaciones de producto (talla, color, presentación)', 'description' => 'Permite definir atributos combinables (talla, color, presentación) y vender cada combinación con su propio precio y stock.', 'group' => 'Inventario'],
             ['key' => 'low_stock_alert', 'label' => 'Alertas de stock bajo', 'description' => 'Envía avisos por correo o WhatsApp cuando un producto o ingrediente baja del umbral configurado.', 'group' => 'Inventario'],
 
             ['key' => 'expenses', 'label' => 'Gastos', 'description' => 'Registro de gastos del negocio, con tipos de gasto y plantillas recurrentes.', 'group' => 'Finanzas'],

@@ -95,15 +95,40 @@ class Product extends Model
      * muestra si el negocio no tiene la feature "ingredients": con receta
      * activa, el valor de venta de un producto ya no depende de su propio
      * stock, ver isStockManagedByIngredientsRecipe()).
+     *
+     * products.stock/price son columnas "fantasma" para un producto con
+     * variantes (nunca se decrementan, ver ProductAvailability), asi que
+     * $variantsEnabled=true los EXCLUYE del lado de productos y agrega por
+     * separado Σ(stock × precio) de las variantes activas del negocio.
+     *
+     * Excluirlos no es cosmetico: un producto que ya existia con stock y al
+     * que despues se le agregan variantes conserva su products.stock
+     * anterior (syncVariants() no lo pisa), asi que sin el
+     * whereDoesntHave() ese stock viejo se sumaba ademas del de las
+     * variantes - inflando el valor de inventario justo en el caso de
+     * "activar variantes sobre un catalogo que ya venia funcionando".
      */
-    public static function sumInventoryRetailValueCop(): float
+    public static function sumInventoryRetailValueCop(bool $variantsEnabled = false): float
     {
-        return (float) static::query()
+        $productsValue = (float) static::query()
             ->where('is_service', false)
             ->where('track_stock', true)
+            ->when($variantsEnabled, fn ($query) => $query->whereDoesntHave('variants'))
             ->toBase()
             ->selectRaw('COALESCE(SUM(stock * price), 0) as inventory_value')
             ->value('inventory_value');
+
+        if (! $variantsEnabled) {
+            return $productsValue;
+        }
+
+        $variantsValue = (float) ProductVariant::query()
+            ->where('is_active', true)
+            ->toBase()
+            ->selectRaw('COALESCE(SUM(stock * price), 0) as inventory_value')
+            ->value('inventory_value');
+
+        return $productsValue + $variantsValue;
     }
 
     public function category(): BelongsTo
@@ -124,6 +149,20 @@ class Product extends Model
     public function ingredients(): BelongsToMany
     {
         return $this->belongsToMany(Ingredient::class)->withPivot('quantity')->withTimestamps();
+    }
+
+    public function variants(): HasMany
+    {
+        return $this->hasMany(ProductVariant::class);
+    }
+
+    /**
+     * Mismo idioma que isStockManagedByIngredientsRecipe(): usa la relacion
+     * si ya esta cargada (evita N+1 en listados), si no hace un exists().
+     */
+    public function hasVariants(): bool
+    {
+        return $this->relationLoaded('variants') ? $this->variants->isNotEmpty() : $this->variants()->exists();
     }
 
     /**

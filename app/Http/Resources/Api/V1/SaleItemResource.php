@@ -17,6 +17,7 @@ class SaleItemResource extends JsonResource
         return [
             'id' => $this->id,
             'product' => new ProductResource($this->whenLoaded('product')),
+            'product_variant' => new ProductVariantResource($this->whenLoaded('productVariant')),
             'quantity' => $this->quantity,
             'unit_price' => $this->unit_price,
             'subtotal' => $this->subtotal,

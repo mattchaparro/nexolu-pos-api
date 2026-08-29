@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'sale_id',
     'product_id',
+    'product_variant_id',
     'quantity',
     'unit_price',
     'unit_cost_at_sale',
@@ -42,6 +43,11 @@ class SaleItem extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function productVariant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class);
     }
 
     public function discount(): BelongsTo

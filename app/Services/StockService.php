@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Ingredient;
 use App\Models\Layaway;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\PurchaseLine;
 use App\Models\Sale;
 use App\Models\StockMovement;
@@ -38,6 +39,12 @@ class StockService
         if ($product->isStockManagedByIngredientsRecipe()) {
             throw ValidationException::withMessages([
                 'product' => 'El stock de este producto se calcula desde sus ingredientes y no se puede editar directamente.',
+            ]);
+        }
+
+        if ($product->hasVariants()) {
+            throw ValidationException::withMessages([
+                'product' => 'Este producto tiene variantes: ajusta el stock de cada variante, no el del producto.',
             ]);
         }
     }
@@ -122,6 +129,47 @@ class StockService
     }
 
     /**
+     * Contraparte de registerSale() para una variante concreta: siempre
+     * trackea stock (no hay toggle track_stock por variante) y nunca pasa
+     * por receta (variantes e ingredientes son mutuamente excluyentes, ver
+     * ProductService::extractVariants()). product_id queda apuntando al
+     * producto padre (para reportes/legacy, ver la migracion que agrega
+     * esta columna) y product_variant_id a la variante real, que es la que
+     * mueve StockMovement::booted().
+     */
+    public function registerVariantSale(User $user, ProductVariant $variant, int $quantity, Sale $sale): StockMovement
+    {
+        return StockMovement::create([
+            'product_id' => $variant->product_id,
+            'product_variant_id' => $variant->id,
+            'business_id' => $variant->business_id,
+            'type' => StockMovement::TYPE_SALE,
+            'stock_movement_reason_id' => StockMovementReason::systemIdForCode(StockMovementReason::CODE_SALE),
+            'quantity' => -abs($quantity),
+            'reference' => "Venta #{$sale->id}",
+            'user_id' => $user->id,
+        ]);
+    }
+
+    /**
+     * Contraparte de registerSaleReversal() para una variante concreta.
+     */
+    public function registerVariantSaleReversal(User $user, ProductVariant $variant, int $quantity, Sale $sale, ?string $notes = null): StockMovement
+    {
+        return StockMovement::create([
+            'product_id' => $variant->product_id,
+            'product_variant_id' => $variant->id,
+            'business_id' => $variant->business_id,
+            'type' => StockMovement::TYPE_ENTRY,
+            'stock_movement_reason_id' => StockMovementReason::systemIdForCode(StockMovementReason::CODE_SALE_REVERSAL),
+            'quantity' => abs($quantity),
+            'reference' => "Ajuste venta #{$sale->id}",
+            'notes' => $notes,
+            'user_id' => $user->id,
+        ]);
+    }
+
+    /**
      * Restaura stock por reverso/cancelación de venta, edición de cuenta
      * abierta a la baja, etc. $notes distingue el origen exacto para quien
      * lea el historial de movimientos.
@@ -174,6 +222,43 @@ class StockService
     }
 
     /**
+     * Contraparte de reserveForLayaway() para una variante concreta - siempre
+     * trackea stock (no hay toggle track_stock por variante) y nunca pasa
+     * por receta (variantes e ingredientes son mutuamente excluyentes).
+     */
+    public function reserveVariantForLayaway(User $user, ProductVariant $variant, int $quantity, Layaway $layaway): StockMovement
+    {
+        return StockMovement::create([
+            'product_id' => $variant->product_id,
+            'product_variant_id' => $variant->id,
+            'business_id' => $variant->business_id,
+            'type' => StockMovement::TYPE_EXIT,
+            'stock_movement_reason_id' => StockMovementReason::systemIdForCode(StockMovementReason::CODE_LAYAWAY),
+            'quantity' => -abs($quantity),
+            'reference' => "Apartado #{$layaway->id}",
+            'user_id' => $user->id,
+        ]);
+    }
+
+    /**
+     * Contraparte de releaseLayawayReservation() para una variante concreta.
+     */
+    public function releaseVariantLayawayReservation(User $user, ProductVariant $variant, int $quantity, Layaway $layaway, ?string $notes = null): StockMovement
+    {
+        return StockMovement::create([
+            'product_id' => $variant->product_id,
+            'product_variant_id' => $variant->id,
+            'business_id' => $variant->business_id,
+            'type' => StockMovement::TYPE_ENTRY,
+            'stock_movement_reason_id' => StockMovementReason::systemIdForCode(StockMovementReason::CODE_LAYAWAY_CANCEL),
+            'quantity' => abs($quantity),
+            'reference' => "Apartado #{$layaway->id}",
+            'notes' => $notes,
+            'user_id' => $user->id,
+        ]);
+    }
+
+    /**
      * Libera una reserva de apartado (cancelacion o edicion de items a la
      * baja). $notes distingue el origen exacto para el historial.
      */
@@ -206,6 +291,31 @@ class StockService
         return StockMovement::create([
             'product_id' => $product->id,
             'business_id' => $product->business_id,
+            'type' => StockMovement::TYPE_ENTRY,
+            'stock_movement_reason_id' => StockMovementReason::systemIdForCode(StockMovementReason::CODE_PURCHASE),
+            'purchase_line_id' => $line->id,
+            'quantity' => abs($quantity),
+            'unit_cost_cop' => $unitCostCop,
+            'reference' => "Compra #{$line->purchase_id}",
+            'user_id' => $user->id,
+        ]);
+    }
+
+    /**
+     * Igual que registerPurchase(), para una linea de compra de una variante
+     * concreta - product_id queda apuntando al producto padre (para
+     * reportes, ver la migracion que agrega esta columna a purchase_lines) y
+     * product_variant_id a la variante real, que es la que mueve
+     * StockMovement::booted(). El ajuste de costo promedio ponderado (sobre
+     * el stock/costo propio de la variante) lo hace PurchaseService, no este
+     * metodo - mismo reparto de responsabilidades que el resto de la clase.
+     */
+    public function registerVariantPurchase(User $user, ProductVariant $variant, float $quantity, PurchaseLine $line, float $unitCostCop): StockMovement
+    {
+        return StockMovement::create([
+            'product_id' => $variant->product_id,
+            'product_variant_id' => $variant->id,
+            'business_id' => $variant->business_id,
             'type' => StockMovement::TYPE_ENTRY,
             'stock_movement_reason_id' => StockMovementReason::systemIdForCode(StockMovementReason::CODE_PURCHASE),
             'purchase_line_id' => $line->id,

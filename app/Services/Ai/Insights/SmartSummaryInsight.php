@@ -69,7 +69,7 @@ class SmartSummaryInsight implements AiInsightDefinition, HasSuggestedAction
         // calculateHealth: contar sobre esa lista subestima la salud de
         // negocios con mas de 3 productos por agotarse).
         $lowStockProductsCount = $business
-            ? LowStockAlertReport::forBusiness($business)['items']->where('kind', 'product')->count()
+            ? LowStockAlertReport::forBusiness($business)['items']->whereIn('kind', ['product', 'product_variant'])->count()
             : 0;
 
         [$healthLevel, $healthFactor] = $this->calculateHealth(

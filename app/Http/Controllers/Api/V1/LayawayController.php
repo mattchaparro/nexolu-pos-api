@@ -24,7 +24,7 @@ class LayawayController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Layaway::with(['items.product', 'payments'])->latest();
+        $query = Layaway::with(['items.product', 'items.productVariant.attributeValues.productAttribute', 'payments'])->latest();
 
         if ($request->filled('status')) {
             $query->where('status', $request->string('status'));
@@ -58,14 +58,14 @@ class LayawayController extends Controller
 
     public function show(Layaway $layaway): LayawayResource
     {
-        return new LayawayResource($layaway->load('items.product', 'payments'));
+        return new LayawayResource($layaway->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'payments'));
     }
 
     public function storePayment(StoreLayawayPaymentRequest $request, Layaway $layaway): LayawayResource
     {
         $this->layawayService->addPayment($request->user(), $layaway, $request->validated());
 
-        return new LayawayResource($layaway->fresh()->load('items.product', 'payments'));
+        return new LayawayResource($layaway->fresh()->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'payments'));
     }
 
     public function updateItems(UpdateLayawayItemsRequest $request, Layaway $layaway): LayawayResource
@@ -79,7 +79,7 @@ class LayawayController extends Controller
     {
         $this->layawayService->complete($layaway);
 
-        return new LayawayResource($layaway->fresh()->load('items.product', 'payments'));
+        return new LayawayResource($layaway->fresh()->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'payments'));
     }
 
     public function cancel(Request $request, Layaway $layaway): Response

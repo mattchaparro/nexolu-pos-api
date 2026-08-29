@@ -3,10 +3,12 @@
 namespace App\Services\SuperAdmin;
 
 use App\Models\Business;
+use App\Models\ProductVariant;
 use App\Models\SaasSubscriptionPayment;
 use App\Models\User;
 use App\Support\BusinessFeaturePresets;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Ciclo de vida comercial de un negocio (no confundir con la configuracion
@@ -96,13 +98,50 @@ class SuperAdminBusinessService
     {
         $planDefaults = BusinessFeaturePresets::fromPlan($plan);
         $existing = is_array($business->feature_flags) ? $business->feature_flags : [];
+        $flags = array_merge($planDefaults, $existing);
+
+        $this->assertVariantsCanBeDisabled($business, $flags);
 
         $business->update([
             'subscription_plan' => $plan,
-            'feature_flags' => array_merge($planDefaults, $existing),
+            'feature_flags' => $flags,
         ]);
 
         return $business;
+    }
+
+    /**
+     * Apagar `variants` con variantes ya creadas dejaria ese catalogo
+     * invendible EN SILENCIO: ProductAvailability::effectiveStock() volveria
+     * a leer products.stock (columna fantasma para esos productos, siempre
+     * 0), el POS los mostraria "sin stock" y ValidatesSaleItems dejaria de
+     * exigir variante - la venta se rechazaria por falta de stock aunque
+     * cada variante tenga existencias reales.
+     *
+     * Se bloquea en este servicio porque es el unico punto donde la bandera
+     * puede pasar de true a false: updateConfig() (superadmin destildando la
+     * casilla) y changePlan() (bajar de plan full a basic cuando la clave
+     * todavia no estaba explicita en el JSON del negocio - ahi el default
+     * del plan basico, false, gana sobre la ausencia).
+     *
+     * @param  array<string, bool>  $flags  flags resultantes, ya normalizados
+     */
+    private function assertVariantsCanBeDisabled(Business $business, array $flags): void
+    {
+        if (($flags['variants'] ?? false) || ! $business->hasFeature('variants')) {
+            return;
+        }
+
+        $count = ProductVariant::withoutGlobalScope('business')
+            ->where('business_id', $business->id)
+            ->count();
+
+        if ($count > 0) {
+            throw ValidationException::withMessages([
+                'feature_flags.variants' => "No se puede desactivar Variaciones: el negocio tiene {$count} variante(s) de producto creada(s), "
+                    .'que quedarian sin stock visible ni forma de venderse. Elimina primero las variantes de esos productos.',
+            ]);
+        }
     }
 
     /**
@@ -121,6 +160,8 @@ class SuperAdminBusinessService
                 $normalized[$key] = (bool) $value;
             }
         }
+
+        $this->assertVariantsCanBeDisabled($business, $normalized);
 
         $business->update([
             'subscription_plan' => $plan,

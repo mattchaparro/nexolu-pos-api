@@ -42,6 +42,7 @@ use App\Http\Controllers\Api\V1\OpenTabController;
 use App\Http\Controllers\Api\V1\PaymentMethodsController;
 use App\Http\Controllers\Api\V1\PlanCatalogController;
 use App\Http\Controllers\Api\V1\PosPaymentMethodController;
+use App\Http\Controllers\Api\V1\ProductAttributeController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\PurchaseController;
@@ -290,6 +291,15 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::middleware('permission:inventory.adjust')->group(function () {
                 Route::post('/ingredient-stock-movements', [IngredientStockMovementController::class, 'store'])->name('ingredient-stock-movements.store');
                 Route::post('/ingredients/bulk-update', [IngredientBulkStockUpdateController::class, 'store'])->name('ingredients.bulk-update');
+            });
+        });
+
+        Route::middleware('feature:variants')->group(function () {
+            Route::middleware('permission:inventory.view')->group(function () {
+                Route::apiResource('product-attributes', ProductAttributeController::class)->only(['index', 'show']);
+            });
+            Route::middleware('permission:inventory.add')->group(function () {
+                Route::apiResource('product-attributes', ProductAttributeController::class)->only(['store', 'update', 'destroy']);
             });
         });
 

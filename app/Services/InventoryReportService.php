@@ -6,6 +6,7 @@ use App\Models\Business;
 use App\Models\Ingredient;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\ProductVariant;
 use App\Models\SaleItem;
 use App\Models\StockMovement;
 use App\Models\StockMovementReason;
@@ -26,16 +27,29 @@ class InventoryReportService
     {
         $canInventory = $business->hasFeature('inventory');
         $canIngredients = $business->hasFeature('ingredients');
+        $variantsEnabled = $business->hasFeature('variants');
         $id = $business->id;
 
-        $baseProducts = Product::where('business_id', $id)->where('track_stock', true)->toBase();
+        // products.stock/price/cost_price quedan "fantasma" para un producto
+        // con variantes (ver ProductAvailability) - se excluyen del lado de
+        // productos y se suma por separado el valor de las variantes activas,
+        // mismo criterio que Product::sumInventoryRetailValueCop(). Un
+        // producto convertido a variantes conserva su stock viejo en la
+        // columna, asi que sin el whereDoesntHave() se contaria dos veces.
+        $baseProducts = Product::where('business_id', $id)
+            ->where('track_stock', true)
+            ->when($variantsEnabled, fn ($query) => $query->whereDoesntHave('variants'))
+            ->toBase();
+        $baseVariants = ProductVariant::where('business_id', $id)->where('is_active', true)->toBase();
 
         return [
             'inventory_retail_cop' => $canInventory
                 ? (float) (clone $baseProducts)->selectRaw('COALESCE(SUM(stock * price), 0) as v')->value('v')
+                    + ($variantsEnabled ? (float) (clone $baseVariants)->selectRaw('COALESCE(SUM(stock * price), 0) as v')->value('v') : 0.0)
                 : 0.0,
             'inventory_cost_products_cop' => $canInventory
                 ? (float) (clone $baseProducts)->selectRaw('COALESCE(SUM(stock * cost_price), 0) as v')->value('v')
+                    + ($variantsEnabled ? (float) (clone $baseVariants)->selectRaw('COALESCE(SUM(stock * cost_price), 0) as v')->value('v') : 0.0)
                 : 0.0,
             'inventory_cost_ingredients_cop' => $canIngredients
                 ? (float) Ingredient::where('business_id', $id)->toBase()->selectRaw('COALESCE(SUM(stock * cost_price), 0) as v')->value('v')
@@ -193,11 +207,20 @@ class InventoryReportService
 
         $marginRows = collect();
         if ($canInventory) {
+            // Un producto con variantes no tiene precio/costo/stock propios
+            // (columnas fantasma, ver ProductAvailability): su fila aqui
+            // mostraria margen y "ganancia potencial" calculados sobre datos
+            // que no corresponden a nada vendible. Peor en un producto
+            // convertido, que conserva el costo y el stock que tenia ANTES de
+            // recibir variantes y por eso si pasa el filtro cost_price > 0.
+            // Se excluye explicitamente; el desglose de margen por variante
+            // queda pendiente como funcionalidad aparte.
             $marginRows = Product::query()
                 ->where('track_stock', true)
                 ->where('is_active', true)
                 ->where('is_single_sale', false)
                 ->where('cost_price', '>', 0)
+                ->when($business->hasFeature('variants'), fn ($q) => $q->whereDoesntHave('variants'))
                 ->with(['category:id,name', 'ingredients:id,stock'])
                 ->when($categoryId, fn ($q) => $q->whereIn('category_id', ProductCategory::idsIncludingChildren($categoryId)))
                 ->orderBy('name')

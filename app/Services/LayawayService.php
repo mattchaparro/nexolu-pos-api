@@ -7,6 +7,7 @@ use App\Models\Layaway;
 use App\Models\LayawayItem;
 use App\Models\LayawayPayment;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\User;
 use App\Support\PaymentRefunder;
 use App\Support\ProductAvailability;
@@ -49,7 +50,7 @@ class LayawayService
                 ]);
             }
 
-            return $layaway->load('items.product', 'payments');
+            return $layaway->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'payments');
         });
     }
 
@@ -65,21 +66,47 @@ class LayawayService
     private function applyItems(User $user, Layaway $layaway, Business $business, array $items): void
     {
         $ingredientsEnabled = $business->hasFeature('ingredients');
+        $variantsEnabled = $business->hasFeature('variants');
 
         $productIds = collect($items)->pluck('product_id')->unique()->values()->all();
         $products = Product::where('business_id', $business->id)
             ->whereIn('id', $productIds)
             ->when($ingredientsEnabled, fn ($query) => $query->with('ingredients'))
+            ->when($variantsEnabled, fn ($query) => $query->with('variants'))
             ->lockForUpdate()
             ->get()
             ->keyBy('id');
 
+        $variantIds = collect($items)->pluck('product_variant_id')->filter()->unique()->values()->all();
+        $variants = $variantsEnabled && $variantIds !== []
+            ? ProductVariant::where('business_id', $business->id)->whereIn('id', $variantIds)->lockForUpdate()->get()->keyBy('id')
+            : collect();
+
         foreach ($items as $item) {
             $product = $products->get($item['product_id']);
             $quantity = (int) $item['quantity'];
-            $availableStock = ProductAvailability::effectiveStock($product, $ingredientsEnabled);
 
-            if ($product->track_stock && $quantity > $availableStock) {
+            $variantId = $item['product_variant_id'] ?? null;
+            $variant = $variantId ? $variants->get($variantId) : null;
+
+            // Re-verificacion bajo lock, mismo criterio que SaleService::applyItems().
+            if ($variantsEnabled && $product->hasVariants() && ! $variant) {
+                throw ValidationException::withMessages([
+                    'items' => 'Selecciona una variante para «'.$product->name.'».',
+                ]);
+            }
+            if ($variant && ((int) $variant->product_id !== $product->id || ! $variant->is_active)) {
+                throw ValidationException::withMessages([
+                    'items' => 'Variante inválida para «'.$product->name.'».',
+                ]);
+            }
+
+            $availableStock = $variant
+                ? ProductAvailability::effectiveVariantStock($variant)
+                : ProductAvailability::effectiveStock($product, $ingredientsEnabled, $variantsEnabled);
+            $trackStock = $variant ? true : $product->track_stock;
+
+            if ($trackStock && $quantity > $availableStock) {
                 throw ValidationException::withMessages([
                     'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $availableStock.').',
                 ]);
@@ -88,11 +115,17 @@ class LayawayService
             LayawayItem::create([
                 'layaway_id' => $layaway->id,
                 'product_id' => $product->id,
+                'product_variant_id' => $variant?->id,
                 'quantity' => $quantity,
-                'unit_price' => SaleLineUnitPrice::resolve($product, $item),
+                'unit_price' => $variant ? (float) $variant->price : SaleLineUnitPrice::resolve($product, $item),
             ]);
 
-            if ($product->track_stock) {
+            if ($variant) {
+                $this->stockService->reserveVariantForLayaway($user, $variant, $quantity, $layaway);
+
+                // Ajuste en memoria, mismo motivo que el resto de esta clase.
+                $variant->stock -= $quantity;
+            } elseif ($product->track_stock) {
                 $this->stockService->reserveForLayaway($user, $product, $quantity, $layaway);
                 $this->stockService->reserveIngredientsForLayaway($user, $product, $quantity, $layaway);
 
@@ -163,9 +196,20 @@ class LayawayService
             }
 
             $ingredientsEnabled = $layaway->business->hasFeature('ingredients');
-            $layaway->loadMissing($ingredientsEnabled ? 'items.product.ingredients' : 'items.product');
+            $layaway->loadMissing([
+                $ingredientsEnabled ? 'items.product.ingredients' : 'items.product',
+                'items.productVariant',
+            ]);
 
             foreach ($layaway->items as $item) {
+                if ($item->productVariant) {
+                    $this->stockService->releaseVariantLayawayReservation(
+                        $user, $item->productVariant, (int) $item->quantity, $layaway, 'Cancelacion del apartado'
+                    );
+
+                    continue;
+                }
+
                 $product = $item->product;
                 if ($product) {
                     $this->stockService->releaseLayawayReservation(
@@ -235,25 +279,33 @@ class LayawayService
         return DB::transaction(function () use ($user, $layaway, $items) {
             $business = $layaway->business;
             $ingredientsEnabled = $business->hasFeature('ingredients');
+            $variantsEnabled = $business->hasFeature('variants');
             $layaway->loadMissing('items');
 
-            $currentQtyByProduct = $layaway->items
-                ->groupBy('product_id')
+            // Clave compuesta product_id:product_variant_id - ver el mismo
+            // criterio en OpenTabService::syncItems().
+            $lineKey = fn (int $productId, ?int $variantId) => $productId.':'.($variantId ?? 0);
+
+            $currentQtyByLine = $layaway->items
+                ->groupBy(fn (LayawayItem $item) => $lineKey((int) $item->product_id, $item->product_variant_id))
                 ->map(fn ($group) => (int) $group->sum('quantity'));
 
-            $desiredQtyByProduct = collect($items)
+            $desiredQtyByLine = collect($items)
                 ->filter(fn ($item) => (int) ($item['product_id'] ?? 0) > 0)
-                ->groupBy(fn ($item) => (int) $item['product_id'])
+                ->groupBy(fn ($item) => $lineKey((int) $item['product_id'], ! empty($item['product_variant_id']) ? (int) $item['product_variant_id'] : null))
                 ->map(fn ($group) => (int) $group->sum(fn ($row) => (int) ($row['quantity'] ?? 0)))
                 ->filter(fn ($qty) => $qty > 0);
 
-            if ($desiredQtyByProduct->isEmpty()) {
+            if ($desiredQtyByLine->isEmpty()) {
                 throw ValidationException::withMessages([
                     'items' => 'El apartado debe tener al menos un producto.',
                 ]);
             }
 
-            $productIds = $currentQtyByProduct->keys()->merge($desiredQtyByProduct->keys())->unique()->values();
+            $lineKeys = $currentQtyByLine->keys()->merge($desiredQtyByLine->keys())->unique()->values();
+            $productIds = $lineKeys->map(fn (string $key) => (int) explode(':', $key)[0])->unique()->values();
+            $variantIds = $lineKeys->map(fn (string $key) => (int) explode(':', $key)[1])->filter()->unique()->values();
+
             $products = Product::where('business_id', $business->id)
                 ->whereIn('id', $productIds)
                 ->when($ingredientsEnabled, fn ($query) => $query->with('ingredients'))
@@ -261,33 +313,52 @@ class LayawayService
                 ->get()
                 ->keyBy('id');
 
-            foreach ($productIds as $productId) {
+            $variants = $variantsEnabled && $variantIds->isNotEmpty()
+                ? ProductVariant::where('business_id', $business->id)->whereIn('id', $variantIds)->lockForUpdate()->get()->keyBy('id')
+                : collect();
+
+            foreach ($lineKeys as $key) {
+                [$productId, $variantId] = array_map('intval', explode(':', $key));
                 $product = $products->get($productId);
                 if (! $product) {
                     continue;
                 }
 
-                $delta = (int) ($desiredQtyByProduct[$productId] ?? 0) - (int) ($currentQtyByProduct[$productId] ?? 0);
-                if ($delta === 0 || ! $product->track_stock) {
+                $variant = $variantId ? $variants->get($variantId) : null;
+                $delta = (int) ($desiredQtyByLine[$key] ?? 0) - (int) ($currentQtyByLine[$key] ?? 0);
+                $trackStock = $variant ? true : $product->track_stock;
+                if ($delta === 0 || ! $trackStock) {
                     continue;
                 }
 
                 if ($delta > 0) {
-                    $availableStock = ProductAvailability::effectiveStock($product, $ingredientsEnabled);
+                    $availableStock = $variant
+                        ? ProductAvailability::effectiveVariantStock($variant)
+                        : ProductAvailability::effectiveStock($product, $ingredientsEnabled, $variantsEnabled);
                     if ($delta > $availableStock) {
                         throw ValidationException::withMessages([
                             'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $availableStock.').',
                         ]);
                     }
-                    $this->stockService->reserveForLayaway($user, $product, $delta, $layaway);
-                    $this->stockService->reserveIngredientsForLayaway($user, $product, $delta, $layaway);
+                    if ($variant) {
+                        $this->stockService->reserveVariantForLayaway($user, $variant, $delta, $layaway);
+                    } else {
+                        $this->stockService->reserveForLayaway($user, $product, $delta, $layaway);
+                        $this->stockService->reserveIngredientsForLayaway($user, $product, $delta, $layaway);
+                    }
                 } else {
-                    $this->stockService->releaseLayawayReservation(
-                        $user, $product, abs($delta), $layaway, 'Reduccion de cantidad al editar apartado'
-                    );
-                    $this->stockService->releaseIngredientsLayawayReservation(
-                        $user, $product, abs($delta), $layaway, 'Reduccion de cantidad al editar apartado'
-                    );
+                    if ($variant) {
+                        $this->stockService->releaseVariantLayawayReservation(
+                            $user, $variant, abs($delta), $layaway, 'Reduccion de cantidad al editar apartado'
+                        );
+                    } else {
+                        $this->stockService->releaseLayawayReservation(
+                            $user, $product, abs($delta), $layaway, 'Reduccion de cantidad al editar apartado'
+                        );
+                        $this->stockService->releaseIngredientsLayawayReservation(
+                            $user, $product, abs($delta), $layaway, 'Reduccion de cantidad al editar apartado'
+                        );
+                    }
                 }
             }
 
@@ -300,18 +371,22 @@ class LayawayService
                     continue;
                 }
 
+                $variantId = ! empty($item['product_variant_id']) ? (int) $item['product_variant_id'] : null;
+                $variant = $variantId ? $variants->get($variantId) : null;
+
                 LayawayItem::create([
                     'layaway_id' => $layaway->id,
                     'product_id' => $productId,
+                    'product_variant_id' => $variant?->id,
                     'quantity' => $quantity,
-                    'unit_price' => SaleLineUnitPrice::resolve($products->get($productId), $item),
+                    'unit_price' => $variant ? (float) $variant->price : SaleLineUnitPrice::resolve($products->get($productId), $item),
                 ]);
             }
 
             $layaway->load('items', 'payments');
             $layaway->update(['status' => $layaway->balance <= 0.009 ? 'completed' : 'open']);
 
-            return $layaway->fresh()->load('items.product', 'payments');
+            return $layaway->fresh()->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'payments');
         });
     }
 }

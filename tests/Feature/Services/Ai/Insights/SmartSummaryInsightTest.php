@@ -75,6 +75,22 @@ class SmartSummaryInsightTest extends TestCase
         $this->assertStringContainsString('4 producto', $data['health_factor']);
     }
 
+    /**
+     * Regresion: lowStockProductsCount se calculaba filtrando kind ===
+     * 'product', asi que un item kind === 'product_variant' (ver
+     * LowStockAlertReport) quedaba fuera en silencio del calculo de salud.
+     */
+    public function test_counts_low_stock_variants_towards_inventory_health(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['variants' => true]]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'track_stock' => true, 'stock' => 0, 'is_active' => true, 'is_single_sale' => false]);
+        $product->variants()->create(['business_id' => $business->id, 'sku' => 'CAM-S', 'price' => 45000, 'stock' => 1, 'low_stock_alert_threshold' => 5]);
+
+        $data = $this->insight()->gatherData($business->id);
+
+        $this->assertStringContainsString('1 producto', $data['health_factor']);
+    }
+
     public function test_does_not_flag_priority_for_a_low_ingredient_without_recent_consumption(): void
     {
         $business = Business::factory()->create(['feature_flags' => ['ingredients' => true]]);

@@ -64,7 +64,7 @@ class PurchaseController extends Controller
 
     public function show(Purchase $purchase): PurchaseResource
     {
-        return new PurchaseResource($purchase->load('supplier', 'lines.product', 'lines.ingredient', 'payments'));
+        return new PurchaseResource($purchase->load('supplier', 'lines.product', 'lines.productVariant.attributeValues.productAttribute', 'lines.ingredient', 'payments'));
     }
 
     public function pay(PayPurchaseRequest $request, Purchase $purchase): PurchaseResource
@@ -76,6 +76,6 @@ class PurchaseController extends Controller
             $request->validated('payment_method')
         );
 
-        return new PurchaseResource($purchase->fresh()->load('supplier', 'lines.product', 'lines.ingredient', 'payments'));
+        return new PurchaseResource($purchase->fresh()->load('supplier', 'lines.product', 'lines.productVariant.attributeValues.productAttribute', 'lines.ingredient', 'payments'));
     }
 }

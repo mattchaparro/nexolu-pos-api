@@ -5,6 +5,7 @@ namespace Tests\Feature\Support;
 use App\Models\Business;
 use App\Models\Ingredient;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\User;
 use App\Support\ProductAvailability;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -68,6 +69,37 @@ class ProductAvailabilityTest extends TestCase
         $this->assertSame(4.0, ProductAvailability::effectiveStock($product, true));
     }
 
+    // --- effectiveStock()/effectiveVariantStock() con variantes ---
+
+    public function test_a_products_effective_stock_is_the_sum_of_active_variant_stock(): void
+    {
+        $business = Business::factory()->create();
+        $product = Product::factory()->create(['business_id' => $business->id, 'track_stock' => true, 'stock' => 0]);
+        ProductVariant::factory()->create(['product_id' => $product->id, 'business_id' => $business->id, 'stock' => 10, 'is_active' => true]);
+        ProductVariant::factory()->create(['product_id' => $product->id, 'business_id' => $business->id, 'stock' => 5, 'is_active' => true]);
+        ProductVariant::factory()->create(['product_id' => $product->id, 'business_id' => $business->id, 'stock' => 999, 'is_active' => false]);
+        $product->load('variants');
+
+        $this->assertSame(15.0, ProductAvailability::effectiveStock($product, false, true));
+    }
+
+    public function test_a_products_effective_stock_ignores_variants_when_the_feature_flag_is_off(): void
+    {
+        $business = Business::factory()->create();
+        $product = Product::factory()->create(['business_id' => $business->id, 'track_stock' => true, 'stock' => 3]);
+        ProductVariant::factory()->create(['product_id' => $product->id, 'business_id' => $business->id, 'stock' => 10]);
+        $product->load('variants');
+
+        $this->assertSame(3.0, ProductAvailability::effectiveStock($product, false, false));
+    }
+
+    public function test_effective_variant_stock_reads_the_variants_own_stock(): void
+    {
+        $variant = ProductVariant::factory()->create(['stock' => 7]);
+
+        $this->assertSame(7.0, ProductAvailability::effectiveVariantStock($variant));
+    }
+
     // --- forBusiness(): catalogo completo para Vender ---
 
     public function test_for_business_returns_the_full_catalog_beyond_the_pagination_cap_of_index(): void
@@ -103,6 +135,16 @@ class ProductAvailabilityTest extends TestCase
     public function test_for_business_skips_the_cache_when_the_ingredients_feature_is_enabled(): void
     {
         $business = Business::factory()->create(['feature_flags' => ['ingredients' => true]]);
+        Product::factory()->create(['business_id' => $business->id]);
+
+        ProductAvailability::forBusiness($business);
+
+        $this->assertFalse(Cache::has(ProductAvailability::cacheKey($business->id)));
+    }
+
+    public function test_for_business_skips_the_cache_when_the_variants_feature_is_enabled(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['ingredients' => false, 'variants' => true]]);
         Product::factory()->create(['business_id' => $business->id]);
 
         ProductAvailability::forBusiness($business);

@@ -80,6 +80,36 @@ class StockUrgency
     }
 
     /**
+     * Velocidad diaria de MUCHAS variantes en una sola query - mismo
+     * criterio que productsVelocityBatch(), agrupado por
+     * product_variant_id en vez de product_id: un movimiento de venta de
+     * una variante SIEMPRE trae ambas columnas (product_id = padre,
+     * product_variant_id = la variante real - ver
+     * StockService::registerVariantSale()), asi que agrupar por la primera
+     * mezclaria la velocidad de todas las variantes de un mismo producto.
+     *
+     * @param  list<int>  $variantIds
+     * @return array<int, float> product_variant_id => unidades/dia
+     */
+    public static function productVariantsVelocityBatch(int $businessId, array $variantIds, int $days = self::DEFAULT_WINDOW_DAYS): array
+    {
+        if ($variantIds === []) {
+            return [];
+        }
+
+        $rows = DB::table('stock_movements')
+            ->where('business_id', $businessId)
+            ->where('type', 'sale')
+            ->whereIn('product_variant_id', $variantIds)
+            ->where('created_at', '>=', now()->subDays($days))
+            ->groupBy('product_variant_id')
+            ->selectRaw('product_variant_id, SUM(quantity) as total')
+            ->pluck('total', 'product_variant_id');
+
+        return $rows->map(fn ($total) => $days > 0 ? abs((float) $total) / $days : 0.0)->all();
+    }
+
+    /**
      * Velocidad diaria de MUCHOS ingredientes en una sola query.
      *
      * @param  list<int>  $ingredientIds

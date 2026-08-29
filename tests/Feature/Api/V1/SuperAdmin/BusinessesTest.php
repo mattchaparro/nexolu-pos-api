@@ -4,6 +4,7 @@ namespace Tests\Feature\Api\V1\SuperAdmin;
 
 use App\Models\Business;
 use App\Models\LogAction;
+use App\Models\Product;
 use App\Models\SaasSubscriptionPayment;
 use App\Models\Sale;
 use App\Models\SupportTicket;
@@ -279,5 +280,50 @@ class BusinessesTest extends TestCase
             ->assertJsonPath('feature_flags.open_tabs', false)
             // clave que no se mando explicitamente: se completa con el default del plan full.
             ->assertJsonPath('feature_flags.services', true);
+    }
+
+    /**
+     * Apagar `variants` con variantes ya creadas rompia el catalogo en
+     * silencio: effectiveStock() vuelve a leer products.stock (fantasma,
+     * siempre 0 para esos productos) y todo el catalogo con variantes queda
+     * "sin stock" e invendible. Ver
+     * SuperAdminBusinessService::assertVariantsCanBeDisabled().
+     */
+    public function test_config_endpoint_refuses_to_disable_variants_while_the_business_has_variants(): void
+    {
+        $admin = $this->superadmin();
+        $business = Business::factory()->create(['subscription_plan' => 'full', 'feature_flags' => ['variants' => true]]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'track_stock' => true, 'stock' => 0]);
+        $product->variants()->create(['business_id' => $business->id, 'sku' => 'SA-1', 'price' => 1000, 'stock' => 40]);
+
+        $this->actingAs($admin, 'sanctum')->patchJson("/api/v1/superadmin/businesses/{$business->id}/config", [
+            'subscription_plan' => 'full',
+            'feature_flags' => ['variants' => false],
+        ])->assertStatus(422)->assertJsonValidationErrors('feature_flags.variants');
+
+        $this->assertTrue($business->fresh()->hasFeature('variants'));
+    }
+
+    /**
+     * Mismo riesgo por la otra puerta: bajar de plan full a basic con la
+     * clave 'variants' AUSENTE del JSON del negocio (el caso de todos los
+     * negocios creados antes de que existiera la bandera) hacia ganar al
+     * default del plan basico (false) sobre la ausencia.
+     */
+    public function test_downgrading_the_plan_cannot_silently_disable_variants_in_use(): void
+    {
+        $admin = $this->superadmin();
+        // feature_flags sin la clave 'variants': hasFeature() la resuelve por
+        // el default del plan full (true), asi que el negocio pudo crearlas.
+        $business = Business::factory()->create(['subscription_plan' => 'full', 'feature_flags' => ['inventory' => true]]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'track_stock' => true, 'stock' => 0]);
+        $product->variants()->create(['business_id' => $business->id, 'sku' => 'SA-2', 'price' => 1000, 'stock' => 12]);
+        $this->assertTrue($business->hasFeature('variants'));
+
+        $this->actingAs($admin, 'sanctum')
+            ->patchJson("/api/v1/superadmin/businesses/{$business->id}/plan", ['plan' => 'basic'])
+            ->assertStatus(422);
+
+        $this->assertTrue($business->fresh()->hasFeature('variants'));
     }
 }

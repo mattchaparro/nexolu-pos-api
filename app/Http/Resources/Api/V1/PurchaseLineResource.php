@@ -15,6 +15,7 @@ class PurchaseLineResource extends JsonResource
         return [
             'id' => $this->id,
             'product' => new ProductResource($this->whenLoaded('product')),
+            'product_variant' => new ProductVariantResource($this->whenLoaded('productVariant')),
             'ingredient' => new IngredientResource($this->whenLoaded('ingredient')),
             'quantity' => $this->quantity,
             'unit_cost_cop' => $this->unit_cost_cop,

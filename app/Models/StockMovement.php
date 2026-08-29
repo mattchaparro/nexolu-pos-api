@@ -24,6 +24,7 @@ class StockMovement extends Model
 
     protected $fillable = [
         'product_id',
+        'product_variant_id',
         'ingredient_id',
         'business_id',
         'type',
@@ -55,6 +56,18 @@ class StockMovement extends Model
     protected static function booted(): void
     {
         static::created(function (StockMovement $movement) {
+            // product_variant_id gana sobre product_id: una fila de venta/
+            // movimiento de variante siempre trae ambos (product_id = padre,
+            // para reportes/legacy; product_variant_id = la variante real),
+            // pero el stock que se mueve es el de la variante, no
+            // products.stock (columna "fantasma" para un producto con
+            // variantes, mismo concepto que ya existe para receta).
+            if ($movement->product_variant_id) {
+                self::applyToVariant($movement);
+
+                return;
+            }
+
             if ($movement->product_id) {
                 self::applyToProduct($movement);
 
@@ -65,6 +78,15 @@ class StockMovement extends Model
                 Ingredient::withoutGlobalScopes()->whereKey($movement->ingredient_id)->increment('stock', $movement->quantity);
             }
         });
+    }
+
+    private static function applyToVariant(StockMovement $movement): void
+    {
+        $movement->productVariant()->withoutGlobalScopes()->increment('stock', $movement->quantity);
+
+        if ($movement->business_id) {
+            ProductAvailability::clearCache((int) $movement->business_id);
+        }
     }
 
     private static function applyToProduct(StockMovement $movement): void
@@ -96,6 +118,11 @@ class StockMovement extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function productVariant(): BelongsTo
+    {
+        return $this->belongsTo(ProductVariant::class);
     }
 
     public function ingredient(): BelongsTo

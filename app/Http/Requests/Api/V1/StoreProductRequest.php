@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Http\Requests\Concerns\ValidatesProductVariants;
 use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -10,6 +11,8 @@ use Illuminate\Validation\Validator;
 
 class StoreProductRequest extends FormRequest
 {
+    use ValidatesProductVariants;
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -59,6 +62,7 @@ class StoreProductRequest extends FormRequest
                 BusinessScopedExists::for('ingredients', $businessId),
             ],
             'ingredients.*.quantity' => ['required_with:ingredients', 'numeric', 'min:0.001'],
+            ...$this->variantRules(),
         ];
     }
 
@@ -66,6 +70,7 @@ class StoreProductRequest extends FormRequest
     {
         $validator->after(function (Validator $v) {
             $this->validateIngredientsRules($v);
+            $this->validateVariantsRules($v);
         });
     }
 
@@ -86,5 +91,22 @@ class StoreProductRequest extends FormRequest
         if ($this->boolean('is_single_sale')) {
             $v->errors()->add('ingredients', 'Los productos de venta única no pueden tener receta por ingredientes.');
         }
+    }
+
+    private function validateVariantsRules(Validator $v): void
+    {
+        if (! $this->user()?->business?->hasFeature('variants')) {
+            return;
+        }
+
+        $this->validateVariantExclusionRules(
+            $v,
+            $this->input('variants', []),
+            $this->boolean('is_service'),
+            $this->boolean('is_single_sale'),
+            $this->input('ingredients', []),
+        );
+
+        $this->validateVariantPayloadRules($v);
     }
 }

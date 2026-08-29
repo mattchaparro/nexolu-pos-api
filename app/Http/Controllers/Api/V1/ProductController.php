@@ -8,6 +8,7 @@ use App\Http\Requests\Api\V1\UpdateProductRequest;
 use App\Http\Resources\Api\V1\ProductResource;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\ProductVariant;
 use App\Services\ProductService;
 use App\Support\AuditLogger;
 use App\Support\ProductAvailability;
@@ -32,17 +33,46 @@ class ProductController extends Controller
     {
         $business = $request->user()?->business;
         $ingredientsEnabled = (bool) $business?->hasFeature('ingredients');
+        $variantsEnabled = (bool) $business?->hasFeature('variants');
         $lowStockThreshold = (float) ($business?->low_stock_alert_threshold ?? 5);
 
         $products = Product::where('is_service', false)
             ->when($ingredientsEnabled, fn ($q) => $q->with('ingredients:id'))
-            ->get(['id', 'stock', 'is_single_sale', 'is_active', 'low_stock_alert_threshold']);
+            ->when($variantsEnabled, fn ($q) => $q->with('variants:id,product_id,stock,is_active,low_stock_alert_threshold'))
+            ->get(['id', 'stock', 'track_stock', 'is_single_sale', 'is_active', 'low_stock_alert_threshold']);
 
-        $lowStockCount = $products->filter(function (Product $p) use ($lowStockThreshold) {
+        // effectiveStock(), no la columna cruda: products.stock es
+        // "fantasma" para un producto con variantes (siempre 0, ver
+        // ProductAvailability) - comparar la columna cruda contaba CUALQUIER
+        // producto con variantes como bajo Y sin stock a la vez, sin
+        // importar el stock real de sus variantes (bug real, encontrado al
+        // verificar el filtro equivalente de Apartados).
+        $effectiveStock = fn (Product $p) => ProductAvailability::effectiveStock($p, $ingredientsEnabled, $variantsEnabled);
+
+        // Con variantes, "inventario bajo" se evalua VARIANTE POR VARIANTE
+        // contra el umbral propio de cada una - el mismo criterio que usa
+        // LowStockAlertReport (decision de negocio: low-stock por variante,
+        // no agregado al producto). Comparar la suma de todas las variantes
+        // contra el umbral del padre daba lo contrario que el correo de
+        // alertas para el mismo producto: 3 variantes de 4 unidades con
+        // umbral 5 suman 12 (tarjeta: "0 bajos") pero cada una esta bajo su
+        // umbral (correo: "3 items bajos").
+        $isLowStock = function (Product $p) use ($lowStockThreshold, $variantsEnabled, $effectiveStock): bool {
+            if ($variantsEnabled && $p->hasVariants()) {
+                return $p->variants->where('is_active', true)->contains(
+                    fn (ProductVariant $variant) => (float) $variant->stock <= ($variant->low_stock_alert_threshold !== null
+                        ? (float) $variant->low_stock_alert_threshold
+                        : $lowStockThreshold)
+                );
+            }
+
             $threshold = $p->low_stock_alert_threshold !== null ? (float) $p->low_stock_alert_threshold : $lowStockThreshold;
+            $stock = $effectiveStock($p);
 
-            return (float) $p->stock <= $threshold;
-        })->count();
+            return is_finite($stock) && $stock <= $threshold;
+        };
+
+        $lowStockCount = $products->filter($isLowStock)->count();
 
         $withRecipeCount = $ingredientsEnabled
             ? $products->filter(fn (Product $p) => $p->ingredients->count() > 0)->count()
@@ -52,12 +82,12 @@ class ProductController extends Controller
 
         return response()->json([
             'low_stock_count' => $lowStockCount,
-            'out_of_stock_count' => $products->filter(fn (Product $p) => (float) $p->stock <= 0)->count(),
+            'out_of_stock_count' => $products->filter(fn (Product $p) => is_finite($effectiveStock($p)) && $effectiveStock($p) <= 0)->count(),
             'single_sale_count' => $products->where('is_single_sale', true)->count(),
             'with_recipe_count' => $withRecipeCount,
             'inactive_count' => $products->where('is_active', false)->count(),
             'show_inventory_value_card' => $showInventoryValueCard,
-            'inventory_value_cop' => $showInventoryValueCard ? round(Product::sumInventoryRetailValueCop()) : null,
+            'inventory_value_cop' => $showInventoryValueCard ? round(Product::sumInventoryRetailValueCop($variantsEnabled)) : null,
         ]);
     }
 
@@ -100,9 +130,11 @@ class ProductController extends Controller
     {
         $business = $request->user()?->business;
         $ingredientsEnabled = (bool) $business?->hasFeature('ingredients');
+        $variantsEnabled = (bool) $business?->hasFeature('variants');
 
         $query = Product::with('category')
             ->when($ingredientsEnabled, fn ($q) => $q->with('ingredients'))
+            ->when($variantsEnabled, fn ($q) => $q->with('variants.attributeValues.productAttribute'))
             ->orderBy('name');
 
         // Sin el parametro, se listan ambos (lo necesita Vender, que vende
@@ -143,8 +175,16 @@ class ProductController extends Controller
                 ->filter()
                 ->all();
 
-            $query->where(function ($q) use ($includeIds) {
+            // products.stock es columna "fantasma" para un producto con
+            // variantes (nunca se decrementa, ver ProductAvailability) -
+            // comparar solo esa columna excluiria de Apartados a CUALQUIER
+            // producto con variantes, tuviera o no stock real en alguna. Se
+            // agrega el OR whereHas contra variantes activas con stock.
+            $query->where(function ($q) use ($includeIds, $variantsEnabled) {
                 $q->where('track_stock', false)->orWhere('stock', '>', 0);
+                if ($variantsEnabled) {
+                    $q->orWhereHas('variants', fn ($variantQuery) => $variantQuery->where('is_active', true)->where('stock', '>', 0));
+                }
                 if ($includeIds !== []) {
                     $q->orWhereIn('id', $includeIds);
                 }
@@ -163,9 +203,36 @@ class ProductController extends Controller
         if ($request->filled('filter') && in_array($request->input('filter'), self::STOCK_FILTERS, true)) {
             $lowStockThreshold = (float) ($business?->low_stock_alert_threshold ?? 5);
 
+            // Los filtros de stock tienen que dar exactamente el mismo
+            // conjunto que cuentan las tarjetas de summary(), o el usuario
+            // hace clic en "Sin stock: 3" y ve una lista que no cuadra. Para
+            // un producto con variantes, products.stock es fantasma: "sin
+            // stock" es "ninguna variante activa con stock", e "inventario
+            // bajo" es "al menos una variante bajo su propio umbral" (mismo
+            // criterio que summary() y LowStockAlertReport). Las columnas se
+            // califican con product_variants.* porque products tiene columnas
+            // del mismo nombre y la subconsulta correlacionada seria ambigua.
             match ($request->input('filter')) {
-                'out_of_stock' => $query->where('stock', '<=', 0),
-                'low_stock' => $query->whereRaw('stock <= COALESCE(low_stock_alert_threshold, ?)', [$lowStockThreshold]),
+                'out_of_stock' => $variantsEnabled
+                    ? $query->where(function ($q) {
+                        $q->where(fn ($simple) => $simple->whereDoesntHave('variants')->where('stock', '<=', 0))
+                            ->orWhere(fn ($withVariants) => $withVariants
+                                ->whereHas('variants')
+                                ->whereDoesntHave('variants', fn ($variant) => $variant
+                                    ->where('product_variants.is_active', true)
+                                    ->where('product_variants.stock', '>', 0)));
+                    })
+                    : $query->where('stock', '<=', 0),
+                'low_stock' => $variantsEnabled
+                    ? $query->where(function ($q) use ($lowStockThreshold) {
+                        $q->where(fn ($simple) => $simple
+                            ->whereDoesntHave('variants')
+                            ->whereRaw('stock <= COALESCE(low_stock_alert_threshold, ?)', [$lowStockThreshold]))
+                            ->orWhereHas('variants', fn ($variant) => $variant
+                                ->where('product_variants.is_active', true)
+                                ->whereRaw('product_variants.stock <= COALESCE(product_variants.low_stock_alert_threshold, ?)', [$lowStockThreshold]));
+                    })
+                    : $query->whereRaw('stock <= COALESCE(low_stock_alert_threshold, ?)', [$lowStockThreshold]),
                 'inactive' => $query->where('is_active', false),
                 'single_sale' => $query->where('is_single_sale', true),
                 'recipe' => $query->whereHas('ingredients'),
@@ -193,9 +260,15 @@ class ProductController extends Controller
 
     public function show(Request $request, Product $product): ProductResource
     {
-        $ingredientsEnabled = (bool) $request->user()?->business?->hasFeature('ingredients');
+        $business = $request->user()?->business;
+        $ingredientsEnabled = (bool) $business?->hasFeature('ingredients');
+        $variantsEnabled = (bool) $business?->hasFeature('variants');
 
-        return new ProductResource($product->load(['category', ...($ingredientsEnabled ? ['ingredients'] : [])]));
+        return new ProductResource($product->load([
+            'category',
+            ...($ingredientsEnabled ? ['ingredients'] : []),
+            ...($variantsEnabled ? ['variants.attributeValues.productAttribute'] : []),
+        ]));
     }
 
     public function update(UpdateProductRequest $request, Product $product): ProductResource

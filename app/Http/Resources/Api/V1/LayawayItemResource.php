@@ -15,6 +15,7 @@ class LayawayItemResource extends JsonResource
         return [
             'id' => $this->id,
             'product' => new ProductResource($this->whenLoaded('product')),
+            'product_variant' => new ProductVariantResource($this->whenLoaded('productVariant')),
             'quantity' => $this->quantity,
             'unit_price' => $this->unit_price,
             'subtotal' => (float) $this->quantity * (float) $this->unit_price,

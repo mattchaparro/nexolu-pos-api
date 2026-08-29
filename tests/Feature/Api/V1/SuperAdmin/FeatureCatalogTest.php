@@ -17,7 +17,7 @@ class FeatureCatalogTest extends TestCase
             ->getJson('/api/v1/superadmin/feature-catalog');
 
         $response->assertOk();
-        $this->assertCount(21, $response->json('features'));
+        $this->assertCount(22, $response->json('features'));
 
         $openTabs = collect($response->json('features'))->firstWhere('key', 'open_tabs');
         $this->assertSame('POS y ventas', $openTabs['group']);

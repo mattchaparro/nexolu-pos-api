@@ -14,7 +14,7 @@ class PlanCatalogTest extends TestCase
         $response = $this->getJson('/api/v1/plans');
 
         $response->assertOk();
-        $this->assertCount(21, $response->json('features'));
+        $this->assertCount(22, $response->json('features'));
         $this->assertSame(65000, $response->json('plans.basic.price_cop'));
         $this->assertSame(85000, $response->json('plans.full.price_cop'));
     }

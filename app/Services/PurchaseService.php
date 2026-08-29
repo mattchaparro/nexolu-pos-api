@@ -7,6 +7,7 @@ use App\Models\ExpenseType;
 use App\Models\Ingredient;
 use App\Models\Product;
 use App\Models\ProductCostHistory;
+use App\Models\ProductVariant;
 use App\Models\Purchase;
 use App\Models\PurchaseLine;
 use App\Models\PurchasePayment;
@@ -59,10 +60,13 @@ class PurchaseService
                 'paid_at' => $isPaidUpfront ? $data['purchased_at'] : null,
             ]);
 
+            $variantsEnabled = (bool) $business->hasFeature('variants');
+
             $productIds = collect($lines)->pluck('product_id')->filter()->unique()->values()->all();
             $products = Product::where('business_id', $business->id)
                 ->whereIn('id', $productIds)
                 ->with('ingredients:id')
+                ->when($variantsEnabled, fn ($q) => $q->with('variants'))
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
@@ -74,13 +78,20 @@ class PurchaseService
                 ->get()
                 ->keyBy('id');
 
-            // Stock acumulado DENTRO de esta compra, por producto/ingrediente -
-            // aparte del atributo Eloquent para que una segunda linea del
-            // mismo item vea el stock ya sumado por la primera al calcular el
-            // costo promedio, sin arriesgarse a que ese valor viaje "de
-            // colado" en un update() posterior y pise el incremento real que
-            // el StockMovement ya aplico en la BD por SQL directo.
+            $variantIds = collect($lines)->pluck('product_variant_id')->filter()->unique()->values()->all();
+            $variants = $variantsEnabled && $variantIds !== []
+                ? ProductVariant::where('business_id', $business->id)->whereIn('id', $variantIds)->lockForUpdate()->get()->keyBy('id')
+                : collect();
+
+            // Stock acumulado DENTRO de esta compra, por producto/variante/
+            // ingrediente - aparte del atributo Eloquent para que una segunda
+            // linea del mismo item vea el stock ya sumado por la primera al
+            // calcular el costo promedio, sin arriesgarse a que ese valor
+            // viaje "de colado" en un update() posterior y pise el
+            // incremento real que el StockMovement ya aplico en la BD por
+            // SQL directo.
             $productStockTracker = [];
+            $variantStockTracker = [];
             $ingredientStockTracker = [];
             /** @var Collection<int, Ingredient> $ingredientsToSync */
             $ingredientsToSync = collect();
@@ -89,9 +100,20 @@ class PurchaseService
                 $lineTotal = round((float) $row['line_total_cop'], 2);
 
                 if (! empty($row['product_id'])) {
-                    $productStockTracker = $this->applyProductLine(
-                        $user, $purchase, $products, (int) $row['product_id'], $row, $lineTotal, $i, $productStockTracker
-                    );
+                    $product = $products->get((int) $row['product_id']);
+                    if (! $product) {
+                        throw ValidationException::withMessages(["lines.{$i}.product_id" => 'Producto no encontrado.']);
+                    }
+
+                    if ($variantsEnabled && $product->hasVariants()) {
+                        $variantStockTracker = $this->applyVariantLine(
+                            $user, $purchase, $product, $variants, $row, $lineTotal, $i, $variantStockTracker
+                        );
+                    } else {
+                        $productStockTracker = $this->applyProductLine(
+                            $user, $purchase, $products, (int) $row['product_id'], $row, $lineTotal, $i, $productStockTracker
+                        );
+                    }
                 } else {
                     [$ingredientStockTracker, $ingredient] = $this->applyIngredientLine(
                         $user, $purchase, $ingredients, (int) ($row['ingredient_id'] ?? 0), $row, $lineTotal, $i, $ingredientStockTracker
@@ -115,7 +137,7 @@ class PurchaseService
                 );
             }
 
-            return $purchase->load('lines.product', 'lines.ingredient', 'supplier');
+            return $purchase->load('lines.product', 'lines.productVariant.attributeValues.productAttribute', 'lines.ingredient', 'supplier');
         });
     }
 
@@ -170,6 +192,55 @@ class PurchaseService
             'purchase_id' => $purchase->id,
             'user_id' => $user->id,
         ]);
+
+        return $stockTracker;
+    }
+
+    /**
+     * Contraparte de applyProductLine() cuando el producto elegido tiene
+     * variantes (Product::hasVariants()): la compra se aplica sobre LA
+     * VARIANTE - su propio stock y costo promedio ponderado, nunca sobre
+     * products.stock/cost_price (columnas "fantasma" para un producto con
+     * variantes, mismo concepto que ya existe para receta - ver
+     * ProductAvailability). A diferencia de applyProductLine(), no se
+     * registra ProductCostHistory: esa tabla no tiene product_variant_id y
+     * hoy no la consume ninguna pantalla (ver Fase 1 "productos con
+     * variaciones") - agregar esa columna queda para cuando haga falta de
+     * verdad.
+     *
+     * @param  Collection<int, ProductVariant>  $variants
+     * @param  array{quantity: float|int, product_variant_id?: ?int, notes?: ?string}  $row
+     * @return array<int, float>
+     */
+    private function applyVariantLine(User $user, Purchase $purchase, Product $product, Collection $variants, array $row, float $lineTotal, int $i, array $stockTracker): array
+    {
+        $variantId = (int) ($row['product_variant_id'] ?? 0);
+        $variant = $variantId ? $variants->get($variantId) : null;
+        if (! $variant || $variant->product_id !== $product->id) {
+            throw ValidationException::withMessages(["lines.{$i}.product_variant_id" => 'Selecciona una variante para «'.$product->name.'».']);
+        }
+
+        $quantity = (int) round((float) $row['quantity']);
+        $unitCost = round($lineTotal / $quantity, 4);
+
+        $line = PurchaseLine::create([
+            'purchase_id' => $purchase->id,
+            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
+            'quantity' => $quantity,
+            'line_total_cop' => $lineTotal,
+            'unit_cost_cop' => $unitCost,
+            'notes' => $row['notes'] ?? null,
+        ]);
+
+        $this->stockService->registerVariantPurchase($user, $variant, $quantity, $line, $unitCost);
+
+        $prevStock = $stockTracker[$variant->id] ?? (float) $variant->stock;
+        $prevCost = (float) $variant->cost_price;
+        $newCost = WeightedAverageCost::calculate($prevStock, $prevCost, $quantity, $unitCost);
+
+        $variant->update(['cost_price' => $newCost]);
+        $stockTracker[$variant->id] = $prevStock + $quantity;
 
         return $stockTracker;
     }

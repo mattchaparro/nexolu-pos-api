@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Business;
 use App\Models\Discount;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\SaleItem;
@@ -75,7 +76,7 @@ class SaleService
             $this->ensureInvoiceNumber($sale);
             $this->syncReceivable($sale->fresh());
 
-            return $sale->load('items.product', 'cartDiscount', 'paymentSplits');
+            return $sale->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'cartDiscount', 'paymentSplits');
         });
     }
 
@@ -196,7 +197,10 @@ class SaleService
     {
         DB::transaction(function () use ($user, $sale) {
             $ingredientsEnabled = $sale->business->hasFeature('ingredients');
-            $sale->loadMissing($ingredientsEnabled ? 'items.product.ingredients' : 'items.product');
+            $sale->loadMissing([
+                $ingredientsEnabled ? 'items.product.ingredients' : 'items.product',
+                'items.productVariant',
+            ]);
 
             $receivable = Receivable::where('business_id', $sale->business_id)
                 ->where('sale_id', $sale->id)
@@ -209,8 +213,20 @@ class SaleService
             }
 
             foreach ($sale->items as $item) {
+                if ($item->quantity <= 0) {
+                    continue;
+                }
+
+                if ($item->productVariant) {
+                    $this->stockService->registerVariantSaleReversal(
+                        $user, $item->productVariant, (int) $item->quantity, $sale, 'Reverso de venta'
+                    );
+
+                    continue;
+                }
+
                 $product = $item->product;
-                if ($product && $item->quantity > 0) {
+                if ($product) {
                     $this->stockService->registerSaleReversal(
                         $user, $product, (int) $item->quantity, $sale, 'Reverso de venta'
                     );
@@ -363,6 +379,7 @@ class SaleService
     {
         $discountsEnabled = $business->hasFeature('discounts');
         $ingredientsEnabled = $business->hasFeature('ingredients');
+        $variantsEnabled = $business->hasFeature('variants');
         $total = 0.0;
 
         $productIds = collect($items)->pluck('product_id')->unique()->values()->all();
@@ -373,31 +390,62 @@ class SaleService
             ->get()
             ->keyBy('id');
 
+        $variantIds = collect($items)->pluck('product_variant_id')->filter()->unique()->values()->all();
+        $variants = $variantsEnabled && $variantIds !== []
+            ? ProductVariant::where('business_id', $business->id)->whereIn('id', $variantIds)->lockForUpdate()->get()->keyBy('id')
+            : collect();
+
         foreach ($items as $item) {
             $product = $products->get($item['product_id']);
             $quantity = (int) $item['quantity'];
-            $availableStock = ProductAvailability::effectiveStock($product, $ingredientsEnabled);
 
-            if ($product->track_stock && $quantity > $availableStock) {
+            $variantId = $item['product_variant_id'] ?? null;
+            $variant = $variantId ? $variants->get($variantId) : null;
+
+            // Re-verificacion bajo lock, igual filosofia que el resto de esta
+            // clase: ValidatesSaleItems ya rechazo esto a nivel de request,
+            // esto es la ultima linea de defensa (ej. si algo llama
+            // applyItems() directo sin pasar por el FormRequest).
+            if ($variantsEnabled && $product->hasVariants() && ! $variant) {
+                throw ValidationException::withMessages([
+                    'items' => 'Selecciona una variante para «'.$product->name.'».',
+                ]);
+            }
+            if ($variant && ((int) $variant->product_id !== $product->id || ! $variant->is_active)) {
+                throw ValidationException::withMessages([
+                    'items' => 'Variante inválida para «'.$product->name.'».',
+                ]);
+            }
+
+            $availableStock = $variant
+                ? ProductAvailability::effectiveVariantStock($variant)
+                : ProductAvailability::effectiveStock($product, $ingredientsEnabled, $variantsEnabled);
+            $trackStock = $variant ? true : $product->track_stock;
+
+            if ($trackStock && $quantity > $availableStock) {
                 throw ValidationException::withMessages([
                     'items' => 'No hay stock suficiente para «'.$product->name.'» (disponible: '.(int) $availableStock.').',
                 ]);
             }
 
-            $unitPrice = SaleLineUnitPrice::resolve($product, $item);
+            $unitPrice = $variant ? (float) $variant->price : SaleLineUnitPrice::resolve($product, $item);
             $lineSubtotal = $unitPrice * $quantity;
 
             [$discountId, $discountAmount] = $discountsEnabled
                 ? Discount::resolveActive($business->id, 'item', $item['discount_id'] ?? null, $lineSubtotal)
                 : [null, 0.0];
 
-            // Si la cuenta ya tiene una linea del mismo producto con el mismo
-            // precio y descuento (tipico al "agregar mas" de algo que ya
-            // estaba en la cuenta), se suma la cantidad ahi en vez de crear
-            // una linea nueva - antes cada llamada a addItems generaba una
-            // fila aparte aunque fuera literalmente el mismo producto.
+            // Si la cuenta ya tiene una linea del mismo producto (Y de la
+            // misma variante, si aplica) con el mismo precio y descuento
+            // (tipico al "agregar mas" de algo que ya estaba en la cuenta),
+            // se suma la cantidad ahi en vez de crear una linea nueva - antes
+            // cada llamada a addItems generaba una fila aparte aunque fuera
+            // literalmente el mismo producto. product_variant_id entra al
+            // where: dos variantes distintas del mismo producto (ej. Talla
+            // S y Talla M) nunca deben fusionarse en una sola linea.
             $existingLine = $sale->items()
                 ->where('product_id', $product->id)
+                ->where('product_variant_id', $variant?->id)
                 ->where('unit_price', $unitPrice)
                 ->where('discount_id', $discountId)
                 ->first();
@@ -413,9 +461,10 @@ class SaleService
                 SaleItem::create([
                     'sale_id' => $sale->id,
                     'product_id' => $product->id,
+                    'product_variant_id' => $variant?->id,
                     'quantity' => $quantity,
                     'unit_price' => $unitPrice,
-                    'unit_cost_at_sale' => (float) $product->cost_price,
+                    'unit_cost_at_sale' => (float) ($variant ? $variant->cost_price : $product->cost_price),
                     'subtotal' => $lineSubtotal,
                     'discount_id' => $discountId,
                     'discount_amount' => $discountAmount,
@@ -424,7 +473,14 @@ class SaleService
                 ]);
             }
 
-            if ($product->track_stock) {
+            if ($variant) {
+                $this->stockService->registerVariantSale($user, $variant, $quantity, $sale);
+
+                // Ajuste en memoria, mismo motivo que el stock de producto
+                // abajo: si $items trae dos lineas de la misma variante, la
+                // siguiente vuelta del loop debe ver el stock ya descontado.
+                $variant->stock -= $quantity;
+            } elseif ($product->track_stock) {
                 $this->stockService->registerSale($user, $product, $quantity, $sale);
                 $this->stockService->registerIngredientsConsumption($user, $product, $quantity, $sale);
 

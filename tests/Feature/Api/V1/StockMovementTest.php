@@ -73,6 +73,28 @@ class StockMovementTest extends TestCase
         $this->assertSame(3, $product->fresh()->stock);
     }
 
+    /**
+     * Cubre StockService::assertStockIsManuallyManageable() (tarea de
+     * Reportes: bloquear ajuste manual de stock en productos con
+     * variantes) - un producto con variantes no expone products.stock para
+     * editar directo, cada variante tiene el suyo (aun no hay endpoint de
+     * movimiento por variante, ver Fase 2+).
+     */
+    public function test_a_product_with_variants_cannot_have_its_stock_adjusted_directly(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['variants' => true]]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $product = Product::factory()->create(['business_id' => $business->id, 'track_stock' => true, 'stock' => 0]);
+        $product->variants()->create(['business_id' => $business->id, 'sku' => 'CAM-S', 'price' => 45000, 'stock' => 5]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/stock-movements', [
+            'product_id' => $product->id,
+            'type' => 'entry',
+            'quantity' => 5,
+        ])->assertStatus(422)->assertJsonValidationErrors('product');
+    }
+
     public function test_user_cannot_create_a_movement_for_another_business_product(): void
     {
         $business = Business::factory()->create();
