@@ -60,6 +60,7 @@ use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\StockMovementReasonController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontCatalogController;
+use App\Http\Controllers\Api\V1\Storefront\StorefrontContactController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontOrderController;
 use App\Http\Controllers\Api\V1\SubscriptionController;
 use App\Http\Controllers\Api\V1\SupplierController;
@@ -148,6 +149,11 @@ Route::prefix('v1/storefront/{business}')
             ->middleware('throttle:20,1')
             ->name('orders.store');
         Route::get('/orders/{token}', [StorefrontOrderController::class, 'show'])->name('orders.show');
+
+        // El boton de WhatsApp pasa por aca para poder contarlo. Devuelve un
+        // 302 a wa.me armado en el servidor -- ver el docblock del
+        // controlador sobre por que el destino no se acepta por parametro.
+        Route::get('/whatsapp', [StorefrontContactController::class, 'whatsapp'])->name('contact.whatsapp');
         Route::get('/products/{productId}', [StorefrontCatalogController::class, 'product'])
             ->whereNumber('productId')
             ->name('products.show');

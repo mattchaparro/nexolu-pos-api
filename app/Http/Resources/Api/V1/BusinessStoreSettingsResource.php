@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Models\BusinessStoreInteraction;
 use App\Models\BusinessStoreSettings;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -35,6 +36,15 @@ class BusinessStoreSettingsResource extends JsonResource
             // editor necesita el id para saber que foto esta elegida; el
             // comprador necesita la URL para pintarla.
             'home_blocks' => array_values($this->home_blocks ?? []),
+            // Cuanta gente escribio por WhatsApp desde la tienda en los
+            // ultimos 30 dias. Se expone aca y no en un endpoint aparte
+            // porque es un numero suelto que se lee en la misma pantalla:
+            // una consulta mas para un entero no se justifica.
+            'whatsapp_clicks_30d' => BusinessStoreInteraction::withoutGlobalScopes()
+                ->where('business_id', $this->business_id)
+                ->where('type', BusinessStoreInteraction::TYPE_WHATSAPP)
+                ->where('created_at', '>=', now()->subDays(30))
+                ->count(),
             'order_email_enabled' => (bool) $this->order_email_enabled,
             'order_email' => $this->order_email,
             'terms' => $this->terms,
