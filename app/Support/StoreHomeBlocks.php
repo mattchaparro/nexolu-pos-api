@@ -44,6 +44,14 @@ class StoreHomeBlocks
 
     public const TYPE_HOURS = 'hours';
 
+    public const TYPE_BENTO = 'bento';
+
+    public const TYPE_MARQUEE = 'marquee';
+
+    public const TYPE_CATEGORIES = 'categories';
+
+    public const TYPE_BEFORE_AFTER = 'before_after';
+
     /**
      * Cuantas veces puede repetirse cada tipo. El hero es uno solo: dos
      * portadas seguidas no es personalizacion, es una pagina rota.
@@ -146,6 +154,47 @@ class StoreHomeBlocks
                 // Solo un enlace, nunca un iframe: un mapa embebido es un
                 // tercero ejecutando en nuestro dominio.
                 'map_url' => ['nullable', 'url', 'max:500'],
+            ],
+
+            // Reticula asimetrica de imagenes. Es la senal visual mas clara
+            // de una tienda hecha en 2026, y hace que cuatro fotos regulares
+            // se vean intencionales en vez de sueltas.
+            self::TYPE_BENTO => [
+                'title' => ['nullable', 'string', 'max:120'],
+                // Cinco es el maximo con el que la reticula sigue teniendo
+                // una forma reconocible; con mas se vuelve una grilla comun.
+                'items' => ['nullable', 'array', 'max:5'],
+                'items.*.image_id' => ['nullable', 'integer'],
+                'items.*.title' => ['nullable', 'string', 'max:60'],
+                'items.*.text' => ['nullable', 'string', 'max:120'],
+                'items.*.url' => ['nullable', 'url', 'max:255'],
+            ],
+
+            // Cinta de texto en movimiento: "Envio gratis desde $80.000".
+            self::TYPE_MARQUEE => [
+                'items' => ['nullable', 'array', 'max:6'],
+                'items.*.text' => ['required', 'string', 'max:80'],
+                'speed' => ['nullable', 'string', 'in:slow,normal,fast'],
+            ],
+
+            // Navegar por categoria desde el home. El menos vistoso y el mas
+            // util comercialmente.
+            self::TYPE_CATEGORIES => [
+                'title' => ['nullable', 'string', 'max:120'],
+                // Vacio = todas las publicadas, igual que destacados con
+                // product_ids vacio.
+                'category_ids' => ['nullable', 'array', 'max:8'],
+                'category_ids.*' => ['integer'],
+            ],
+
+            // Antes y despues con deslizador. Inutil para un restaurante y
+            // exactamente lo que vende un spa o una barberia.
+            self::TYPE_BEFORE_AFTER => [
+                'title' => ['nullable', 'string', 'max:120'],
+                'before_image_id' => ['nullable', 'integer'],
+                'after_image_id' => ['nullable', 'integer'],
+                'before_label' => ['nullable', 'string', 'max:30'],
+                'after_label' => ['nullable', 'string', 'max:30'],
             ],
         ];
     }

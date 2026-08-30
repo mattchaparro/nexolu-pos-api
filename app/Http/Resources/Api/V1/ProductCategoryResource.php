@@ -24,6 +24,11 @@ class ProductCategoryResource extends JsonResource
             // Nombre de Material Icon (mismo vocabulario que el legacy) -
             // CategoryIconResolver solo evita devolverlo vacio.
             'icon' => CategoryIconResolver::resolve($this->icon),
+            // Si sale en la tienda online. La columna existe desde que hay
+            // tienda, pero el POS no la veia: sin esto no habia forma de
+            // ofrecer al comerciante solo las categorias publicadas.
+            'is_published' => (bool) $this->is_published,
+            'sort_order' => (int) $this->sort_order,
         ];
     }
 }

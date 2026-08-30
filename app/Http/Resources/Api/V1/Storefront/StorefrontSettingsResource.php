@@ -94,9 +94,30 @@ class StorefrontSettingsResource extends JsonResource
                 continue;
             }
 
-            if (array_key_exists('image_id', $block)) {
-                $block['image_url'] = $urls[$block['image_id']]['url'] ?? null;
-                unset($block['image_id']);
+            // Cualquier clave que termine en `image_id` se resuelve igual:
+            // `image_id` -> `image_url`, `before_image_id` -> `before_image_url`.
+            // Asi un bloque nuevo con dos imagenes (antes/despues) no obliga a
+            // tocar este metodo.
+            foreach (array_keys($block) as $key) {
+                if (! is_string($key) || ! str_ends_with($key, 'image_id')) {
+                    continue;
+                }
+
+                $destino = substr($key, 0, -2).'url';
+                $block[$destino] = $urls[$block[$key]]['url'] ?? null;
+                unset($block[$key]);
+            }
+
+            // Imagenes dentro de una lista (la reticula del bento).
+            if (isset($block['items']) && is_array($block['items'])) {
+                $block['items'] = array_map(function ($item) use ($urls) {
+                    if (is_array($item) && array_key_exists('image_id', $item)) {
+                        $item['image_url'] = $urls[$item['image_id']]['url'] ?? null;
+                        unset($item['image_id']);
+                    }
+
+                    return $item;
+                }, $block['items']);
             }
 
             if (array_key_exists('image_ids', $block)) {
@@ -132,11 +153,22 @@ class StorefrontSettingsResource extends JsonResource
     {
         $ids = [];
         foreach ($blocks as $block) {
-            if (isset($block['image_id'])) {
-                $ids[] = (int) $block['image_id'];
+            foreach ($block as $key => $value) {
+                // `image_id`, `before_image_id`, `after_image_id`...
+                if (is_string($key) && str_ends_with($key, 'image_id') && $value !== null) {
+                    $ids[] = (int) $value;
+                }
             }
+
             foreach ($block['image_ids'] ?? [] as $id) {
                 $ids[] = (int) $id;
+            }
+
+            // Las de la reticula del bento, que van dentro de cada item.
+            foreach ($block['items'] ?? [] as $item) {
+                if (is_array($item) && isset($item['image_id'])) {
+                    $ids[] = (int) $item['image_id'];
+                }
             }
         }
 
