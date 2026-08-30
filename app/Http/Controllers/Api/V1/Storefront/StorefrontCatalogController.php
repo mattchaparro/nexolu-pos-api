@@ -9,6 +9,7 @@ use App\Http\Resources\Api\V1\Storefront\StorefrontSettingsResource;
 use App\Models\Business;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Services\CrossSellService;
 use App\Services\OrderService;
 use App\Services\ProductReviewService;
 use App\Support\TenantContext;
@@ -32,6 +33,7 @@ class StorefrontCatalogController extends Controller
     public function __construct(
         private OrderService $orders,
         private ProductReviewService $reviews,
+        private CrossSellService $crossSells,
     ) {}
 
     public function settings(Request $request): StorefrontSettingsResource
@@ -131,6 +133,9 @@ class StorefrontCatalogController extends Controller
         $ids = $paginated->pluck('id')->all();
 
         StorefrontProductResource::useReservations($this->orders->reservedUnits((int) $business?->id, $ids));
+        // El listado no lleva sugerencias: se limpia para que no queden las
+        // de una ficha vista antes en la misma peticion.
+        StorefrontProductResource::useCrossSells(null);
         if ($business !== null) {
             StorefrontProductResource::useRatings($this->reviews->summaryFor($business, $ids));
         }
@@ -201,11 +206,22 @@ class StorefrontCatalogController extends Controller
 
         abort_if($product === null, 404);
 
+        // "Va bien con". Solo las publicadas: sugerir algo que no esta en la
+        // tienda lleva al comprador a un 404 (ver CrossSellService).
+        $sugeridos = $this->crossSells->forProduct($product, publicOnly: true);
+
         $business = TenantContext::current();
-        StorefrontProductResource::useReservations($this->orders->reservedUnits((int) $business?->id, [$product->id]));
+        $ids = [$product->id, ...$sugeridos->pluck('id')->all()];
+
+        StorefrontProductResource::useReservations($this->orders->reservedUnits((int) $business?->id, $ids));
         if ($business !== null) {
-            StorefrontProductResource::useRatings($this->reviews->summaryFor($business, [$product->id]));
+            StorefrontProductResource::useRatings($this->reviews->summaryFor($business, $ids));
         }
+
+        // Se cargan las mismas relaciones que la ficha: sin esto las tarjetas
+        // sugeridas saldrian sin foto ni precio de variante.
+        $sugeridos->load(['images', 'variants' => fn ($q) => $q->where('is_active', true)]);
+        StorefrontProductResource::useCrossSells($sugeridos);
 
         return new StorefrontProductResource($product);
     }

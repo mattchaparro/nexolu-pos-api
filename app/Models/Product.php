@@ -166,6 +166,15 @@ class Product extends Model
     }
 
     /**
+     * Que sugerir a quien lleva este producto. Dirigida: esta relacion NO
+     * incluye los productos que sugieren a este (ver ProductCrossSell).
+     */
+    public function crossSells(): HasMany
+    {
+        return $this->hasMany(ProductCrossSell::class)->orderBy('sort_order');
+    }
+
+    /**
      * Mismo idioma que isStockManagedByIngredientsRecipe(): usa la relacion
      * si ya esta cargada (evita N+1 en listados), si no hace un exists().
      */

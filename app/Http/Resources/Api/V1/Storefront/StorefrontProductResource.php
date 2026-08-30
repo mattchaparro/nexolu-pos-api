@@ -5,6 +5,7 @@ namespace App\Http\Resources\Api\V1\Storefront;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Collection;
 
 /**
  * Un producto tal y como lo ve un COMPRADOR ANONIMO en internet.
@@ -77,6 +78,25 @@ class StorefrontProductResource extends JsonResource
     }
 
     /**
+     * "Va bien con". Solo se llena en la ficha individual: en el listado del
+     * catalogo seria una consulta por producto para algo que nadie mira ahi.
+     *
+     * @var Collection<int, Product>|null
+     */
+    private static $crossSells = null;
+
+    /**
+     * `null` vuelve al estado "no aplica". Hay que llamarlo asi en el
+     * LISTADO: el estatico sobrevive a toda la peticion (y en los tests, a
+     * todo el proceso), de modo que sin esto una ficha vista antes dejaria
+     * sus sugerencias pegadas a la siguiente respuesta.
+     */
+    public static function useCrossSells(?Collection $products): void
+    {
+        self::$crossSells = $products;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(Request $request): array
@@ -112,6 +132,19 @@ class StorefrontProductResource extends JsonResource
             // tienda no tiene que distinguir "sin reseñas" de "no vino el
             // dato".
             'rating' => self::$ratings[$this->id] ?? ['average' => 0.0, 'count' => 0],
+            // Ausente en el listado, presente (aunque vacio) en la ficha: asi
+            // la tienda distingue "no aplica" de "no hay sugerencias".
+            'cross_sells' => self::$crossSells === null
+                ? null
+                : self::$crossSells->map(fn (Product $related) => [
+                    'id' => $related->id,
+                    'name' => $related->name,
+                    'price' => (float) ($related->variants->isNotEmpty()
+                        ? $related->variants->min('price')
+                        : $related->price),
+                    'has_variants' => $related->variants->isNotEmpty(),
+                    'image' => $related->images->first()?->thumbnailUrl() ?? $related->image,
+                ])->values(),
         ];
     }
 

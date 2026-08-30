@@ -48,6 +48,7 @@ use App\Http\Controllers\Api\V1\PosPaymentMethodController;
 use App\Http\Controllers\Api\V1\ProductAttributeController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
+use App\Http\Controllers\Api\V1\ProductCrossSellController;
 use App\Http\Controllers\Api\V1\ProductImageController;
 use App\Http\Controllers\Api\V1\ProductReviewModerationController;
 use App\Http\Controllers\Api\V1\ProductVariantController;
@@ -305,11 +306,19 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             // compartida por el formulario de "Ajustar stock" de productos e
             // insumos, no atada a la feature "ingredients" (los productos
             // ajustan stock sin necesitarla).
+            Route::get('/products/{product}/cross-sells', [ProductCrossSellController::class, 'index'])
+                ->name('products.cross-sells.index');
             Route::get('/stock-movement-reasons', [StockMovementReasonController::class, 'index'])->name('stock-movement-reasons.index');
         });
         Route::middleware('permission:inventory.add')->group(function () {
             Route::apiResource('product-categories', ProductCategoryController::class)->only(['store', 'update', 'destroy']);
             Route::post('/products/{product}/duplicate', [ProductController::class, 'duplicate'])->name('products.duplicate');
+            // Ventas cruzadas: cuelgan del producto porque asi se piensan
+            // ("a quien lleve esto, ofrecele..."). NO van detras del feature
+            // online_store: le sirven al mostrador aunque el negocio nunca
+            // abra su tienda, que es justamente donde mas se factura.
+            Route::put('/products/{product}/cross-sells', [ProductCrossSellController::class, 'update'])
+                ->name('products.cross-sells.update');
             Route::apiResource('products', ProductController::class)->only(['store', 'update', 'destroy']);
         });
 
