@@ -180,4 +180,74 @@ class StorefrontCatalogSortTest extends TestCase
         $response->assertJsonPath('how_to_use', 'Aplicar sobre la piel seca.');
         $response->assertJsonPath('description', 'Crema hidratante');
     }
+
+    // -----------------------------------------------------------------
+    // Filtros
+    // -----------------------------------------------------------------
+
+    public function test_el_rango_de_precio_usa_el_precio_publicado(): void
+    {
+        $business = $this->storefrontBusiness();
+
+        // products.price altisimo, pero su variante mas barata vale 500: si
+        // el filtro mirara la columna del producto, este quedaria fuera.
+        $conVariantes = $this->publishedProduct($business, ['name' => 'Barato por variante', 'price' => 99000]);
+        ProductVariant::factory()->create([
+            'product_id' => $conVariantes->id,
+            'business_id' => $business->id,
+            'price' => 500,
+            'is_active' => true,
+        ]);
+
+        $this->publishedProduct($business, ['name' => 'Caro', 'price' => 80000]);
+
+        $response = $this->getJson("/api/v1/storefront/{$business->slug}/products?max_price=1000");
+
+        $response->assertOk();
+        $this->assertSame(['Barato por variante'], array_column($response->json('data'), 'name'));
+    }
+
+    public function test_solo_disponibles_deja_fuera_lo_agotado(): void
+    {
+        $business = $this->storefrontBusiness();
+
+        $this->publishedProduct($business, ['name' => 'Con existencias', 'track_stock' => true, 'stock' => 5]);
+        $this->publishedProduct($business, ['name' => 'Agotado', 'track_stock' => true, 'stock' => 0]);
+        // Sin control de stock: siempre se puede pedir.
+        $this->publishedProduct($business, ['name' => 'Sin control', 'track_stock' => false, 'stock' => 0]);
+
+        $response = $this->getJson("/api/v1/storefront/{$business->slug}/products?in_stock=1");
+
+        $response->assertOk();
+        $nombres = array_column($response->json('data'), 'name');
+        sort($nombres);
+        $this->assertSame(['Con existencias', 'Sin control'], $nombres);
+    }
+
+    /** Un producto agotado en TODAS sus variantes tampoco pasa el filtro. */
+    public function test_solo_disponibles_mira_las_variantes(): void
+    {
+        $business = $this->storefrontBusiness();
+
+        $agotado = $this->publishedProduct($business, ['name' => 'Todas agotadas', 'track_stock' => true, 'stock' => 0]);
+        ProductVariant::factory()->create([
+            'product_id' => $agotado->id,
+            'business_id' => $business->id,
+            'stock' => 0,
+            'is_active' => true,
+        ]);
+
+        $disponible = $this->publishedProduct($business, ['name' => 'Una con stock', 'track_stock' => true, 'stock' => 0]);
+        ProductVariant::factory()->create([
+            'product_id' => $disponible->id,
+            'business_id' => $business->id,
+            'stock' => 3,
+            'is_active' => true,
+        ]);
+
+        $response = $this->getJson("/api/v1/storefront/{$business->slug}/products?in_stock=1");
+
+        $response->assertOk();
+        $this->assertSame(['Una con stock'], array_column($response->json('data'), 'name'));
+    }
 }

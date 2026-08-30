@@ -92,6 +92,38 @@ class StorefrontCatalogController extends Controller
             );
         }
 
+        // "Solo lo que puedo comprar". Se resuelve en SQL con el stock crudo y
+        // NO con las reservas de pedidos pendientes: esas se calculan en PHP
+        // por pagina (ver OrderService::reservedUnits) y meterlas aca seria
+        // una subconsulta por producto. La consecuencia es acotada y
+        // conocida: un producto cuyo stock esta enteramente reservado sigue
+        // apareciendo, pero el Resource lo marca "Agotado" igual, asi que no
+        // se puede pedir.
+        if ($request->boolean('in_stock')) {
+            $query->where(function (Builder $disponible) {
+                $disponible
+                    // Sin control de stock siempre se puede pedir.
+                    ->where('track_stock', false)
+                    // Con variantes: alguna variante activa con existencias.
+                    ->orWhereHas('variants', fn (Builder $v) => $v->where('is_active', true)->where('stock', '>', 0))
+                    // Sin variantes activas: sus propias existencias.
+                    ->orWhere(fn (Builder $simple) => $simple
+                        ->whereDoesntHave('variants', fn (Builder $v) => $v->where('is_active', true))
+                        ->where('stock', '>', 0));
+            });
+        }
+
+        // Rango de precio, contra el precio PUBLICADO (ver PRECIO_PUBLICADO).
+        // `numeric` y no interpolado: son los unicos numeros del filtro y
+        // entran como binding, nunca concatenados.
+        if ($request->filled('min_price')) {
+            $query->whereRaw(self::PRECIO_PUBLICADO.' >= ?', [(float) $request->input('min_price')]);
+        }
+
+        if ($request->filled('max_price')) {
+            $query->whereRaw(self::PRECIO_PUBLICADO.' <= ?', [(float) $request->input('max_price')]);
+        }
+
         $this->sort($query, (string) $request->input('sort', 'name'));
 
         $paginated = $query->paginate(24)->withQueryString();
@@ -116,15 +148,26 @@ class StorefrontCatalogController extends Controller
      * daria una lista ordenada por un precio que el comprador no ve. La
      * subconsulta reproduce exactamente el precio publicado.
      */
+    /**
+     * El precio que el comprador VE, como expresion SQL.
+     *
+     * Un producto con variantes publica el minimo de sus variantes activas
+     * (ver StorefrontProductResource), no `products.price`. La usan tanto el
+     * orden como el filtro por rango: si cada uno usara una definicion
+     * distinta, filtrar "hasta $20.000" dejaria fuera cosas que se muestran
+     * a $15.000.
+     */
+    private const PRECIO_PUBLICADO = <<<'SQL'
+        COALESCE(
+            (SELECT MIN(pv.price) FROM product_variants pv
+              WHERE pv.product_id = products.id AND pv.is_active = 1),
+            products.price
+        )
+    SQL;
+
     private function sort(Builder $query, string $sort): void
     {
-        $precioPublicado = <<<'SQL'
-            COALESCE(
-                (SELECT MIN(pv.price) FROM product_variants pv
-                  WHERE pv.product_id = products.id AND pv.is_active = 1),
-                products.price
-            )
-        SQL;
+        $precioPublicado = self::PRECIO_PUBLICADO;
 
         match ($sort) {
             'price_asc' => $query->orderByRaw("{$precioPublicado} ASC"),
