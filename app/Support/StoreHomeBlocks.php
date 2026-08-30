@@ -52,6 +52,10 @@ class StoreHomeBlocks
 
     public const TYPE_BEFORE_AFTER = 'before_after';
 
+    public const TYPE_VIDEO = 'video';
+
+    public const TYPE_ANNOUNCEMENT = 'announcement';
+
     /**
      * Cuantas veces puede repetirse cada tipo. El hero es uno solo: dos
      * portadas seguidas no es personalizacion, es una pagina rota.
@@ -62,6 +66,8 @@ class StoreHomeBlocks
         self::TYPE_HERO => 1,
         self::TYPE_TRUST => 1,
         self::TYPE_HOURS => 1,
+        // Dos franjas de anuncio seguidas se anulan entre si.
+        self::TYPE_ANNOUNCEMENT => 1,
     ];
 
     /** Tope total, para que nadie arme una home de 200 bloques. */
@@ -195,6 +201,34 @@ class StoreHomeBlocks
                 'after_image_id' => ['nullable', 'integer'],
                 'before_label' => ['nullable', 'string', 'max:30'],
                 'after_label' => ['nullable', 'string', 'max:30'],
+            ],
+
+            /*
+             * Video EMBEBIDO de YouTube o Vimeo, nunca un archivo subido.
+             *
+             * No es una limitacion tecnica sino una decision: un mp4 mal
+             * comprimido en el home es lo que hace que una tienda no cargue
+             * con datos moviles, que es como entra casi todo el mundo en
+             * Colombia. YouTube y Vimeo ya resuelven transcodificacion,
+             * adaptacion al ancho de banda y CDN.
+             *
+             * `url` se valida por FORMA aca y el storefront extrae el id y
+             * arma el embed el mismo (ver BlockVideo): nunca se guarda ni se
+             * pinta una URL de iframe que venga del comerciante.
+             */
+            self::TYPE_VIDEO => [
+                'title' => ['nullable', 'string', 'max:120'],
+                'url' => ['nullable', 'url', 'max:500'],
+                'caption' => ['nullable', 'string', 'max:200'],
+            ],
+
+            // Franja delgada arriba del todo: envio gratis, horario especial,
+            // una promocion que vence.
+            self::TYPE_ANNOUNCEMENT => [
+                'text' => ['nullable', 'string', 'max:160'],
+                'cta_label' => ['nullable', 'string', 'max:40'],
+                'cta_url' => ['nullable', 'url', 'max:255'],
+                'tone' => ['nullable', 'string', 'in:primary,accent,dark'],
             ],
         ];
     }
