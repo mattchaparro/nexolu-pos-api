@@ -302,4 +302,65 @@ class OnlineStoreRegressionTest extends TestCase
 
         parent::tearDown();
     }
+
+    /**
+     * El insert que hace la migracion lista SOLO las columnas que existen en
+     * el legacy (ver BusinessDataExporter en pos-saas: copia las filas de
+     * origen tal cual). Toda columna que este repo le agregue a una tabla
+     * compartida tiene que poder quedarse en su default.
+     *
+     * Si alguien agrega a `products` o `product_categories` una columna NOT
+     * NULL sin default, la migracion de un negocio real revienta a mitad de
+     * camino -- y se descubriria en produccion, migrando. Esto lo caza antes.
+     */
+    public function test_las_columnas_nuevas_de_tablas_compartidas_tienen_default(): void
+    {
+        $legacy = file_get_contents(database_path('legacy-schema/schema.sql'));
+
+        foreach (['products', 'product_categories'] as $tabla) {
+            $columnasLegacy = $this->legacyColumns($legacy, $tabla);
+            $this->assertNotEmpty($columnasLegacy, "No se pudo leer el esquema legacy de {$tabla}.");
+
+            $actuales = DB::select(
+                'SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT, EXTRA
+                   FROM information_schema.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+                [$tabla],
+            );
+
+            foreach ($actuales as $columna) {
+                if (in_array($columna->COLUMN_NAME, $columnasLegacy, true)) {
+                    continue; // Ya existia en el legacy: la migracion la manda.
+                }
+
+                $puedeOmitirse = $columna->IS_NULLABLE === 'YES'
+                    || $columna->COLUMN_DEFAULT !== null
+                    || str_contains((string) $columna->EXTRA, 'auto_increment');
+
+                $this->assertTrue(
+                    $puedeOmitirse,
+                    "{$tabla}.{$columna->COLUMN_NAME} es nueva y NOT NULL sin default: "
+                    .'rompe la migracion de negocios desde el monolito.',
+                );
+            }
+        }
+    }
+
+    /**
+     * Las columnas que el esquema legacy declara para una tabla.
+     *
+     * @return list<string>
+     */
+    private function legacyColumns(string $schema, string $table): array
+    {
+        $inicio = strpos($schema, "CREATE TABLE `{$table}` (");
+        if ($inicio === false) {
+            return [];
+        }
+
+        $cuerpo = substr($schema, $inicio, strpos($schema, ') ENGINE=', $inicio) - $inicio);
+        preg_match_all('/^\s+`([a-z0-9_]+)`\s+\w/mi', $cuerpo, $coincidencias);
+
+        return $coincidencias[1];
+    }
 }
