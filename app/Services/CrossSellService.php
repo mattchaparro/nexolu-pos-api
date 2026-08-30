@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Product;
+use App\Models\ProductCrossSell;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -72,6 +73,47 @@ class CrossSellService
                 ]);
             }
         });
+    }
+
+    /**
+     * Sugerencias para VARIOS productos a la vez, sin repetir y sin incluir
+     * los que ya estan en la lista.
+     *
+     * Es lo que necesita el carrito: pedir la ficha de cada articulo seria
+     * una peticion por linea, y ademas sugeriria cosas que el comprador ya
+     * lleva -- que se lee como que la tienda no se entera de lo que hay en
+     * el carrito.
+     *
+     * @param  list<int>  $productIds
+     * @return Collection<int, Product>
+     */
+    public function forProducts(array $productIds, int $limit = 4, bool $publicOnly = true)
+    {
+        $ids = array_values(array_unique(array_map('intval', $productIds)));
+
+        if ($ids === []) {
+            return Product::whereRaw('1 = 0')->get();
+        }
+
+        $sugeridos = ProductCrossSell::whereIn('product_id', $ids)
+            ->orderBy('sort_order')
+            ->pluck('related_product_id')
+            ->reject(fn ($id) => in_array((int) $id, $ids, true))
+            ->unique()
+            ->take($limit)
+            ->values();
+
+        if ($sugeridos->isEmpty()) {
+            return Product::whereRaw('1 = 0')->get();
+        }
+
+        $query = Product::whereIn('id', $sugeridos)->where('is_active', true);
+
+        if ($publicOnly) {
+            $query->where('is_published', true)->where('is_service', false);
+        }
+
+        return $query->get()->sortBy(fn (Product $p) => $sugeridos->search($p->id))->values();
     }
 
     /**

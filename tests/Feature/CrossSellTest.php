@@ -180,4 +180,54 @@ class CrossSellTest extends TestCase
             $this->assertNull($item['cross_sells']);
         }
     }
+
+    // -----------------------------------------------------------------
+    // El carrito: sugerencias para varios productos a la vez
+    // -----------------------------------------------------------------
+
+    public function test_el_carrito_recibe_sugerencias_sin_repetir_lo_que_ya_lleva(): void
+    {
+        $hamburguesa = $this->product(['name' => 'Hamburguesa']);
+        $perro = $this->product(['name' => 'Perro']);
+        $papas = $this->product(['name' => 'Papas']);
+        $gaseosa = $this->product(['name' => 'Gaseosa']);
+
+        // Los dos sugieren papas; el perro ademas gaseosa.
+        $this->sync($hamburguesa, [$papas->id])->assertOk();
+        $this->sync($perro, [$papas->id, $gaseosa->id])->assertOk();
+
+        $ids = "{$hamburguesa->id},{$perro->id}";
+        $response = $this->getJson("/api/v1/storefront/{$this->business->slug}/cross-sells?product_ids={$ids}");
+
+        $response->assertOk();
+        // Sin envoltorio `data`: no es paginado y la app desactiva el
+        // wrapping de JsonResource (ver AppServiceProvider).
+        $nombres = array_column($response->json(), 'name');
+        sort($nombres);
+
+        // Papas una sola vez pese a que la sugieren dos.
+        $this->assertSame(['Gaseosa', 'Papas'], $nombres);
+    }
+
+    /** Sugerir lo que el comprador ya lleva se lee como que la tienda no se entera. */
+    public function test_no_sugiere_lo_que_ya_esta_en_el_carrito(): void
+    {
+        $hamburguesa = $this->product(['name' => 'Hamburguesa']);
+        $papas = $this->product(['name' => 'Papas']);
+
+        $this->sync($hamburguesa, [$papas->id])->assertOk();
+
+        $ids = "{$hamburguesa->id},{$papas->id}";
+        $response = $this->getJson("/api/v1/storefront/{$this->business->slug}/cross-sells?product_ids={$ids}");
+
+        $response->assertOk();
+        $response->assertJsonCount(0);
+    }
+
+    public function test_sin_productos_no_devuelve_nada(): void
+    {
+        $this->getJson("/api/v1/storefront/{$this->business->slug}/cross-sells")
+            ->assertOk()
+            ->assertJsonCount(0);
+    }
 }

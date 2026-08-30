@@ -144,6 +144,33 @@ class StorefrontCatalogController extends Controller
     }
 
     /**
+     * "Completa tu pedido": sugerencias para lo que ya hay en el carrito.
+     *
+     * Endpoint propio y no parte de la ficha porque el carrito tiene varias
+     * lineas: pedir la ficha de cada una seria una peticion por articulo.
+     */
+    public function crossSells(Request $request): AnonymousResourceCollection
+    {
+        $business = TenantContext::current();
+        abort_unless($business !== null, 404);
+
+        $ids = array_filter(array_map(
+            'intval',
+            explode(',', (string) $request->query('product_ids', '')),
+        ));
+
+        $sugeridos = $this->crossSells->forProducts($ids, publicOnly: true);
+        $sugeridos->load(['images', 'variants' => fn ($q) => $q->where('is_active', true)]);
+
+        $idsSugeridos = $sugeridos->pluck('id')->all();
+        StorefrontProductResource::useReservations($this->orders->reservedUnits($business->id, $idsSugeridos));
+        StorefrontProductResource::useRatings($this->reviews->summaryFor($business, $idsSugeridos));
+        StorefrontProductResource::useCrossSells(null);
+
+        return StorefrontProductResource::collection($sugeridos);
+    }
+
+    /**
      * Catalogo cerrado de ordenamientos. Nunca se interpola lo que llega del
      * cliente en el SQL: un `sort` desconocido cae en el orden por defecto.
      *

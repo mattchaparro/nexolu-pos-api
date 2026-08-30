@@ -143,6 +143,9 @@ Route::prefix('v1/storefront/{business}')
         Route::get('/', [StorefrontCatalogController::class, 'settings'])->name('settings');
         Route::get('/categories', [StorefrontCatalogController::class, 'categories'])->name('categories');
         Route::get('/products', [StorefrontCatalogController::class, 'products'])->name('products.index');
+        // Sugerencias para varios productos (el carrito). Aparte de la ficha
+        // porque el carrito tiene varias lineas y seria una peticion por una.
+        Route::get('/cross-sells', [StorefrontCatalogController::class, 'crossSells'])->name('cross-sells');
         // Checkout y seguimiento. `throttle` mas estricto que el catalogo:
         // crear pedidos es escritura desde internet abierto.
         Route::post('/orders', [StorefrontOrderController::class, 'store'])
