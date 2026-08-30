@@ -108,16 +108,22 @@ class ProductReviewService
             ->all();
     }
 
-    /** Aprobar u ocultar, desde el POS. Deja quien y cuando. */
+    /**
+     * Aprobar u ocultar, desde el POS. Deja quien y cuando.
+     *
+     * Asignacion directa y no `update()`: `status`, `moderated_at` y
+     * `moderated_by` NO estan en el Fillable del modelo a proposito, para que
+     * ningun payload pueda colar un "ya vengo aprobada". Un `update()` con
+     * esos campos los descartaba en silencio y la moderacion no hacia nada.
+     */
     public function moderate(ProductReview $review, string $status, User $user): ProductReview
     {
-        $review->update([
-            'status' => $status,
-            'moderated_at' => now(),
-            'moderated_by' => $user->id,
-        ]);
+        $review->status = $status;
+        $review->moderated_at = now();
+        $review->moderated_by = $user->id;
+        $review->save();
 
-        return $review->fresh();
+        return $review;
     }
 
     /**

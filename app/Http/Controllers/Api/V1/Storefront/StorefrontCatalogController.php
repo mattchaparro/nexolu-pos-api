@@ -42,11 +42,23 @@ class StorefrontCatalogController extends Controller
     /**
      * Solo categorias publicadas Y con algo que mostrar: una categoria vacia
      * en la navegacion de una tienda es un callejon sin salida.
+     *
+     * "Con algo que mostrar" incluye lo que cuelga de sus HIJAS. Una categoria
+     * padre normalmente no tiene productos propios -- "Bebidas" existe para
+     * agrupar "Sodas" y "Jugos" --, y exigirle productos directos la dejaba
+     * fuera de la respuesta: sus subcategorias llegaban con un `parent_id`
+     * que apuntaba a nada y el arbol de navegacion se rompia justo en el caso
+     * normal.
      */
     public function categories(): AnonymousResourceCollection
     {
         $categories = ProductCategory::where('is_published', true)
-            ->whereHas('products', fn (Builder $query) => $this->visible($query))
+            ->where(function (Builder $query) {
+                $query->whereHas('products', fn (Builder $q) => $this->visible($q))
+                    ->orWhereHas('children', fn (Builder $q) => $q
+                        ->where('is_published', true)
+                        ->whereHas('products', fn (Builder $p) => $this->visible($p)));
+            })
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get();
@@ -68,8 +80,16 @@ class StorefrontCatalogController extends Controller
         }
 
         if ($request->filled('category_id')) {
+            // `idsIncludingChildren` es ESTATICO y recibe el id. Se llamaba
+            // sobre la instancia y sin argumentos, asi que filtrar por
+            // cualquier categoria existente reventaba con un 500. El `find`
+            // se conserva para no confiar en un id de otro negocio: el global
+            // scope lo resuelve, y si no existe el filtro no devuelve nada.
             $category = ProductCategory::find($request->integer('category_id'));
-            $query->whereIn('category_id', $category ? $category->idsIncludingChildren() : [-1]);
+            $query->whereIn(
+                'category_id',
+                $category ? ProductCategory::idsIncludingChildren($category->id) : [-1],
+            );
         }
 
         $this->sort($query, (string) $request->input('sort', 'name'));

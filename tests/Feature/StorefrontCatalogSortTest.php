@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Business;
 use App\Models\BusinessStoreSettings;
 use App\Models\Product;
+use App\Models\ProductCategory;
 use App\Models\ProductVariant;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -104,6 +105,65 @@ class StorefrontCatalogSortTest extends TestCase
 
         // Un valor arbitrario no puede alterar la consulta ni reventarla.
         $this->assertSame(['Alfa', 'Zeta'], $this->names($business, 'precio); DROP TABLE products;--'));
+    }
+
+    /**
+     * El caso normal de una tienda con subcategorias: el padre agrupa y no
+     * tiene productos propios. Si no viniera, sus hijas quedarian huerfanas.
+     */
+    public function test_una_categoria_padre_sin_productos_propios_igual_aparece(): void
+    {
+        $business = $this->storefrontBusiness();
+
+        $padre = ProductCategory::factory()->create([
+            'business_id' => $business->id,
+            'name' => 'Bebidas',
+            'is_published' => true,
+            'parent_id' => null,
+        ]);
+        $hija = ProductCategory::factory()->create([
+            'business_id' => $business->id,
+            'name' => 'Sodas',
+            'is_published' => true,
+            'parent_id' => $padre->id,
+        ]);
+
+        // El producto cuelga SOLO de la hija.
+        $this->publishedProduct($business, ['category_id' => $hija->id]);
+
+        $response = $this->getJson("/api/v1/storefront/{$business->slug}/categories");
+
+        $response->assertOk();
+        $nombres = array_column($response->json(), 'name');
+        $this->assertContains('Bebidas', $nombres);
+        $this->assertContains('Sodas', $nombres);
+    }
+
+    /** Filtrar por el padre trae lo de sus hijas. */
+    public function test_filtrar_por_la_categoria_padre_incluye_las_subcategorias(): void
+    {
+        $business = $this->storefrontBusiness();
+
+        $padre = ProductCategory::factory()->create([
+            'business_id' => $business->id,
+            'is_published' => true,
+            'parent_id' => null,
+        ]);
+        $hija = ProductCategory::factory()->create([
+            'business_id' => $business->id,
+            'is_published' => true,
+            'parent_id' => $padre->id,
+        ]);
+
+        $this->publishedProduct($business, ['name' => 'De la hija', 'category_id' => $hija->id]);
+        $this->publishedProduct($business, ['name' => 'De otra parte']);
+
+        $response = $this->getJson(
+            "/api/v1/storefront/{$business->slug}/products?category_id={$padre->id}"
+        );
+
+        $response->assertOk();
+        $this->assertSame(['De la hija'], array_column($response->json('data'), 'name'));
     }
 
     public function test_la_ficha_publica_incluye_como_se_usa(): void

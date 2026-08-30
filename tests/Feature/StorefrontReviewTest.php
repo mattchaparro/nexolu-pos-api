@@ -8,6 +8,8 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ProductReview;
+use App\Models\User;
+use App\Services\ProductReviewService;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
@@ -52,6 +54,15 @@ class StorefrontReviewTest extends TestCase
             'is_service' => false,
             ...$attributes,
         ]);
+    }
+
+    /** Dueño del negocio: la moderacion va detras de `business-admin`. */
+    private function admin(Business $business): User
+    {
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        return $user;
     }
 
     /** Un pedido entregado con ese producto: el escenario que SI habilita reseñar. */
@@ -225,6 +236,145 @@ class StorefrontReviewTest extends TestCase
         $response->assertJsonMissing(['order_id' => $order->id]);
         $response->assertDontSee($order->customer_phone);
         $response->assertDontSee($order->customer_email);
+    }
+
+    // -----------------------------------------------------------------
+    // Moderacion
+    // -----------------------------------------------------------------
+
+    /**
+     * Aprobar tiene que PERSISTIR. `status` no esta en el Fillable (a
+     * proposito), asi que un `update()` masivo lo descartaba en silencio y la
+     * resena seguia pendiente para siempre.
+     */
+    public function test_aprobar_una_resena_la_publica(): void
+    {
+        $business = $this->storefrontBusiness();
+        $product = $this->publishedProduct($business);
+        $order = $this->deliveredOrder($business, $product);
+
+        $review = ProductReview::factory()->create([
+            'business_id' => $business->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+        ]);
+
+        $user = User::factory()->create(['business_id' => $business->id]);
+
+        app(ProductReviewService::class)->moderate($review, ProductReview::STATUS_APPROVED, $user);
+
+        $this->assertDatabaseHas('product_reviews', [
+            'id' => $review->id,
+            'status' => ProductReview::STATUS_APPROVED,
+            'moderated_by' => $user->id,
+        ]);
+
+        // Y ahora si se ve desde internet.
+        $this->getJson("/api/v1/storefront/{$business->slug}/products/{$product->id}/reviews")
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+    }
+
+    /** Ocultar una ya publicada la saca de internet. */
+    public function test_ocultar_una_resena_la_retira(): void
+    {
+        $business = $this->storefrontBusiness();
+        $product = $this->publishedProduct($business);
+        $order = $this->deliveredOrder($business, $product);
+
+        $review = ProductReview::factory()->approved()->create([
+            'business_id' => $business->id,
+            'product_id' => $product->id,
+            'order_id' => $order->id,
+        ]);
+
+        $user = User::factory()->create(['business_id' => $business->id]);
+        app(ProductReviewService::class)->moderate($review, ProductReview::STATUS_HIDDEN, $user);
+
+        $this->getJson("/api/v1/storefront/{$business->slug}/products/{$product->id}/reviews")
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
+    /** El comprador no puede autopublicarse mandando `status` en el payload. */
+    public function test_el_comprador_no_puede_publicar_su_propia_resena(): void
+    {
+        $business = $this->storefrontBusiness();
+        $product = $this->publishedProduct($business);
+        $order = $this->deliveredOrder($business, $product);
+
+        $this->postJson(
+            "/api/v1/storefront/{$business->slug}/orders/{$order->public_token}/reviews",
+            ['product_id' => $product->id, 'rating' => 5, 'status' => 'approved']
+        )->assertCreated();
+
+        $this->assertDatabaseHas('product_reviews', [
+            'order_id' => $order->id,
+            'status' => ProductReview::STATUS_PENDING,
+        ]);
+    }
+
+    /** La bandeja del POS: por defecto trae lo que hay que atender. */
+    public function test_la_bandeja_de_moderacion_muestra_las_pendientes(): void
+    {
+        $business = $this->storefrontBusiness();
+        $product = $this->publishedProduct($business);
+
+        $pendiente = ProductReview::factory()->create([
+            'business_id' => $business->id,
+            'product_id' => $product->id,
+            'order_id' => $this->deliveredOrder($business, $product)->id,
+        ]);
+        ProductReview::factory()->approved()->create([
+            'business_id' => $business->id,
+            'product_id' => $product->id,
+            'order_id' => $this->deliveredOrder($business, $product)->id,
+        ]);
+
+        $response = $this->actingAs($this->admin($business))->getJson('/api/v1/store-reviews');
+
+        $response->assertOk();
+        $response->assertJsonCount(1, 'data');
+        $response->assertJsonPath('data.0.id', $pendiente->id);
+    }
+
+    /** Un negocio no puede moderar las resenas de otro. */
+    public function test_no_se_pueden_moderar_las_resenas_de_otro_negocio(): void
+    {
+        $businessA = $this->storefrontBusiness();
+        $businessB = $this->storefrontBusiness();
+
+        $product = $this->publishedProduct($businessB);
+        $review = ProductReview::factory()->create([
+            'business_id' => $businessB->id,
+            'product_id' => $product->id,
+            'order_id' => $this->deliveredOrder($businessB, $product)->id,
+        ]);
+
+        $this->actingAs($this->admin($businessA))
+            ->patchJson("/api/v1/store-reviews/{$review->id}", ['status' => 'approved'])
+            ->assertNotFound();
+
+        $this->assertDatabaseHas('product_reviews', [
+            'id' => $review->id,
+            'status' => ProductReview::STATUS_PENDING,
+        ]);
+    }
+
+    /** Solo 'approved' u 'hidden': el comerciante no inventa estados. */
+    public function test_el_estado_de_moderacion_esta_acotado(): void
+    {
+        $business = $this->storefrontBusiness();
+        $product = $this->publishedProduct($business);
+        $review = ProductReview::factory()->create([
+            'business_id' => $business->id,
+            'product_id' => $product->id,
+            'order_id' => $this->deliveredOrder($business, $product)->id,
+        ]);
+
+        $this->actingAs($this->admin($business))
+            ->patchJson("/api/v1/store-reviews/{$review->id}", ['status' => 'lo-que-sea'])
+            ->assertStatus(422);
     }
 
     public function test_el_promedio_llega_en_la_ficha_del_producto(): void

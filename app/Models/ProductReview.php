@@ -14,6 +14,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *
  * Solo existe atada a un pedido (ver la migracion): quien la escribe demostro
  * haber comprado ese producto al abrir el enlace de su pedido.
+ *
+ * `status`, `moderated_at` y `moderated_by` quedan FUERA del Fillable a
+ * proposito: son la decision del comerciante, no un dato del formulario. Se
+ * escriben por asignacion directa en ProductReviewService::moderate, que es
+ * el unico camino. No agregarlos aca -- seria dejar que un payload publique
+ * su propia resena.
  */
 #[Fillable(['business_id', 'product_id', 'order_id', 'rating', 'comment', 'author_name'])]
 class ProductReview extends Model
