@@ -10,6 +10,7 @@ use App\Models\Business;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Services\OrderService;
+use App\Services\ProductReviewService;
 use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -28,7 +29,10 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
  */
 class StorefrontCatalogController extends Controller
 {
-    public function __construct(private OrderService $orders) {}
+    public function __construct(
+        private OrderService $orders,
+        private ProductReviewService $reviews,
+    ) {}
 
     public function settings(Request $request): StorefrontSettingsResource
     {
@@ -68,12 +72,52 @@ class StorefrontCatalogController extends Controller
             $query->whereIn('category_id', $category ? $category->idsIncludingChildren() : [-1]);
         }
 
-        $paginated = $query->orderBy('name')->paginate(24)->withQueryString();
-        StorefrontProductResource::useReservations(
-            $this->orders->reservedUnits((int) TenantContext::current()?->id, $paginated->pluck('id')->all())
-        );
+        $this->sort($query, (string) $request->input('sort', 'name'));
+
+        $paginated = $query->paginate(24)->withQueryString();
+        $business = TenantContext::current();
+        $ids = $paginated->pluck('id')->all();
+
+        StorefrontProductResource::useReservations($this->orders->reservedUnits((int) $business?->id, $ids));
+        if ($business !== null) {
+            StorefrontProductResource::useRatings($this->reviews->summaryFor($business, $ids));
+        }
 
         return StorefrontProductResource::collection($paginated);
+    }
+
+    /**
+     * Catalogo cerrado de ordenamientos. Nunca se interpola lo que llega del
+     * cliente en el SQL: un `sort` desconocido cae en el orden por defecto.
+     *
+     * Ordenar por precio NO usa `products.price`: un producto con variantes
+     * publica el minimo de sus variantes activas (ver
+     * StorefrontProductResource), asi que ordenar por la columna del producto
+     * daria una lista ordenada por un precio que el comprador no ve. La
+     * subconsulta reproduce exactamente el precio publicado.
+     */
+    private function sort(Builder $query, string $sort): void
+    {
+        $precioPublicado = <<<'SQL'
+            COALESCE(
+                (SELECT MIN(pv.price) FROM product_variants pv
+                  WHERE pv.product_id = products.id AND pv.is_active = 1),
+                products.price
+            )
+        SQL;
+
+        match ($sort) {
+            'price_asc' => $query->orderByRaw("{$precioPublicado} ASC"),
+            'price_desc' => $query->orderByRaw("{$precioPublicado} DESC"),
+            // "Novedades" ordena por alta en el POS. Lo correcto seria la
+            // fecha en que se PUBLICO en la tienda, pero `is_published` es un
+            // booleano sin marca de tiempo: un articulo viejo que el
+            // comerciante acaba de publicar sale al fondo. Agregar un
+            // `published_at` implica otro ALTER sobre `products`, que el
+            // monolito comparte, y no se justifica por un criterio de orden.
+            'newest' => $query->orderByDesc('created_at')->orderByDesc('id'),
+            default => $query->orderBy('name'),
+        };
     }
 
     /**
@@ -94,9 +138,11 @@ class StorefrontCatalogController extends Controller
 
         abort_if($product === null, 404);
 
-        StorefrontProductResource::useReservations(
-            $this->orders->reservedUnits((int) TenantContext::current()?->id, [$product->id])
-        );
+        $business = TenantContext::current();
+        StorefrontProductResource::useReservations($this->orders->reservedUnits((int) $business?->id, [$product->id]));
+        if ($business !== null) {
+            StorefrontProductResource::useRatings($this->reviews->summaryFor($business, [$product->id]));
+        }
 
         return new StorefrontProductResource($product);
     }

@@ -62,6 +62,21 @@ class StorefrontProductResource extends JsonResource
     }
 
     /**
+     * Promedio y conteo de reseñas aprobadas, por el mismo motivo que las
+     * reservas: se calcula UNA vez para toda la pagina (ver
+     * ProductReviewService::summaryFor) en lugar de una consulta por card.
+     *
+     * @var array<int, array{average: float, count: int}>
+     */
+    private static array $ratings = [];
+
+    /** @param  array<int, array{average: float, count: int}>  $ratings */
+    public static function useRatings(array $ratings): void
+    {
+        self::$ratings = $ratings;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(Request $request): array
@@ -74,6 +89,10 @@ class StorefrontProductResource extends JsonResource
             // La descripcion larga es la de la ficha publica; `description` es
             // la nota corta que ve el cajero y puede tener jerga interna.
             'description' => $this->online_description ?: $this->description,
+            // Modo de empleo. Lo escribe el comerciante en el POS y ya existia
+            // en el catalogo interno; en la tienda es contenido de venta, asi
+            // que va aparte de la descripcion y no concatenado a ella.
+            'how_to_use' => $this->how_to_use,
             'price' => (float) ($hasVariants ? $this->variants->min('price') : $this->price),
             'has_variants' => $hasVariants,
             'category' => $this->whenLoaded('category', fn () => [
@@ -89,6 +108,10 @@ class StorefrontProductResource extends JsonResource
             'image' => $this->image,
             'variants' => StorefrontVariantResource::collection($this->whenLoaded('variants')),
             'available' => $this->storefrontAvailability($hasVariants),
+            // Siempre presente, con count 0 cuando no hay reseñas: asi la
+            // tienda no tiene que distinguir "sin reseñas" de "no vino el
+            // dato".
+            'rating' => self::$ratings[$this->id] ?? ['average' => 0.0, 'count' => 0],
         ];
     }
 

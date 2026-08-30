@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Api\V1\Storefront;
 
 use App\Models\Order;
+use App\Services\ProductReviewService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -38,12 +39,20 @@ class StorefrontOrderResource extends JsonResource
             'shipping_address' => $this->shipping_address,
             'shipping_city' => $this->shipping_city,
             'items' => $this->items->map(fn ($item) => [
+                // El id del producto no es un dato sensible: ya esta en la URL
+                // publica de su ficha. Va aca para poder enlazar de vuelta al
+                // producto y para el formulario de calificacion.
+                'product_id' => $item->product_id,
                 'product_name' => $item->product_name,
                 'variant_label' => $item->variant_label,
                 'quantity' => $item->quantity,
                 'unit_price' => (float) $item->unit_price,
                 'subtotal' => (float) $item->subtotal,
             ])->values(),
+            // Que puede calificar HOY: vacio si el pedido todavia no se
+            // entrego, o si ya califico todo. La tienda pinta el formulario
+            // segun esto y no vuelve a preguntar (ver ProductReviewService).
+            'reviewable_product_ids' => app(ProductReviewService::class)->pendingProductIds($this->resource),
             'placed_at' => $this->created_at?->toIso8601String(),
         ];
     }

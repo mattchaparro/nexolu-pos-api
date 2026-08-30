@@ -49,6 +49,7 @@ use App\Http\Controllers\Api\V1\ProductAttributeController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\ProductImageController;
+use App\Http\Controllers\Api\V1\ProductReviewModerationController;
 use App\Http\Controllers\Api\V1\ProductVariantController;
 use App\Http\Controllers\Api\V1\PurchaseController;
 use App\Http\Controllers\Api\V1\ReceivableController;
@@ -62,6 +63,7 @@ use App\Http\Controllers\Api\V1\StockMovementReasonController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontCatalogController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontContactController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontOrderController;
+use App\Http\Controllers\Api\V1\Storefront\StorefrontReviewController;
 use App\Http\Controllers\Api\V1\SubscriptionController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\SupplierReportController;
@@ -140,9 +142,6 @@ Route::prefix('v1/storefront/{business}')
         Route::get('/', [StorefrontCatalogController::class, 'settings'])->name('settings');
         Route::get('/categories', [StorefrontCatalogController::class, 'categories'])->name('categories');
         Route::get('/products', [StorefrontCatalogController::class, 'products'])->name('products.index');
-        // `{productId}` y no `{product}`: con ese nombre Laravel intentaria el
-        // binding implicito del modelo Product, que ignoraria el filtro de
-        // publicacion y devolveria productos que no estan en la tienda.
         // Checkout y seguimiento. `throttle` mas estricto que el catalogo:
         // crear pedidos es escritura desde internet abierto.
         Route::post('/orders', [StorefrontOrderController::class, 'store'])
@@ -154,9 +153,22 @@ Route::prefix('v1/storefront/{business}')
         // 302 a wa.me armado en el servidor -- ver el docblock del
         // controlador sobre por que el destino no se acepta por parametro.
         Route::get('/whatsapp', [StorefrontContactController::class, 'whatsapp'])->name('contact.whatsapp');
+
+        // `{productId}` y no `{product}`: con ese nombre Laravel intentaria el
+        // binding implicito del modelo Product, que ignoraria el filtro de
+        // publicacion y devolveria productos que no estan en la tienda.
         Route::get('/products/{productId}', [StorefrontCatalogController::class, 'product'])
             ->whereNumber('productId')
             ->name('products.show');
+        Route::get('/products/{productId}/reviews', [StorefrontReviewController::class, 'index'])
+            ->whereNumber('productId')
+            ->name('reviews.index');
+
+        // Escribir una reseña cuelga del PEDIDO y no del producto: el token es
+        // la prueba de compra. Mismo throttle estricto que el checkout.
+        Route::post('/orders/{token}/reviews', [StorefrontReviewController::class, 'store'])
+            ->middleware('throttle:20,1')
+            ->name('reviews.store');
     });
 
 Route::prefix('v1')->name('api.v1.')->group(function () {
@@ -335,6 +347,15 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::post('/store-settings/images', [BusinessStoreSettingsController::class, 'storeImage'])->name('store-settings.images.upload');
             Route::delete('/store-settings/images/id/{image}', [BusinessStoreSettingsController::class, 'destroyImage'])
                 ->whereNumber('image')->name('store-settings.images.delete');
+
+            // Moderacion de reseñas. Sin `store` ni edicion del texto a
+            // proposito: el comerciante decide que se publica, no que dicen
+            // sus clientes (ver el controlador).
+            Route::get('/store-reviews', [ProductReviewModerationController::class, 'index'])->name('store-reviews.index');
+            Route::get('/store-reviews/pending-count', [ProductReviewModerationController::class, 'pendingCount'])
+                ->name('store-reviews.pending-count');
+            Route::patch('/store-reviews/{review}', [ProductReviewModerationController::class, 'update'])
+                ->whereNumber('review')->name('store-reviews.update');
 
             Route::get('/store-settings', [BusinessStoreSettingsController::class, 'show'])->name('store-settings.show');
             Route::put('/store-settings', [BusinessStoreSettingsController::class, 'update'])->name('store-settings.update');
