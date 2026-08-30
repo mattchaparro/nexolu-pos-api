@@ -150,6 +150,37 @@ class StoreHomeBlocks
         ];
     }
 
+    /**
+     * Presentacion: como se coloca el bloque, no que dice.
+     *
+     * Aplica a TODOS los tipos y por eso vive aparte de `rules()`, que es por
+     * tipo. Es lo que de verdad cambia como se ve una tienda -- el mismo
+     * contenido a ancho completo y con aire respira; apretado y angosto
+     * parece un formulario.
+     *
+     * Catalogos cerrados y no numeros libres: un comerciante eligiendo
+     * pixeles de espaciado produce una pagina inconsistente. Estas tres
+     * opciones estan calibradas para que cualquier combinacion se vea bien.
+     *
+     * @return array<string, array<int, string>>
+     */
+    public static function presentationRules(): array
+    {
+        return [
+            'width' => ['nullable', 'string', 'in:contained,wide,full'],
+            'spacing' => ['nullable', 'string', 'in:compact,normal,spacious'],
+            // Solo la usan los bloques con imagen; guardarla en los demas es
+            // inofensivo y evita reglas condicionales por tipo.
+            'image_ratio' => ['nullable', 'string', 'in:auto,square,landscape,portrait'],
+        ];
+    }
+
+    /** Claves que puede tener cualquier bloque, sea del tipo que sea. */
+    public static function commonKeys(): array
+    {
+        return ['id', 'type', 'enabled', ...array_keys(self::presentationRules())];
+    }
+
     /** @return list<string> */
     public static function types(): array
     {
@@ -172,6 +203,6 @@ class StoreHomeBlocks
             array_keys(self::rules()[$type] ?? []),
         );
 
-        return array_intersect_key($block, array_flip([...$allowed, 'id', 'type', 'enabled']));
+        return array_intersect_key($block, array_flip([...$allowed, ...self::commonKeys()]));
     }
 }

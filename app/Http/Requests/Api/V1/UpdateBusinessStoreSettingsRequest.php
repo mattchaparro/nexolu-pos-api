@@ -121,7 +121,10 @@ class UpdateBusinessStoreSettingsRequest extends FormRequest
 
             $porTipo[$type] = ($porTipo[$type] ?? 0) + 1;
 
-            foreach (StoreHomeBlocks::rules()[$type] as $campo => $regla) {
+            // Las de su tipo, mas las de presentacion, que valen para todos.
+            $campos = [...StoreHomeBlocks::rules()[$type], ...StoreHomeBlocks::presentationRules()];
+
+            foreach ($campos as $campo => $regla) {
                 $reglas["home_blocks.{$index}.{$campo}"] = $regla;
             }
         }

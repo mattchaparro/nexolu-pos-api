@@ -173,4 +173,45 @@ class StoreHomeBlocksTest extends TestCase
 
         $this->assertCount(1, $blocks[0]['images'], 'La imagen que no existe se descarta');
     }
+
+    // -----------------------------------------------------------------
+    // Presentacion: como se coloca el bloque, no que dice
+    // -----------------------------------------------------------------
+
+    /** Aplica a cualquier tipo, no solo a los que la declaran. */
+    public function test_presentation_is_accepted_on_any_block_type(): void
+    {
+        $this->save([
+            ['id' => 'a', 'type' => 'faq', 'width' => 'contained', 'spacing' => 'spacious'],
+            ['id' => 'b', 'type' => 'gallery', 'width' => 'full', 'image_ratio' => 'square'],
+        ])->assertOk();
+
+        $blocks = $this->business->storeSettings()->withoutGlobalScopes()->first()->home_blocks;
+
+        $this->assertSame('contained', $blocks[0]['width']);
+        $this->assertSame('spacious', $blocks[0]['spacing']);
+        $this->assertSame('full', $blocks[1]['width']);
+        $this->assertSame('square', $blocks[1]['image_ratio']);
+    }
+
+    /**
+     * Catalogo cerrado: sin esto, un valor libre terminaria concatenado en el
+     * atributo class de una pagina publica.
+     */
+    public function test_presentation_values_are_a_closed_catalog(): void
+    {
+        $this->save([['id' => 'a', 'type' => 'faq', 'width' => 'w-[9999px]']])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('home_blocks.0.width');
+
+        $this->save([['id' => 'a', 'type' => 'faq', 'spacing' => 'enorme']])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('home_blocks.0.spacing');
+    }
+
+    /** Sin presentacion el bloque sigue siendo valido: son todos opcionales. */
+    public function test_presentation_is_optional(): void
+    {
+        $this->save([['id' => 'a', 'type' => 'faq']])->assertOk();
+    }
 }
