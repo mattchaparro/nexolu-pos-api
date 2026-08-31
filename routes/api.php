@@ -189,6 +189,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::put('/me/password', [AuthController::class, 'updatePassword'])->name('me.password.update');
 
         Route::post('/ai/chat', [AiChatController::class, 'send'])->name('ai.chat');
+        Route::post('/ai/chat/stream', [AiChatController::class, 'stream'])->name('ai.chat.stream');
         Route::post('/ai/drafts/{draftId}/confirm', [AiDraftController::class, 'confirm'])->name('ai.drafts.confirm');
         Route::post('/ai/drafts/{draftId}/discard', [AiDraftController::class, 'discard'])->name('ai.drafts.discard');
         Route::get('/insights', [AiInsightController::class, 'index'])->name('insights.index');
