@@ -152,11 +152,14 @@ class BusinessPaymentGatewayService
         ]);
 
         if ($response->status() === 409) {
-            // Ya habia credenciales para ese entorno: reconectar con llaves
-            // nuevas es un caso real (rotacion), pero el Core no deja
-            // reemplazarlas todavia. Se avisa en vez de fingir que funciono.
-            throw ValidationException::withMessages([
-                'credentials' => 'Este comercio ya tiene credenciales cargadas para ese entorno. Contacta a soporte para rotarlas.',
+            // Ya habia credenciales para ese entorno. No es un error: es el
+            // caso normal de COMPLETAR un juego -- conectaste el boton de
+            // pagos y meses despues agregas las llaves de datafono. El Core
+            // fusiona sobre lo guardado, asi que mandar solo las nuevas no
+            // borra las viejas.
+            $response = $this->client()->put("/v1/admin/merchants/{$merchantId}/providers/{$provider}", [
+                'environment' => $environment,
+                'credentials' => $credentials,
             ]);
         }
 
