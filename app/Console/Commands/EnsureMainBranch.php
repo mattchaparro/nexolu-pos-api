@@ -37,7 +37,12 @@ class EnsureMainBranch extends Command
             return self::FAILURE;
         }
 
-        $businesses = Business::query()
+        // withTrashed: un negocio archivado se puede restaurar, y si sus
+        // filas se quedaron sin sede volveria a la vida invisible para
+        // cualquier consulta scopeada por sede. Ademas descuadraria el
+        // agregado de inventario contra la suma de sedes, que es justo lo que
+        // este comando existe para garantizar.
+        $businesses = Business::withTrashed()
             ->when($target, fn ($query) => $query->where(function ($inner) use ($target) {
                 $inner->where('slug', $target);
 

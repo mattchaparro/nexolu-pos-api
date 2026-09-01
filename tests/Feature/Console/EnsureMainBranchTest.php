@@ -74,6 +74,26 @@ class EnsureMainBranchTest extends TestCase
         $this->artisan('branches:ensure-main')->assertFailed();
     }
 
+    /**
+     * Un negocio archivado se puede restaurar. Si sus filas se quedaron sin
+     * sede, vuelve a la vida invisible para toda consulta scopeada por sede,
+     * y su inventario descuadrado contra la suma de sedes.
+     */
+    public function test_all_also_covers_soft_deleted_businesses(): void
+    {
+        $business = Business::factory()->create();
+        $table = BusinessTable::factory()->for($business)->create();
+        DB::table('business_tables')->where('id', $table->id)->update(['branch_id' => null]);
+        $business->delete();
+
+        $this->artisan('branches:ensure-main', ['--all' => true])->assertSuccessful();
+
+        $this->assertTrue(
+            Branch::withoutGlobalScope('business')->where('business_id', $business->id)->where('is_main', true)->exists()
+        );
+        $this->assertNotNull(DB::table('business_tables')->where('id', $table->id)->value('branch_id'));
+    }
+
     public function test_all_covers_every_business(): void
     {
         $first = Business::factory()->create();
