@@ -34,6 +34,7 @@ class BusinessStoreSettingsResource extends JsonResource
             'font_preset' => $this->font_preset,
             'whatsapp_number' => $this->whatsapp_number,
             'shipping_flat_fee' => (float) $this->shipping_flat_fee,
+            'shipping_note' => $this->shipping_note,
             'delivery_estimate' => $this->delivery_estimate,
             'min_order_amount' => (float) $this->min_order_amount,
             'pickup_enabled' => (bool) $this->pickup_enabled,

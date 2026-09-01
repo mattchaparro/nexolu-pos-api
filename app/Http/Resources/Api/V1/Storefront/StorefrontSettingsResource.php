@@ -43,6 +43,10 @@ class StorefrontSettingsResource extends JsonResource
 
             'whatsapp_number' => $this->whatsapp_number,
             'shipping_flat_fee' => (float) $this->shipping_flat_fee,
+            // Como se explica el envio. Las plantillas lo citan con el token
+            // `{envio}` en vez de repetir una frase fija que no todos los
+            // negocios pueden cumplir.
+            'shipping_note' => $this->shipping_note,
             // Cuanto se demora en llegar, en palabras del comerciante: no se
             // puede calcular (depende de ciudad, transportador y operacion).
             'delivery_estimate' => $this->delivery_estimate,

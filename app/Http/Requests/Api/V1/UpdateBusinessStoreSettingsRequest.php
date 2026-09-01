@@ -43,6 +43,7 @@ class UpdateBusinessStoreSettingsRequest extends FormRequest
             'font_preset' => ['sometimes', Rule::in(BusinessStoreSettings::FONT_PRESETS)],
             'whatsapp_number' => ['sometimes', 'nullable', 'string', 'max:20'],
             'shipping_flat_fee' => ['sometimes', 'numeric', 'min:0'],
+            'shipping_note' => ['sometimes', 'nullable', 'string', 'max:160'],
             'delivery_estimate' => ['sometimes', 'nullable', 'string', 'max:120'],
             'min_order_amount' => ['sometimes', 'numeric', 'min:0'],
             'pickup_enabled' => ['sometimes', 'boolean'],
