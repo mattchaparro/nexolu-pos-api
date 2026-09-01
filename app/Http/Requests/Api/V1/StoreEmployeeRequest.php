@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -26,6 +27,8 @@ class StoreEmployeeRequest extends FormRequest
             'role' => ['sometimes', 'nullable', Rule::in(['employee', 'admin'])],
             'permissions' => ['sometimes', 'array'],
             'permissions.*' => ['string', 'exists:permissions,name'],
+            'branch_ids' => ['sometimes', 'array'],
+            'branch_ids.*' => ['integer', BusinessScopedExists::for('branches', $this->user()?->business_id)],
         ];
     }
 

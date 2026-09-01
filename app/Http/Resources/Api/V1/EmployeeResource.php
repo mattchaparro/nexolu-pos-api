@@ -28,6 +28,8 @@ class EmployeeResource extends JsonResource
                 $this->hasRole('employee'),
                 fn () => $this->getDirectPermissions()->pluck('name')->values()
             ),
+            'branch_ids' => $this->whenLoaded('branches', fn () => $this->branches->pluck('id')->values()),
+            'default_branch_id' => $this->default_branch_id,
             'last_active_at' => $this->lastActiveAt()?->toIso8601String(),
         ];
     }

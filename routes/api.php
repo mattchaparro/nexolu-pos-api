@@ -197,6 +197,15 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // front decide si muestra el selector o no.
         Route::get('/branches', [BranchController::class, 'index'])->name('branches.index');
 
+        // Administrar sedes: solo el admin del negocio, y solo con multisede
+        // encendida. No hay destroy - una sede tiene ventas, cajas e
+        // inventario colgando; se desactiva (ver BranchController).
+        Route::middleware(['business-admin', 'feature:multi_branch'])->group(function () {
+            Route::post('/branches', [BranchController::class, 'store'])->name('branches.store');
+            Route::put('/branches/{branch}', [BranchController::class, 'update'])->name('branches.update');
+            Route::post('/branches/{branch}/deactivate', [BranchController::class, 'deactivate'])->name('branches.deactivate');
+        });
+
         Route::post('/ai/chat', [AiChatController::class, 'send'])->name('ai.chat');
         Route::post('/ai/chat/stream', [AiChatController::class, 'stream'])->name('ai.chat.stream');
         Route::post('/ai/drafts/{draftId}/confirm', [AiDraftController::class, 'confirm'])->name('ai.drafts.confirm');

@@ -9,6 +9,7 @@ use App\Http\Requests\Api\V1\UpdateEmployeeRequest;
 use App\Http\Resources\Api\V1\EmployeeResource;
 use App\Mail\NewUserCredentialsMail;
 use App\Models\User;
+use App\Services\BranchService;
 use App\Support\PermissionCatalog;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -37,7 +38,7 @@ class EmployeeController extends Controller
 
         $users = User::where('business_id', $request->user()->business_id)
             ->whereHas('roles', fn ($q) => $q->whereIn('name', ['employee', 'admin']))
-            ->with('roles')
+            ->with('roles', 'branches:id')
             ->orderByDesc('is_active')
             ->orderBy('name')
             ->get();
@@ -88,9 +89,11 @@ class EmployeeController extends Controller
             //
         }
 
+        $this->syncBranches($user, $data['branch_ids'] ?? null);
+
         // ->load() (no ->fresh()) para preservar wasRecentlyCreated - asi
         // Laravel responde 201, no 200.
-        return new EmployeeResource($user->load('roles'));
+        return new EmployeeResource($user->load('roles', 'branches:id'));
     }
 
     public function update(UpdateEmployeeRequest $request, User $employee): EmployeeResource
@@ -118,7 +121,44 @@ class EmployeeController extends Controller
             $employee->syncPermissions([]);
         }
 
-        return new EmployeeResource($employee->fresh()->load('roles'));
+        $this->syncBranches($employee, array_key_exists('branch_ids', $data) ? $data['branch_ids'] : null);
+
+        return new EmployeeResource($employee->fresh()->load('roles', 'branches:id'));
+    }
+
+    /**
+     * A que sedes entra el empleado.
+     *
+     * null (la clave no vino) NO es lo mismo que []: el formulario de un
+     * negocio monosede no manda branch_ids, y tomarlo como "ninguna sede"
+     * dejaria al empleado sin poder entrar a la unica que hay. Solo se
+     * sincroniza cuando el cliente lo dice explicitamente.
+     *
+     * Un empleado sin sedes asignadas no puede operar en ninguna, asi que si
+     * la lista llega vacia se le deja la principal - es lo que espera quien
+     * simplemente no toco esa parte del formulario.
+     *
+     * @param  list<int>|null  $branchIds
+     */
+    private function syncBranches(User $employee, ?array $branchIds): void
+    {
+        if ($branchIds === null) {
+            $branchIds = $employee->branches()->pluck('branches.id')->all();
+        }
+
+        if ($branchIds === []) {
+            $mainBranchId = app(BranchService::class)->mainBranchId((int) $employee->business_id);
+            $branchIds = $mainBranchId ? [$mainBranchId] : [];
+        }
+
+        $employee->branches()->sync($branchIds);
+
+        // La sede por defecto tiene que seguir siendo una a la que entra, o
+        // al abrir sesion el middleware la descartaria y caeria en otra sin
+        // explicacion visible.
+        if (! in_array((int) $employee->default_branch_id, array_map('intval', $branchIds), true)) {
+            $employee->update(['default_branch_id' => $branchIds[0] ?? null]);
+        }
     }
 
     public function updatePermissions(UpdateEmployeePermissionsRequest $request, User $employee): EmployeeResource

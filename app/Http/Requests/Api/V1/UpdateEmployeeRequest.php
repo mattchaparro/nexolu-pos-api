@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -26,6 +27,12 @@ class UpdateEmployeeRequest extends FormRequest
             'role' => ['sometimes', 'nullable', Rule::in(['employee', 'admin'])],
             'permissions' => ['sometimes', 'array'],
             'permissions.*' => ['string', 'exists:permissions,name'],
+            // A que sedes entra. Es una cosa distinta de los permisos: estos
+            // dicen QUE puede hacer y las sedes DONDE. Solo se toca si viene
+            // la clave, para que el formulario de un negocio monosede (que no
+            // la manda) no le borre las asignaciones a nadie.
+            'branch_ids' => ['sometimes', 'array'],
+            'branch_ids.*' => ['integer', BusinessScopedExists::for('branches', $this->user()?->business_id)],
         ];
     }
 }
