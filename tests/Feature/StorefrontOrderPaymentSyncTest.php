@@ -8,7 +8,10 @@ use App\Models\BusinessStoreSettings;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\Sale;
+use App\Models\StockMovement;
 use App\Models\User;
+use App\Services\OnlineOrderPaymentService;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Http;
@@ -199,5 +202,44 @@ class StorefrontOrderPaymentSyncTest extends TestCase
         )->assertOk();
 
         Http::assertNothingSent();
+    }
+
+    /**
+     * El caso que de verdad rompio produccion (pedido #3): dos caminos
+     * aprobando el MISMO pedido.
+     *
+     * Al confirmar activamente, el Core resuelve la transaccion y al
+     * resolverla dispara su propio webhook. Los dos llegan a `approve()` con
+     * un segundo de diferencia -- y el objeto `Order` que trae la consulta se
+     * cargo antes, con `status = pending`. Con la guarda leyendo ese estado
+     * en memoria, los dos pasaban: dos ventas y el stock descontado doble.
+     */
+    public function test_dos_aprobaciones_del_mismo_pedido_crean_una_sola_venta(): void
+    {
+        $business = $this->businessConTienda();
+        $order = $this->pedidoPendiente($business);
+
+        // DOS instancias cargadas por separado, como en produccion: una la
+        // trae el controlador de webhooks y la otra el de la tienda, y las
+        // dos leyeron `pending` de la base antes de que ninguna facturara.
+        // Reusar el mismo objeto no reproduciria nada: la primera aprobacion
+        // le deja el estado nuevo en memoria y la segunda lo veria.
+        $delWebhook = Order::withoutGlobalScopes()->find($order->id);
+        $deLaTienda = Order::withoutGlobalScopes()->find($order->id);
+
+        $servicio = app(OnlineOrderPaymentService::class);
+        $this->assertTrue($servicio->approve($delWebhook));
+        $this->assertFalse($servicio->approve($deLaTienda));
+
+        $ventas = Sale::withoutGlobalScopes()
+            ->where('business_id', $business->id)
+            ->count();
+        $this->assertSame(1, $ventas, 'Un pedido pagado una vez debe producir una sola venta.');
+
+        $movimientos = StockMovement::withoutGlobalScopes()
+            ->where('business_id', $business->id)
+            ->where('type', 'sale')
+            ->count();
+        $this->assertSame(1, $movimientos, 'El stock no puede descontarse dos veces.');
     }
 }

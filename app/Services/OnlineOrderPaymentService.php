@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Business;
 use App\Models\Order;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -40,35 +41,58 @@ class OnlineOrderPaymentService
      */
     public function approve(Order $order): bool
     {
-        if ($order->status !== Order::STATUS_PENDING) {
-            return false;
-        }
-
-        $business = Business::withoutGlobalScopes()->find($order->business_id);
-        // `sales.user_id` es NOT NULL y en una venta online no hay cajero:
-        // el vendedor es el dueño del negocio.
-        $owner = $business?->users()->where('is_business_owner', true)->first();
-        if ($business === null || $owner === null) {
-            Log::error('online_order.pago: sin dueño para facturar', ['order_id' => $order->id]);
-
-            return false;
-        }
-
+        // La guarda se toma sobre la fila BLOQUEADA y el bloqueo se sostiene
+        // hasta que la venta esta hecha.
+        //
+        // Sin esto se facturo dos veces en produccion (pedido #3): la
+        // consulta activa hace que el Core resuelva la transaccion, y al
+        // resolverla el Core dispara su webhook. Los dos caminos llegan aca
+        // con un segundo de diferencia -- pero el `$order` que traia la
+        // consulta se cargo ANTES, con `status = pending`, asi que su guarda
+        // seguia dando verde despues de que el webhook ya habia facturado.
+        // Resultado: dos ventas por el mismo pedido y el stock descontado
+        // doble.
+        //
+        // Chequear contra la fila fresca no basta por si solo: si el bloqueo
+        // se suelta antes de facturar, los dos vuelven a pasar la guarda.
+        // Por eso la venta ocurre DENTRO de la misma transaccion.
         try {
-            $this->orders->transition(
-                $owner,
-                $order,
-                Order::STATUS_CONFIRMED,
-                'Pago aprobado por '.($order->payment_provider ?? 'la pasarela'),
-                $this->paymentMethodFor($business),
-            );
-            $order->forceFill(['paid_at' => now()])->save();
-            $this->orders->notifyBuyer($order->fresh(['items']), Order::STATUS_CONFIRMED);
+            $facturado = DB::transaction(function () use ($order) {
+                $fresco = Order::withoutGlobalScopes()
+                    ->where('id', $order->id)
+                    ->lockForUpdate()
+                    ->first();
 
-            return true;
+                if ($fresco === null || $fresco->status !== Order::STATUS_PENDING) {
+                    return null;
+                }
+
+                $business = Business::withoutGlobalScopes()->find($fresco->business_id);
+                // `sales.user_id` es NOT NULL y en una venta online no hay
+                // cajero: el vendedor es el dueño del negocio.
+                $owner = $business?->users()->where('is_business_owner', true)->first();
+                if ($business === null || $owner === null) {
+                    Log::error('online_order.pago: sin dueño para facturar', ['order_id' => $fresco->id]);
+
+                    return null;
+                }
+
+                $this->orders->transition(
+                    $owner,
+                    $fresco,
+                    Order::STATUS_CONFIRMED,
+                    'Pago aprobado por '.($fresco->payment_provider ?? 'la pasarela'),
+                    $this->paymentMethodFor($business),
+                );
+                $fresco->forceFill(['paid_at' => now()])->save();
+
+                return $fresco;
+            });
         } catch (Throwable $e) {
-            // Nunca se rechaza un pago ya cobrado: el pedido queda pendiente
-            // y el comerciante lo resuelve a mano desde la bandeja.
+            // Nunca se rechaza un pago ya cobrado: la transaccion revierte,
+            // el pedido queda pendiente y el comerciante lo resuelve a mano
+            // desde la bandeja. Propagarlo solo lograria que la pasarela
+            // reintentara el webhook contra el mismo error.
             Log::error('online_order.pago: no se pudo facturar', [
                 'order_id' => $order->id,
                 'message' => $e->getMessage(),
@@ -76,6 +100,16 @@ class OnlineOrderPaymentService
 
             return false;
         }
+
+        if ($facturado === null) {
+            return false;
+        }
+
+        // Avisarle al comprador queda FUERA de la transaccion: no hay razon
+        // para sostener el bloqueo de la fila mientras se encola un correo.
+        $this->orders->notifyBuyer($facturado->fresh(['items']), Order::STATUS_CONFIRMED);
+
+        return true;
     }
 
     /**
