@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToBranch;
 use App\Traits\BelongsToBusiness;
 use App\Traits\NormalizesPaymentMethod;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -32,7 +33,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class Receivable extends Model
 {
-    use BelongsToBusiness, HasFactory, NormalizesPaymentMethod;
+    use BelongsToBranch, BelongsToBusiness, HasFactory, NormalizesPaymentMethod;
+
+    /**
+     * El fiado se registra donde se origino, pero NO se filtra por sede: la
+     * deuda es con el negocio y el cliente tiene que poder abonar en
+     * cualquier local. Filtrarlo haria que la caja de enfrente no encuentre
+     * la deuda que el cliente viene a pagar.
+     */
+    public static function scopesByBranch(): bool
+    {
+        return false;
+    }
 
     protected function casts(): array
     {

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToBranch;
 use App\Traits\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -25,7 +26,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 ])]
 class Expense extends Model
 {
-    use BelongsToBusiness, HasFactory, SoftDeletes;
+    use BelongsToBranch, BelongsToBusiness, HasFactory, SoftDeletes;
 
     /**
      * Medios de pago validos para un gasto. Es un enum cerrado, NO texto libre:

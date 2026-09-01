@@ -201,7 +201,7 @@ class OpenTabService
                 $variantId = ! empty($item['product_variant_id']) ? (int) $item['product_variant_id'] : null;
                 $variant = $variantId ? $variants->get($variantId) : null;
 
-                $unitPrice = $variant ? (float) $variant->price : SaleLineUnitPrice::resolve($product, $item);
+                $unitPrice = SaleLineUnitPrice::resolve($product, $item, $variant);
                 $subtotal = $unitPrice * $quantity;
 
                 [$discountId, $discountAmount] = $discountsEnabled

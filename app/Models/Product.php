@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Support\ProductAvailability;
 use App\Traits\BelongsToBusiness;
+use App\Traits\HasBranchPrice;
 use App\Traits\HasBranchStock;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -37,10 +38,13 @@ use Illuminate\Support\Facades\DB;
 ])]
 class Product extends Model
 {
-    use BelongsToBusiness, HasBranchStock, HasFactory, SoftDeletes;
+    use BelongsToBusiness, HasBranchPrice, HasBranchStock, HasFactory, SoftDeletes;
 
     /** Columna de este modelo en branch_stocks (ver HasBranchStock). */
     public const BRANCH_STOCK_COLUMN = 'product_id';
+
+    /** Columna de este modelo en branch_product_prices (ver HasBranchPrice). */
+    public const BRANCH_PRICE_COLUMN = 'product_id';
 
     const SKU_PREFIX = 'PROD-';
 

@@ -3,6 +3,7 @@
 namespace App\Traits;
 
 use App\Models\Branch;
+use App\Services\BranchService;
 use App\Support\BranchContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -23,15 +24,33 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * cliente TIENE que validar que sea una sede del negocio y que el usuario
  * tenga acceso. El trait no lo hace por ti.
  *
- * Al aplicarlo a un modelo, primero hay que backfillear su branch_id (ver
- * App\Console\Commands\EnsureMainBranch): el global scope filtra por sede, y
- * las filas que quedaran en NULL desaparecerian de las consultas.
+ * Sin contexto de sede (comandos, jobs, seeders, la cola de la tienda online)
+ * la fila aterriza en la sede principal. NO se deja en NULL: el global scope
+ * de abajo filtra por sede, asi que una fila sin sede seria invisible para
+ * todo el mundo - un gasto programado por cron dejaria de aparecer en la
+ * pantalla de gastos. Aterrizar en la principal es la respuesta menos mala y
+ * ademas la correcta para el monosede, que es el 100% de los negocios hoy.
  *
- * Sin sede resuelta (comandos, jobs, seeders, tests sin actingAs) no se
- * filtra nada, igual que BelongsToBusiness.
+ * Al aplicarlo a un modelo hay que backfillear su branch_id primero (ver
+ * App\Console\Commands\EnsureMainBranch): las filas que queden en NULL
+ * desaparecerian de las consultas.
  */
 trait BelongsToBranch
 {
+    /**
+     * Si el modelo ademas FILTRA por sede al leer, o solo la registra.
+     *
+     * Sobrescribir con false cuando la fila pertenece al negocio y no al
+     * local, pero interesa saber donde se origino. El caso real es
+     * Receivable: el fiado es una deuda con el negocio, y el cliente tiene
+     * que poder abonar en cualquier sede - filtrarlo por sede haria que la
+     * caja de enfrente no encuentre la deuda que el cliente viene a pagar.
+     */
+    public static function scopesByBranch(): bool
+    {
+        return true;
+    }
+
     protected static function bootBelongsToBranch(): void
     {
         static::creating(function ($model) {
@@ -39,10 +58,15 @@ trait BelongsToBranch
                 return;
             }
 
-            $model->branch_id = BranchContext::branchId();
+            $model->branch_id = BranchContext::branchId()
+                ?? ($model->business_id ? app(BranchService::class)->mainBranchId((int) $model->business_id) : null);
         });
 
         static::addGlobalScope('branch', function (Builder $query) {
+            if (! static::scopesByBranch()) {
+                return;
+            }
+
             $branchId = BranchContext::branchId();
 
             if ($branchId !== null) {

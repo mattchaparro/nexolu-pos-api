@@ -117,7 +117,7 @@ class LayawayService
                 'product_id' => $product->id,
                 'product_variant_id' => $variant?->id,
                 'quantity' => $quantity,
-                'unit_price' => $variant ? (float) $variant->price : SaleLineUnitPrice::resolve($product, $item),
+                'unit_price' => SaleLineUnitPrice::resolve($product, $item, $variant),
             ]);
 
             if ($variant) {
@@ -379,7 +379,7 @@ class LayawayService
                     'product_id' => $productId,
                     'product_variant_id' => $variant?->id,
                     'quantity' => $quantity,
-                    'unit_price' => $variant ? (float) $variant->price : SaleLineUnitPrice::resolve($products->get($productId), $item),
+                    'unit_price' => SaleLineUnitPrice::resolve($products->get($productId), $item, $variant),
                 ]);
             }
 

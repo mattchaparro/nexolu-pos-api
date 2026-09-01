@@ -168,10 +168,24 @@ class BranchServiceTest extends TestCase
         $table = BusinessTable::factory()->for($business)->create();
         DB::table('business_tables')->where('id', $table->id)->update(['branch_id' => null]);
 
+        // Crear una fila operativa ya le garantiza la sede al negocio (ver
+        // BelongsToBranch), asi que lo que el dry-run no puede hacer es
+        // escribir nada MAS de lo que ya habia.
+        $branchesBefore = Branch::withoutGlobalScope('business')->where('business_id', $business->id)->count();
+
         $result = app(BranchService::class)->backfill($business, dryRun: true);
 
         $this->assertSame(['business_tables' => 1], $result['rows']);
-        $this->assertSame(0, Branch::withoutGlobalScope('business')->where('business_id', $business->id)->count());
+        $this->assertSame($branchesBefore, Branch::withoutGlobalScope('business')->where('business_id', $business->id)->count());
         $this->assertNull(DB::table('business_tables')->where('id', $table->id)->value('branch_id'));
+    }
+
+    public function test_dry_run_does_not_create_the_branch_of_a_business_that_has_none(): void
+    {
+        $business = Business::factory()->create();
+
+        app(BranchService::class)->backfill($business, dryRun: true);
+
+        $this->assertSame(0, Branch::withoutGlobalScope('business')->where('business_id', $business->id)->count());
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToBranch;
 use App\Traits\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class Purchase extends Model
 {
-    use BelongsToBusiness, HasFactory;
+    use BelongsToBranch, BelongsToBusiness, HasFactory;
 
     protected $fillable = [
         'business_id',

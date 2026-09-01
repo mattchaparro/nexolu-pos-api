@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Discount;
 use App\Models\Product;
@@ -444,7 +445,7 @@ class SaleService
                 ]);
             }
 
-            $unitPrice = $variant ? (float) $variant->price : SaleLineUnitPrice::resolve($product, $item);
+            $unitPrice = SaleLineUnitPrice::resolve($product, $item, $variant);
             $lineSubtotal = $unitPrice * $quantity;
 
             [$discountId, $discountAmount] = $discountsEnabled
@@ -534,13 +535,28 @@ class SaleService
         return [$resolvedId, $amount, $total - $amount];
     }
 
+    /**
+     * Consecutivo de factura POR SEDE, con el prefijo de la sede.
+     *
+     * Cada local lleva su propia serie (FAB-000001, CC-000001) y no una
+     * compartida. Es lo que espera un negocio con varios puntos - la factura
+     * dice de que local salio - y ademas quita la contencion: con una sola
+     * serie por negocio, el lockForUpdate hacia que dos cajas de sedes
+     * distintas se esperaran entre si en cada venta.
+     *
+     * El scope global de sede no sirve aca: la consulta tiene que mirar la
+     * sede de ESTA venta, que en el consolidado (o en un job) no es la del
+     * contexto. Por eso el filtro va explicito y sin scope.
+     */
     public function ensureInvoiceNumber(Sale $sale): void
     {
         if ($sale->invoice_number) {
             return;
         }
 
-        $last = Sale::where('business_id', $sale->business_id)
+        $last = Sale::withoutGlobalScope('branch')
+            ->where('business_id', $sale->business_id)
+            ->where('branch_id', $sale->branch_id)
             ->whereNotNull('invoice_number')
             ->orderByDesc('id')
             ->lockForUpdate()
@@ -551,9 +567,23 @@ class SaleService
             $next = ((int) $matches[1]) + 1;
         }
 
-        $prefix = strtoupper((string) (Business::whereKey($sale->business_id)->value('invoice_prefix') ?: 'FAC'));
-        $prefix = preg_replace('/[^A-Z0-9]/', '', $prefix) ?: 'FAC';
+        $sale->update(['invoice_number' => sprintf('%s-%06d', $this->invoicePrefixFor($sale), $next)]);
+    }
 
-        $sale->update(['invoice_number' => sprintf('%s-%06d', $prefix, $next)]);
+    /**
+     * Prefijo de la sede, o el del negocio si esa sede no lo personalizo
+     * (que es el caso de todo negocio monosede).
+     */
+    private function invoicePrefixFor(Sale $sale): string
+    {
+        $prefix = $sale->branch_id
+            ? Branch::withoutGlobalScopes()->whereKey($sale->branch_id)->value('invoice_prefix')
+            : null;
+
+        $prefix ??= Business::whereKey($sale->business_id)->value('invoice_prefix');
+
+        $prefix = preg_replace('/[^A-Z0-9]/', '', strtoupper((string) $prefix));
+
+        return $prefix ?: 'FAC';
     }
 }

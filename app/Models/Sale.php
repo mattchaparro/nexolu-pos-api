@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToBranch;
 use App\Traits\BelongsToBusiness;
 use App\Traits\NormalizesPaymentMethod;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -48,7 +49,7 @@ use Illuminate\Support\Collection;
 ])]
 class Sale extends Model
 {
-    use BelongsToBusiness, HasFactory, NormalizesPaymentMethod;
+    use BelongsToBranch, BelongsToBusiness, HasFactory, NormalizesPaymentMethod;
 
     protected function casts(): array
     {

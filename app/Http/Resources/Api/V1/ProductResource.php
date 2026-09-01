@@ -22,7 +22,14 @@ class ProductResource extends JsonResource
             'name' => $this->name,
             'description' => $this->description,
             'how_to_use' => $this->how_to_use,
-            'price' => $this->price,
+            // El de la sede activa: un mismo producto puede costar
+            // distinto en el centro comercial que en la fabrica.
+            //
+            // Formateado a string con 2 decimales, no float: es lo que venia
+            // devolviendo el cast decimal:2 de la columna y el front ya lo
+            // consume asi. Cambiar el tipo de un campo existente al agregar
+            // una funcionalidad nueva rompe a quien no pidio nada.
+            'price' => number_format($this->priceAt(), 2, '.', ''),
             // Oculto a quien no tenga inventory.view: /products/sellable y
             // /product-categories (index/show) estan abiertos a cualquier
             // empleado que vende (ver routes/api.php), pero eso no debe

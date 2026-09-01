@@ -137,10 +137,11 @@ class ProductController extends Controller
 
         $query = Product::with('category')
             ->withBranchStock($branchId)
+            ->withBranchPrice($branchId)
             ->when($ingredientsEnabled, fn ($q) => $q->with(['ingredients' => fn ($r) => $r->withBranchStock($branchId)]))
             ->when($variantsEnabled, fn ($q) => $q->with([
                 'variants.attributeValues.productAttribute',
-                'variants' => fn ($r) => $r->withBranchStock($branchId),
+                'variants' => fn ($r) => $r->withBranchStock($branchId)->withBranchPrice($branchId),
             ]))
             ->orderBy('name');
 

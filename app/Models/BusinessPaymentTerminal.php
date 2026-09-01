@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToBranch;
 use App\Traits\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -17,7 +18,7 @@ use Illuminate\Database\Eloquent\Model;
 #[Fillable(['business_id', 'serial', 'model', 'name', 'status', 'is_active', 'last_synced_at'])]
 class BusinessPaymentTerminal extends Model
 {
-    use BelongsToBusiness, HasFactory;
+    use BelongsToBranch, BelongsToBusiness, HasFactory;
 
     protected function casts(): array
     {

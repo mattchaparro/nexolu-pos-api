@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToBranch;
 use App\Traits\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -15,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 #[Fillable(['business_id', 'name', 'number', 'is_active'])]
 class BusinessTable extends Model
 {
-    use BelongsToBusiness, HasFactory;
+    use BelongsToBranch, BelongsToBusiness, HasFactory;
 
     protected function casts(): array
     {

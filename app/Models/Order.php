@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToBranch;
 use App\Traits\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -25,7 +26,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 ])]
 class Order extends Model
 {
-    use BelongsToBusiness, HasFactory;
+    use BelongsToBranch, BelongsToBusiness, HasFactory;
 
     /**
      * Recien creado. Si el negocio no cobra en linea, espera a que el

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\BelongsToBranch;
 use App\Traits\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -11,7 +12,7 @@ use Illuminate\Support\Carbon;
 
 class CashShift extends Model
 {
-    use BelongsToBusiness, HasFactory;
+    use BelongsToBranch, BelongsToBusiness, HasFactory;
 
     /** Turno cerrado por el propio flujo de turnos (un humano en pantalla). */
     const CLOSED_VIA_MANUAL = 'manual';

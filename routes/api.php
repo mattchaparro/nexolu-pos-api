@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BillingProfileController;
 use App\Http\Controllers\Api\V1\BranchController;
+use App\Http\Controllers\Api\V1\BranchProductPriceController;
 use App\Http\Controllers\Api\V1\BulkStockUpdateController;
 use App\Http\Controllers\Api\V1\BusinessController;
 use App\Http\Controllers\Api\V1\BusinessOverviewController;
@@ -320,6 +321,12 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             // ajustan stock sin necesitarla).
             Route::get('/products/{product}/cross-sells', [ProductCrossSellController::class, 'index'])
                 ->name('products.cross-sells.index');
+            // Precios por sede: detras de multi_branch, porque en un negocio
+            // de una sola sede la pantalla no tiene sentido.
+            Route::middleware('feature:multi_branch')->group(function () {
+                Route::get('/products/{product}/branch-prices', [BranchProductPriceController::class, 'index'])
+                    ->name('products.branch-prices.index');
+            });
             Route::get('/stock-movement-reasons', [StockMovementReasonController::class, 'index'])->name('stock-movement-reasons.index');
         });
 
@@ -336,6 +343,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             });
         });
         Route::middleware('permission:inventory.add')->group(function () {
+            Route::middleware('feature:multi_branch')->group(function () {
+                Route::put('/products/{product}/branch-prices', [BranchProductPriceController::class, 'update'])
+                    ->name('products.branch-prices.update');
+            });
             Route::apiResource('product-categories', ProductCategoryController::class)->only(['store', 'update', 'destroy']);
             Route::post('/products/{product}/duplicate', [ProductController::class, 'duplicate'])->name('products.duplicate');
             // Ventas cruzadas: cuelgan del producto porque asi se piensan

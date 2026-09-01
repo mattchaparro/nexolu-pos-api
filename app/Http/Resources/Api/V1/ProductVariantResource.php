@@ -15,7 +15,14 @@ class ProductVariantResource extends JsonResource
         return [
             'id' => $this->id,
             'sku' => $this->sku,
-            'price' => $this->price,
+            // El de la sede activa: un mismo producto puede costar
+            // distinto en el centro comercial que en la fabrica.
+            //
+            // Formateado a string con 2 decimales, no float: es lo que venia
+            // devolviendo el cast decimal:2 de la columna y el front ya lo
+            // consume asi. Cambiar el tipo de un campo existente al agregar
+            // una funcionalidad nueva rompe a quien no pidio nada.
+            'price' => number_format($this->priceAt(), 2, '.', ''),
             // Mismo gate que Product::cost_price en ProductResource: no
             // filtrar el margen del negocio a quien no tenga inventory.view.
             'cost_price' => $this->when($request->user()?->hasBusinessPermission('inventory.view') === true, $this->cost_price),
