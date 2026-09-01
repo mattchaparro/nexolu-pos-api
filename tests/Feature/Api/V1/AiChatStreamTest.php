@@ -83,7 +83,11 @@ class AiChatStreamTest extends TestCase
         ]);
 
         $response->assertOk();
-        $this->assertSame('text/event-stream; charset=UTF-8', $response->headers->get('Content-Type'));
+        // Solo el media type: el charset lo agrega el framework, no el
+        // controlador (que fija 'text/event-stream' a secas), y su
+        // capitalizacion cambia entre versiones - comparar la cabecera
+        // entera hacia fallar el test segun donde corriera.
+        $this->assertStringStartsWith('text/event-stream', (string) $response->headers->get('Content-Type'));
         $this->assertSame($sse, $response->streamedContent());
 
         Http::assertSent(function ($request) use ($business, $admin) {
