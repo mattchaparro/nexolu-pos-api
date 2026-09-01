@@ -60,6 +60,41 @@ class BranchIndexTest extends TestCase
         $this->assertSame([$main->id], array_column($response->json('data'), 'id'));
     }
 
+    public function test_an_admin_can_ask_for_the_inactive_ones_too(): void
+    {
+        $business = Business::factory()->create();
+        $main = Branch::factory()->for($business)->main()->create();
+        $closed = Branch::factory()->for($business)->inactive()->create();
+
+        // Sin esto, una sede desactivada desaparece de la unica pantalla
+        // desde la que se puede volver a encender.
+        $response = $this->actingAs($this->admin($business), 'sanctum')
+            ->getJson('/api/v1/branches?include_inactive=1')
+            ->assertOk();
+
+        $this->assertEqualsCanonicalizing(
+            [$main->id, $closed->id],
+            array_column($response->json('data'), 'id')
+        );
+    }
+
+    public function test_an_employee_cannot_widen_the_list_with_include_inactive(): void
+    {
+        $business = Business::factory()->create();
+        $main = Branch::factory()->for($business)->main()->create();
+        Branch::factory()->for($business)->inactive()->create();
+
+        $employee = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => false]);
+        $employee->assignRole('employee');
+        $employee->branches()->attach([$main->id]);
+
+        $response = $this->actingAs($employee, 'sanctum')
+            ->getJson('/api/v1/branches?include_inactive=1')
+            ->assertOk();
+
+        $this->assertSame([$main->id], array_column($response->json('data'), 'id'));
+    }
+
     public function test_it_reports_the_consolidated_mode_when_asked_for_it(): void
     {
         $business = Business::factory()->create();

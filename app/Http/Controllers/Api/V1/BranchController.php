@@ -32,9 +32,16 @@ class BranchController extends Controller
     {
         $user = $request->user();
 
+        // Por defecto solo las activas: es lo que alimenta el selector, y una
+        // sede cerrada no se puede elegir. La pantalla de administracion pide
+        // include_inactive porque necesita poder reactivar una; sin eso, una
+        // sede desactivada desaparecia de la unica pantalla desde la que se
+        // puede volver a encender.
+        $includeInactive = $request->boolean('include_inactive') && $user->canManageAllBranches();
+
         $branches = Branch::query()
             ->where('business_id', $user->business_id)
-            ->active()
+            ->unless($includeInactive, fn ($query) => $query->active())
             ->when(
                 ! $user->canManageAllBranches(),
                 fn ($query) => $query->whereIn('id', $user->branches()->select('branches.id'))
