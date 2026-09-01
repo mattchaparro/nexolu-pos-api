@@ -229,6 +229,32 @@ class PaymentsCoreService
     }
 
     /**
+     * Le pide al Core que le pregunte al proveedor en que quedo el cobro.
+     *
+     * A diferencia de `getTransaction`, que solo lee lo que el Core ya sabe,
+     * esto gasta una llamada de red contra la pasarela. Hace falta porque el
+     * webhook no alcanza como unica fuente de verdad: Bold no lo manda en su
+     * ambiente de pruebas y en produccion se toma hasta 10 minutos, y el
+     * comprador vuelve a la tienda mucho antes.
+     *
+     * @return array<string, mixed>
+     */
+    public function refreshTransaction(string $reference): array
+    {
+        try {
+            $response = $this->client()->post('/v1/payments/transactions/'.rawurlencode($reference).'/refresh');
+        } catch (ConnectionException $e) {
+            throw new RuntimeException('No se pudo contactar a Payments Core.', previous: $e);
+        }
+
+        if ($response->failed()) {
+            throw new RuntimeException($response->json('detail') ?? 'El Payments Core no pudo consultar el pago.');
+        }
+
+        return $response->json();
+    }
+
+    /**
      * Cobra un intent creado con flow="api" (tarjeta ya tokenizada por el
      * frontend, o Nequi/PSE/Boton Bancolombia). El resultado que devuelve
      * esto es solo el ACK inmediato del proveedor - la confirmacion real

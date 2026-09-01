@@ -7,9 +7,12 @@ use App\Http\Requests\Api\V1\Storefront\StoreStorefrontOrderRequest;
 use App\Http\Resources\Api\V1\Storefront\StorefrontOrderResource;
 use App\Models\Order;
 use App\Services\OnlineOrderNotifier;
+use App\Services\OnlineOrderPaymentService;
 use App\Services\OrderService;
+use App\Services\PaymentsCoreService;
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Checkout y seguimiento de pedidos, del lado del COMPRADOR ANONIMO.
@@ -42,6 +45,60 @@ class StorefrontOrderController extends Controller
 
     public function show(Request $request): StorefrontOrderResource
     {
+        return new StorefrontOrderResource($this->findByToken($request));
+    }
+
+    /**
+     * Confirmar el pago preguntandole a la pasarela, sin esperar el webhook.
+     *
+     * Lo llama la tienda cuando el comprador vuelve de pagar. El webhook
+     * sigue siendo el camino normal, pero no alcanza solo: Bold no manda
+     * webhooks en su ambiente de pruebas y en produccion se toma hasta 10
+     * minutos. Durante todo ese rato el comprador que YA pago ve su pedido
+     * como "esperando el pago", con un boton que lo invita a pagar otra vez.
+     *
+     * Es idempotente contra el webhook: los dos terminan en
+     * `OnlineOrderPaymentService::approve`, que solo actua sobre pedidos
+     * pendientes. Gane quien gane la carrera, la venta se crea una vez.
+     *
+     * Nunca falla hacia afuera: si la pasarela no responde, el comprador ve
+     * su pedido tal como esta -- que es exactamente lo que veria sin esto.
+     */
+    public function syncPayment(Request $request): StorefrontOrderResource
+    {
+        $order = $this->findByToken($request);
+
+        if ($order->status !== Order::STATUS_PENDING || $order->payment_reference === null) {
+            return new StorefrontOrderResource($order);
+        }
+
+        $gateway = $order->business?->activePaymentGateway();
+        if ($gateway === null) {
+            return new StorefrontOrderResource($order);
+        }
+
+        try {
+            $estado = app(PaymentsCoreService::class)
+                ->usingGateway($gateway)
+                ->refreshTransaction($order->payment_reference);
+        } catch (\Throwable $e) {
+            Log::warning('online_order.sync_payment_failed', [
+                'order_id' => $order->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return new StorefrontOrderResource($order);
+        }
+
+        if (($estado['status'] ?? null) === 'approved') {
+            app(OnlineOrderPaymentService::class)->approve($order);
+        }
+
+        return new StorefrontOrderResource($order->refresh()->load('items'));
+    }
+
+    private function findByToken(Request $request): Order
+    {
         $business = TenantContext::current();
         abort_unless($business !== null, 404);
 
@@ -53,6 +110,6 @@ class StorefrontOrderController extends Controller
 
         abort_if($order === null, 404);
 
-        return new StorefrontOrderResource($order);
+        return $order;
     }
 }

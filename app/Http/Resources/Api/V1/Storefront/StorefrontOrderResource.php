@@ -34,10 +34,15 @@ class StorefrontOrderResource extends JsonResource
             // A donde mandar al comprador a pagar, si el negocio cobra en
             // linea. Nulo = coordina el pago con la tienda por fuera.
             'payment_url' => $this->payment_url,
+            // Con que se pago y cuando. Lo que quiere ver quien acaba de
+            // pagar es el comprobante, no un estado interno del pedido.
+            'payment_provider' => $this->payment_provider,
+            'paid_at' => $this->paid_at?->toIso8601String(),
             'customer_name' => $this->customer_name,
             'is_pickup' => (bool) $this->is_pickup,
             'shipping_address' => $this->shipping_address,
             'shipping_city' => $this->shipping_city,
+            'shipping_notes' => $this->shipping_notes,
             'items' => $this->items->map(fn ($item) => [
                 // El id del producto no es un dato sensible: ya esta en la URL
                 // publica de su ficha. Va aca para poder enlazar de vuelta al

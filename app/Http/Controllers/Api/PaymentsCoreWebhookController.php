@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Mail\SubscriptionPaymentResultMail;
 use App\Mail\SubscriptionPaymentSuperadminNoticeMail;
 use App\Models\AiMessagePackCheckoutOrder;
-use App\Models\Business;
 use App\Models\BusinessPaymentGateway;
 use App\Models\Order;
 use App\Models\SaasSubscriptionPayment;
@@ -14,7 +13,7 @@ use App\Models\SubscriptionCheckoutOrder;
 use App\Models\TerminalCharge;
 use App\Models\User;
 use App\Services\AiMessagePackService;
-use App\Services\OrderService;
+use App\Services\OnlineOrderPaymentService;
 use App\Services\TerminalChargeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -135,7 +134,7 @@ class PaymentsCoreWebhookController extends Controller
 
         $onlineOrder = Order::withoutGlobalScopes()->where('payment_reference', $reference)->first();
         if ($onlineOrder !== null) {
-            $this->approveOnlineOrder($onlineOrder, $payload);
+            app(OnlineOrderPaymentService::class)->approve($onlineOrder);
 
             return;
         }
@@ -147,84 +146,6 @@ class PaymentsCoreWebhookController extends Controller
         }
 
         $this->approvePack($reference, $payload);
-    }
-
-    /**
-     * Un pedido de la tienda pagado: aca nace la venta.
-     *
-     * Es la regla del proyecto -- la `Sale` se crea cuando la plata entro,
-     * no cuando el comprador apreto "hacer pedido". Se delega en
-     * `OrderService::transition` para que pase por `SaleService` y
-     * `StockService` exactamente igual que una venta de mostrador, con sus
-     * movimientos de stock auditados.
-     *
-     * Idempotente por el estado: si el Core reintenta, el pedido ya no esta
-     * en `pending` y `canTransitionTo` corta.
-     *
-     * @param  array<string, mixed>  $payload
-     */
-    private function approveOnlineOrder(Order $order, array $payload): void
-    {
-        if ($order->status !== Order::STATUS_PENDING) {
-            return;
-        }
-
-        $business = Business::withoutGlobalScopes()->find($order->business_id);
-        // `sales.user_id` es NOT NULL y en una venta online no hay cajero:
-        // el vendedor es el dueño del negocio.
-        $owner = $business?->users()->where('is_business_owner', true)->first();
-        if ($business === null || $owner === null) {
-            Log::error('online_order.webhook: sin dueño para facturar', ['order_id' => $order->id]);
-
-            return;
-        }
-
-        try {
-            app(OrderService::class)->transition(
-                $owner,
-                $order,
-                Order::STATUS_CONFIRMED,
-                'Pago aprobado por '.($order->payment_provider ?? 'la pasarela'),
-                $this->onlinePaymentMethodFor($business),
-            );
-            $order->forceFill(['paid_at' => now()])->save();
-            app(OrderService::class)->notifyBuyer($order->fresh(['items']), Order::STATUS_CONFIRMED);
-        } catch (Throwable $e) {
-            // Nunca se rechaza un pago ya cobrado: el pedido queda pendiente
-            // y el comerciante lo resuelve a mano desde la bandeja.
-            Log::error('online_order.webhook: no se pudo facturar', [
-                'order_id' => $order->id,
-                'message' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    /**
-     * Con que medio se registra una venta cobrada por la pasarela.
-     *
-     * El catalogo de medios lo define cada negocio, asi que no se puede
-     * fijar uno por codigo (asi se rompio el confirmar manual: 'transfer'
-     * cableado contra un negocio que no lo tenia). Se busca el mas parecido
-     * a "pago electronico" entre los habilitados y, si no hay ninguno, se
-     * cae al primero que no sea fiado -- el proveedor real igual queda
-     * registrado en `orders.payment_provider`.
-     */
-    private function onlinePaymentMethodFor(Business $business): ?string
-    {
-        $allowed = $business->allowedPaymentMethodIds();
-        foreach (['card', 'tarjeta', 'transfer', 'transferencia', 'nequi', 'daviplata'] as $preferred) {
-            if (in_array($preferred, $allowed, true)) {
-                return $preferred;
-            }
-        }
-
-        foreach ($allowed as $method) {
-            if (! $business->isCreditPaymentMethod($method)) {
-                return $method;
-            }
-        }
-
-        return null;
     }
 
     /**

@@ -43,6 +43,9 @@ class StorefrontSettingsResource extends JsonResource
 
             'whatsapp_number' => $this->whatsapp_number,
             'shipping_flat_fee' => (float) $this->shipping_flat_fee,
+            // Cuanto se demora en llegar, en palabras del comerciante: no se
+            // puede calcular (depende de ciudad, transportador y operacion).
+            'delivery_estimate' => $this->delivery_estimate,
             'min_order_amount' => (float) $this->min_order_amount,
             'pickup_enabled' => (bool) $this->pickup_enabled,
             // Si el comprador va a pagar en la pasarela o a coordinar el

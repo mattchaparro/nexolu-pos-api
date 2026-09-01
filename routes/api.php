@@ -156,6 +156,14 @@ Route::prefix('v1/storefront/{business}')
             ->middleware('throttle:20,1')
             ->name('orders.store');
         Route::get('/orders/{token}', [StorefrontOrderController::class, 'show'])->name('orders.show');
+        // Confirmar el pago contra la pasarela, sin esperar el webhook (Bold
+        // no lo manda en pruebas y en produccion tarda hasta 10 minutos).
+        // Throttle propio y mas apretado que el catalogo: cada llamada
+        // consume una peticion nuestra contra el proveedor, asi que el
+        // sondeo de la tienda no puede convertirse en un martillo.
+        Route::post('/orders/{token}/sync-payment', [StorefrontOrderController::class, 'syncPayment'])
+            ->middleware('throttle:30,1')
+            ->name('orders.sync-payment');
 
         // El boton de WhatsApp pasa por aca para poder contarlo. Devuelve un
         // 302 a wa.me armado en el servidor -- ver el docblock del
