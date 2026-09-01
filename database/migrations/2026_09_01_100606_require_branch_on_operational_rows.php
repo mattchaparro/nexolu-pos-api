@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -32,6 +33,22 @@ return new class extends Migration
 
     public function up(): void
     {
+        // Crea las sedes principales que falten y reparte TODO lo operativo,
+        // no solo las dos tablas de aca. Es imprescindible que corra dentro
+        // de la migracion: en un despliegue nuevo ningun negocio tiene sede
+        // todavia, asi que el backfill de abajo no encontraria a que sede
+        // apuntar y esta migracion abortaria a mitad del deploy.
+        //
+        // Y aunque no abortara, dejar el resto de las tablas sin sede seria
+        // peor: con el scope de sede ya activo, un negocio no veria sus
+        // propias ventas hasta que alguien corriera el comando a mano.
+        //
+        // Se llama al comando en vez de repetir su SQL aca porque es
+        // idempotente y esta cubierto por tests; dos implementaciones de lo
+        // mismo es justo lo que hay que evitar en algo que corre una sola
+        // vez y sin nadie mirando.
+        Artisan::call('branches:ensure-main', ['--all' => true]);
+
         foreach (self::TABLES as $table) {
             $this->backfillFromMainBranch($table);
             $this->assertNothingLeftWithoutBranch($table);

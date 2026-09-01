@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\BusinessPaymentGateway;
 use App\Services\BusinessPaymentGatewayService;
+use App\Support\PaymentCapabilities;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -27,26 +28,29 @@ class BusinessPaymentGatewayController extends Controller
 {
     public function __construct(private BusinessPaymentGatewayService $gateways) {}
 
-    /**
-     * Que credenciales pide cada proveedor. El frontend dibuja el formulario
-     * desde aca en vez de tener los nombres escritos a mano.
-     */
-    private const CREDENTIAL_FIELDS = [
-        BusinessPaymentGateway::PROVIDER_BOLD => ['identity_key', 'secret_key'],
-        BusinessPaymentGateway::PROVIDER_WOMPI => ['public_key', 'private_key', 'integrity_secret', 'events_secret'],
-    ];
-
     public function index(Request $request): JsonResponse
     {
+        $business = $request->user()->business;
         $connected = BusinessPaymentGateway::query()->get()
             ->keyBy('provider_slug');
 
-        $providers = collect(BusinessPaymentGateway::PROVIDERS)->map(function (string $slug) use ($connected) {
+        $providers = collect(BusinessPaymentGateway::PROVIDERS)->map(function (string $slug) use ($connected, $business) {
             $gateway = $connected->get($slug);
+
+            // Solo las capacidades que el negocio puede usar: pedirle las
+            // llaves del boton de pagos a quien no tiene tienda seria pedirle
+            // credenciales para algo que no va a poder usar.
+            $capacidades = [];
+            foreach (PaymentCapabilities::capabilitiesOf($slug) as $capability) {
+                if (! PaymentCapabilities::availableTo($business, $capability)) {
+                    continue;
+                }
+                $capacidades[$capability] = PaymentCapabilities::fieldsFor($slug, $capability);
+            }
 
             return [
                 'provider_slug' => $slug,
-                'credential_fields' => self::CREDENTIAL_FIELDS[$slug] ?? [],
+                'capabilities' => $capacidades,
                 'is_connected' => $gateway !== null && $gateway->isUsable(),
                 'is_active' => (bool) $gateway?->is_active,
                 'environment' => $gateway?->environment,
@@ -60,8 +64,19 @@ class BusinessPaymentGatewayController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        $business = $request->user()->business;
         $provider = (string) $request->input('provider_slug');
-        $fields = self::CREDENTIAL_FIELDS[$provider] ?? [];
+
+        // Solo se aceptan credenciales de capacidades que el negocio puede
+        // usar. Sin esto, un negocio sin tienda podria mandar las llaves del
+        // boton de pagos por API aunque la pantalla no se las pida.
+        $grupos = [];
+        foreach (PaymentCapabilities::capabilitiesOf($provider) as $capability) {
+            if (PaymentCapabilities::availableTo($business, $capability)) {
+                $grupos[$capability] = PaymentCapabilities::fieldsFor($provider, $capability);
+            }
+        }
+        $fields = array_merge(...array_values($grupos ?: [[]]));
 
         $rules = [
             'provider_slug' => ['required', Rule::in(BusinessPaymentGateway::PROVIDERS)],
@@ -73,13 +88,46 @@ class BusinessPaymentGatewayController extends Controller
             // llega como NULL, no como "": el middleware
             // ConvertEmptyStringsToNull de Laravel la convierte antes de que
             // la validacion la vea. Con `string` a secas esto reventaba.
-            $rules["credentials.{$field}"] = ['present', 'nullable', 'string', 'max:500'];
+            // `sometimes`: cada juego de llaves se puede guardar por
+            // separado. Un comercio configura el datafono hoy y el boton de
+            // pagos el mes que viene, sin tener que mandar los dos.
+            $rules["credentials.{$field}"] = ['sometimes', 'nullable', 'string', 'max:500'];
         }
-        $data = $request->validate($rules);
+        $validator = validator($request->all(), $rules);
+
+        /*
+         * Un juego de llaves se manda ENTERO o no se manda.
+         *
+         * Los campos son `sometimes` para poder configurar el datafono hoy y
+         * el boton de pagos el mes que viene sin pisar el otro. Pero a medias
+         * no sirve: con la llave de identidad y sin la secreta, la pasarela
+         * queda conectada y falla al primer cobro, sin decir por que.
+         */
+        $validator->after(function ($validator) use ($request, $grupos) {
+            foreach ($grupos as $campos) {
+                $recibidos = array_filter(
+                    $campos,
+                    fn (string $campo) => $request->has("credentials.{$campo}"),
+                );
+
+                if ($recibidos === [] || count($recibidos) === count($campos)) {
+                    continue;
+                }
+
+                foreach (array_diff($campos, $recibidos) as $faltante) {
+                    $validator->errors()->add(
+                        "credentials.{$faltante}",
+                        'Faltan llaves de este juego: se guardan todas juntas o ninguna.',
+                    );
+                }
+            }
+        });
+
+        $data = $validator->validate();
 
         try {
             $gateway = $this->gateways->connect(
-                $request->user()->business,
+                $business,
                 $provider,
                 // Se vuelve a "" lo que el middleware convirtio en null.
                 array_map(fn ($value) => (string) $value, $data['credentials'] ?? []),
