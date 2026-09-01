@@ -9,6 +9,7 @@ use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\ServicePayment;
+use App\Support\BranchFilter;
 use App\Support\ProductProfitBreakdown;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -330,6 +331,7 @@ class BusinessOverviewService
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
             ->join('products', 'products.id', '=', 'sale_items.product_id')
             ->where('sales.business_id', $businessId)
+            ->tap(fn ($query) => BranchFilter::apply($query, 'sales'))
             ->where('sales.status', 'closed')
             ->where('sales.is_non_revenue', false)
             ->where('sales.is_credit', false)
@@ -375,6 +377,7 @@ class BusinessOverviewService
                     ->whereBetween('sp.created_at', [$start, $end]);
             })
             ->where('so.business_id', $businessId)
+            ->tap(fn ($query) => BranchFilter::apply($query, 'so'))
             ->whereBetween('so.created_at', [$start, $end])
             ->whereNull('so.deleted_at')
             ->where('so.status', '!=', 'cancelled')

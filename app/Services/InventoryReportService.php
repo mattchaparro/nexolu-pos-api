@@ -10,6 +10,7 @@ use App\Models\ProductVariant;
 use App\Models\SaleItem;
 use App\Models\StockMovement;
 use App\Models\StockMovementReason;
+use App\Support\BranchFilter;
 use App\Support\SortableQuery;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -170,6 +171,7 @@ class InventoryReportService
                 ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
                 ->join('products', 'products.id', '=', 'sale_items.product_id')
                 ->where('sales.business_id', $businessId)
+                ->tap(fn ($query) => BranchFilter::apply($query, 'sales'))
                 ->where('sales.status', 'closed')
                 ->when($dateFrom, fn ($q) => $q->whereDate('sales.closed_at', '>=', $dateFrom))
                 ->when($dateTo, fn ($q) => $q->whereDate('sales.closed_at', '<=', $dateTo))

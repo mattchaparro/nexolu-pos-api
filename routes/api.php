@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BillingProfileController;
+use App\Http\Controllers\Api\V1\BranchComparisonController;
 use App\Http\Controllers\Api\V1\BranchController;
 use App\Http\Controllers\Api\V1\BranchProductPriceController;
 use App\Http\Controllers\Api\V1\BulkStockUpdateController;
@@ -337,6 +338,14 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
                     ->name('products.branch-prices.index');
             });
             Route::get('/stock-movement-reasons', [StockMovementReasonController::class, 'index'])->name('stock-movement-reasons.index');
+        });
+
+        // Comparativo entre sedes. Fuera del bloque de reportes por permiso
+        // a proposito: no es "un reporte mas del negocio" sino informacion
+        // de todas las sedes a la vez, asi que la pide el admin, no quien
+        // tenga reports.sales en su local.
+        Route::middleware(['business-admin', 'feature:multi_branch'])->group(function () {
+            Route::get('/reports/branches', [BranchComparisonController::class, 'index'])->name('reports.branches');
         });
 
         // Traslados entre sedes. Detras de multi_branch porque para un

@@ -46,6 +46,7 @@ class ProductProfitBreakdown
                 DB::raw('SUM(si.subtotal - COALESCE(si.discount_amount, 0) - si.quantity * COALESCE(si.unit_cost_at_sale, p.cost_price, 0)) as profit'),
             ])
             ->where('s.business_id', $businessId)
+            ->tap(fn ($query) => BranchFilter::apply($query, 's'))
             ->where('s.status', 'closed')
             ->where('s.is_non_revenue', false)
             // Fiado (is_credit) queda fuera igual que en el resto del reporte
