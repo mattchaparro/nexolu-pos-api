@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -33,6 +34,7 @@ use Spatie\Permission\Traits\HasRoles;
     'external_id',
     'is_active',
     'business_id',
+    'default_branch_id',
     'is_business_owner',
     'dashboard_shortcuts',
     'whatsapp_onboarding_dismissed_at',
@@ -104,6 +106,55 @@ class User extends Authenticatable
     public function business(): BelongsTo
     {
         return $this->belongsTo(Business::class);
+    }
+
+    /**
+     * Sedes a las que este empleado esta asignado. El pivote existe porque
+     * los empleados rotan entre sedes: es el caso comun, no la excepcion.
+     *
+     * Un admin o dueño no necesita filas aqui - entra a todas las de su
+     * negocio (ver canAccessBranch()).
+     *
+     * @return BelongsToMany<Branch, $this>
+     */
+    public function branches(): BelongsToMany
+    {
+        return $this->belongsToMany(Branch::class)->withTimestamps();
+    }
+
+    /** Sede con la que entra al abrir sesion, si tiene una fijada. */
+    public function defaultBranch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class, 'default_branch_id');
+    }
+
+    /**
+     * Quien puede ver el consolidado y entrar a cualquier sede. Mismo
+     * criterio que EnsureBusinessAdmin, a proposito: "administra el negocio"
+     * y "administra todas sus sedes" son la misma persona.
+     */
+    public function canManageAllBranches(): bool
+    {
+        return (bool) $this->is_business_owner || $this->hasRole('admin');
+    }
+
+    /**
+     * El acceso a una sede es una cosa distinta de los permisos: el catalogo
+     * de permisos (App\Support\PermissionCatalog) dice QUE puede hacer, y la
+     * asignacion a sedes dice DONDE. Un cajero con permiso de vender solo
+     * vende en las sedes que tiene asignadas.
+     */
+    public function canAccessBranch(Branch $branch): bool
+    {
+        if ($this->business_id === null || (int) $branch->business_id !== (int) $this->business_id) {
+            return false;
+        }
+
+        if ($this->canManageAllBranches()) {
+            return true;
+        }
+
+        return $this->branches()->whereKey($branch->getKey())->exists();
     }
 
     /**

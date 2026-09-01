@@ -127,7 +127,7 @@ class BusinessTest extends TestCase
         $response = $this->actingAs($owner, 'sanctum')->getJson('/api/v1/business')->assertOk();
 
         $resolved = $response->json('resolved_features');
-        $this->assertCount(23, $resolved);
+        $this->assertCount(24, $resolved);
         // Basico: encendidas por defecto.
         $this->assertTrue($resolved['inventory']);
         $this->assertTrue($resolved['expenses']);
@@ -173,7 +173,12 @@ class BusinessTest extends TestCase
 
         $this->assertTrue($resolved['open_tabs']);
         $this->assertTrue($resolved['clients']);
-        $this->assertCount(23, $resolved);
+        // ...salvo las de opt-in explicito: un negocio antiguo sin JSON no
+        // puede amanecer publicando su catalogo en internet ni con un
+        // selector de sucursales que nadie pidio.
+        $this->assertFalse($resolved['online_store']);
+        $this->assertFalse($resolved['multi_branch']);
+        $this->assertCount(24, $resolved);
     }
 
     public function test_owner_can_update_their_business(): void

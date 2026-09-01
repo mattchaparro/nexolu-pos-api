@@ -47,7 +47,7 @@ class BulkStockUpdateService
 
                 if (($row['new_stock'] ?? null) !== null) {
                     $target = (int) $row['new_stock'];
-                    if ($target !== (int) $product->stock) {
+                    if ($target !== (int) $product->stockAt()) {
                         $this->stockService->adjust($user, $product, $target, $notes, $adjustmentReasonId);
                         $counts['stock_count']++;
                     }
@@ -112,7 +112,7 @@ class BulkStockUpdateService
 
                 if (($row['new_stock'] ?? null) !== null) {
                     $target = (float) $row['new_stock'];
-                    if (abs($target - (float) $ingredient->stock) >= 0.0001) {
+                    if (abs($target - $ingredient->stockAt()) >= 0.0001) {
                         $this->stockService->ingredientAdjust($user, $ingredient, $target, $notes, $adjustmentReasonId);
                         $counts['stock_count']++;
                     }

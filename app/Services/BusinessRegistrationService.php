@@ -17,6 +17,8 @@ use Illuminate\Support\Facades\Mail;
  */
 class BusinessRegistrationService
 {
+    public function __construct(private BranchService $branches) {}
+
     /**
      * @param  array{business_name: string, owner_name: string, email: string, password: string, phone?: ?string, whatsapp_number?: ?string, nit?: ?string, address?: ?string, setup_mode?: ?string, plan?: ?string, feature_flags?: ?array<string, bool>, trial_days?: ?int}  $data
      * @return array{business: Business, user: User}
@@ -70,15 +72,23 @@ class BusinessRegistrationService
                 'feature_flags' => $featureFlags,
             ]);
 
+            // Todo negocio nace con su sede principal, tambien el que nunca
+            // abrira una segunda: asi lo operativo (ventas, caja, inventario)
+            // tiene sede desde la primera fila y encender multisede despues es
+            // un feature flag y no una migracion de datos. Ver BranchService.
+            $branch = $this->branches->ensureMainBranch($business);
+
             $user = User::create([
                 'name' => $data['owner_name'],
                 'email' => $data['email'],
                 'password' => $data['password'],
                 'business_id' => $business->id,
+                'default_branch_id' => $branch->id,
                 'is_active' => true,
                 'is_business_owner' => true,
             ]);
             $user->assignRole('admin');
+            $branch->users()->attach($user->id);
 
             return ['business' => $business, 'user' => $user];
         });

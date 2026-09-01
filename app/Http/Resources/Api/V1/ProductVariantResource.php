@@ -19,7 +19,7 @@ class ProductVariantResource extends JsonResource
             // Mismo gate que Product::cost_price en ProductResource: no
             // filtrar el margen del negocio a quien no tenga inventory.view.
             'cost_price' => $this->when($request->user()?->hasBusinessPermission('inventory.view') === true, $this->cost_price),
-            'stock' => $this->stock,
+            'stock' => $this->stockAt(),
             'low_stock_alert_threshold' => $this->low_stock_alert_threshold,
             'is_active' => $this->is_active,
             'attribute_values' => $this->attributeValues->map(fn ($value) => [

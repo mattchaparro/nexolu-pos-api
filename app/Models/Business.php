@@ -137,6 +137,20 @@ class Business extends Model
         return $this->hasMany(User::class);
     }
 
+    /**
+     * Sedes del negocio. Todo negocio tiene al menos una (la principal),
+     * incluso el monosede - ver la migracion create_branches_tables.
+     */
+    public function branches(): HasMany
+    {
+        return $this->hasMany(Branch::class);
+    }
+
+    public function mainBranch(): HasOne
+    {
+        return $this->hasOne(Branch::class)->where('is_main', true);
+    }
+
     public function billingProfile(): HasOne
     {
         return $this->hasOne(BillingProfile::class);

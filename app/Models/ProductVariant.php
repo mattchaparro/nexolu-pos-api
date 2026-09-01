@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Traits\BelongsToBusiness;
+use App\Traits\HasBranchStock;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -21,7 +22,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Fillable(['product_id', 'business_id', 'sku', 'price', 'cost_price', 'stock', 'low_stock_alert_threshold', 'is_active'])]
 class ProductVariant extends Model
 {
-    use BelongsToBusiness, HasFactory, SoftDeletes;
+    use BelongsToBusiness, HasBranchStock, HasFactory, SoftDeletes;
+
+    /** Columna de este modelo en branch_stocks (ver HasBranchStock). */
+    public const BRANCH_STOCK_COLUMN = 'product_variant_id';
 
     protected static function booted(): void
     {

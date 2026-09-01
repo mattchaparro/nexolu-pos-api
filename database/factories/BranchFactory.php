@@ -1,0 +1,40 @@
+<?php
+
+namespace Database\Factories;
+
+use App\Models\Branch;
+use App\Models\Business;
+use Illuminate\Database\Eloquent\Factories\Factory;
+
+/**
+ * @extends Factory<Branch>
+ */
+class BranchFactory extends Factory
+{
+    /**
+     * Define the model's default state.
+     *
+     * @return array<string, mixed>
+     */
+    public function definition(): array
+    {
+        return [
+            'business_id' => Business::factory(),
+            'name' => 'Sede '.fake()->unique()->numberBetween(1, 9999),
+            'is_main' => false,
+            'is_active' => true,
+            'address' => fake()->streetAddress(),
+            'phone' => fake()->numerify('3#########'),
+        ];
+    }
+
+    public function main(): static
+    {
+        return $this->state(fn () => ['name' => 'Sede principal', 'is_main' => true]);
+    }
+
+    public function inactive(): static
+    {
+        return $this->state(fn () => ['is_active' => false]);
+    }
+}

@@ -17,7 +17,7 @@ class IngredientResource extends JsonResource
             'business_id' => $this->business_id,
             'name' => $this->name,
             'unit' => $this->unit,
-            'stock' => $this->stock,
+            'stock' => $this->stockAt(),
             'cost_price' => $this->cost_price,
             'min_stock' => $this->min_stock,
             'is_active' => $this->is_active,

@@ -328,7 +328,7 @@ class ProductService
 
                 $variant->update($row);
 
-                if ($actor && $newStock !== null && (int) $newStock !== (int) $variant->stock) {
+                if ($actor && $newStock !== null && (int) $newStock !== (int) $variant->stockAt()) {
                     $this->stockService->variantAdjust(
                         $actor,
                         $variant,

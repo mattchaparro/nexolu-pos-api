@@ -34,24 +34,33 @@ use Illuminate\Support\Facades\Cache;
  */
 class ProductAvailability
 {
-    public static function effectiveStock(Product $product, bool $ingredientsEnabled, bool $variantsEnabled = false): float
+    public static function effectiveStock(Product $product, bool $ingredientsEnabled, bool $variantsEnabled = false, ?int $branchId = null): float
     {
         if (! $product->track_stock) {
             return INF;
         }
+
+        // Con una sede activa esto responde "cuanto hay EN ESTA SEDE"; sin
+        // ella (consolidado, alertas por correo, comandos) responde el total
+        // del negocio. Ver App\Traits\HasBranchStock::stockAt() - es lo que
+        // permite que ninguno de los ~10 sitios que llaman aca haya tenido
+        // que cambiar para volverse multisede.
+        $branchId ??= BranchContext::branchId();
 
         // Un producto con variantes no llega nunca a tener receta a la vez
         // (mutuamente excluyentes, ver ProductService::extractVariants()),
         // asi que esta rama y la de receta de abajo nunca compiten entre si
         // para el mismo producto.
         if ($variantsEnabled && $product->hasVariants()) {
-            return (float) $product->variants->where('is_active', true)->sum('stock');
+            return (float) $product->variants
+                ->where('is_active', true)
+                ->sum(fn (ProductVariant $variant) => $variant->stockAt($branchId));
         }
 
-        $effectiveStock = (float) $product->stock;
+        $effectiveStock = $product->stockAt($branchId);
 
         if ($ingredientsEnabled && $product->ingredients->isNotEmpty()) {
-            $possibleUnits = self::calculateRecipeUnits($product);
+            $possibleUnits = self::calculateRecipeUnits($product, $branchId);
             if (is_finite($possibleUnits)) {
                 $effectiveStock = max(0.0, $possibleUnits);
             }
@@ -66,33 +75,55 @@ class ProductAvailability
      * effectiveStock() (que agrega TODAS las variantes activas de un
      * producto, para el catalogo/las tarjetas de Vender).
      */
-    public static function effectiveVariantStock(ProductVariant $variant): float
+    public static function effectiveVariantStock(ProductVariant $variant, ?int $branchId = null): float
     {
-        return (float) $variant->stock;
+        return $variant->stockAt($branchId);
     }
 
-    private static function calculateRecipeUnits(Product $product): float
+    private static function calculateRecipeUnits(Product $product, ?int $branchId = null): float
     {
         return (float) $product->ingredients
-            ->map(function ($ingredient) {
+            ->map(function ($ingredient) use ($branchId) {
                 $required = (float) ($ingredient->pivot->quantity ?? 0);
                 if ($required <= 0) {
                     return INF;
                 }
 
-                return floor(((float) $ingredient->stock) / $required);
+                // El insumo tambien se cuenta por sede: una receta se puede
+                // preparar en la sede que tiene los ingredientes, no en la
+                // que solo los tiene "en el total del negocio".
+                return floor($ingredient->stockAt($branchId) / $required);
             })
             ->min();
     }
 
-    public static function cacheKey(int $businessId): string
+    /**
+     * La clave lleva la sede (cada local ve su propio stock) y una version
+     * por negocio. La version existe porque invalidar "el catalogo de este
+     * negocio" tiene que alcanzar a TODAS sus sedes de una vez - editar un
+     * producto o cambiarle el precio afecta a todas - y ningun driver de
+     * cache permite borrar por comodin.
+     */
+    public static function cacheKey(int $businessId, ?int $branchId = null): string
     {
-        return "pos_products_{$businessId}";
+        $branchId ??= BranchContext::branchId();
+
+        return sprintf('pos_products_%d_%d_v%d', $businessId, $branchId ?? 0, self::cacheVersion($businessId));
     }
 
     public static function clearCache(int $businessId): void
     {
-        Cache::forget(self::cacheKey($businessId));
+        Cache::forever(self::versionKey($businessId), self::cacheVersion($businessId) + 1);
+    }
+
+    private static function versionKey(int $businessId): string
+    {
+        return "pos_products_version_{$businessId}";
+    }
+
+    private static function cacheVersion(int $businessId): int
+    {
+        return (int) Cache::get(self::versionKey($businessId), 1);
     }
 
     /** @return Collection<int, Product> */
@@ -131,11 +162,20 @@ class ProductAvailability
     /** @return Collection<int, Product> */
     private static function fetchSellableProducts(Business $business, bool $ingredientsEnabled, bool $variantsEnabled = false): Collection
     {
+        $branchId = BranchContext::branchId();
+
         return Product::where('business_id', $business->id)
             ->where('is_active', true)
             ->with('category')
-            ->when($ingredientsEnabled, fn ($q) => $q->with('ingredients'))
-            ->when($variantsEnabled, fn ($q) => $q->with('variants.attributeValues.productAttribute'))
+            ->withBranchStock($branchId)
+            // El saldo por sede de insumos y variantes se precarga junto con
+            // el del producto: sin esto, effectiveStock() consultaria una vez
+            // por cada fila del catalogo.
+            ->when($ingredientsEnabled, fn ($q) => $q->with(['ingredients' => fn ($r) => $r->withBranchStock($branchId)]))
+            ->when($variantsEnabled, fn ($q) => $q->with([
+                'variants.attributeValues.productAttribute',
+                'variants' => fn ($r) => $r->withBranchStock($branchId),
+            ]))
             ->orderBy('name')
             ->get();
     }

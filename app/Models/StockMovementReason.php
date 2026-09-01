@@ -38,6 +38,11 @@ class StockMovementReason extends Model
 
     const CODE_LAYAWAY_CANCEL = 'layaway_cancel';
 
+    /** Las dos mitades de un traslado entre sedes (ver StockTransferService). */
+    const CODE_TRANSFER_OUT = 'transfer_out';
+
+    const CODE_TRANSFER_IN = 'transfer_in';
+
     public function stockMovements(): HasMany
     {
         return $this->hasMany(StockMovement::class, 'stock_movement_reason_id');

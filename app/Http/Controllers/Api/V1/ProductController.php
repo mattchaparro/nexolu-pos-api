@@ -11,6 +11,7 @@ use App\Models\ProductCategory;
 use App\Models\ProductVariant;
 use App\Services\ProductService;
 use App\Support\AuditLogger;
+use App\Support\BranchContext;
 use App\Support\ProductAvailability;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -132,9 +133,15 @@ class ProductController extends Controller
         $ingredientsEnabled = (bool) $business?->hasFeature('ingredients');
         $variantsEnabled = (bool) $business?->hasFeature('variants');
 
+        $branchId = BranchContext::branchId();
+
         $query = Product::with('category')
-            ->when($ingredientsEnabled, fn ($q) => $q->with('ingredients'))
-            ->when($variantsEnabled, fn ($q) => $q->with('variants.attributeValues.productAttribute'))
+            ->withBranchStock($branchId)
+            ->when($ingredientsEnabled, fn ($q) => $q->with(['ingredients' => fn ($r) => $r->withBranchStock($branchId)]))
+            ->when($variantsEnabled, fn ($q) => $q->with([
+                'variants.attributeValues.productAttribute',
+                'variants' => fn ($r) => $r->withBranchStock($branchId),
+            ]))
             ->orderBy('name');
 
         // Sin el parametro, se listan ambos (lo necesita Vender, que vende

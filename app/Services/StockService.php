@@ -89,7 +89,10 @@ class StockService
     {
         $this->assertStockIsManuallyManageable($product);
 
-        $diff = $newStock - (float) $product->stock;
+        // Contra el stock de la SEDE activa, no contra el agregado del
+        // negocio: "ajustar a 10" en el punto de fabrica significa dejar 10
+        // ahi, no dejar 10 entre todos los locales.
+        $diff = $newStock - $product->stockAt();
 
         return StockMovement::create([
             'product_id' => $product->id,
@@ -150,7 +153,7 @@ class StockService
     /** Ajusta a un valor absoluto, registrando la diferencia. */
     public function variantAdjust(User $user, ProductVariant $variant, float $newStock, ?string $notes = null, ?int $reasonId = null): StockMovement
     {
-        $diff = $newStock - (float) $variant->stock;
+        $diff = $newStock - $variant->stockAt();
 
         return StockMovement::create([
             'product_id' => $variant->product_id,
@@ -461,7 +464,7 @@ class StockService
      */
     public function ingredientAdjust(User $user, Ingredient $ingredient, float $newStock, ?string $notes = null, ?int $reasonId = null): StockMovement
     {
-        $diff = $newStock - (float) $ingredient->stock;
+        $diff = $newStock - $ingredient->stockAt();
 
         return StockMovement::create([
             'ingredient_id' => $ingredient->id,

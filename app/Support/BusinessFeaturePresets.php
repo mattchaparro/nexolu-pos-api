@@ -34,9 +34,13 @@ class BusinessFeaturePresets
      * tiene encendida. Lo que esta lista impide es que la herede un negocio
      * SIN JSON, donde "todo encendido" es una suposicion, no una decision.
      *
+     * `multi_branch` esta aca por un motivo mas fuerte todavia: sin esta
+     * lista, TODOS los negocios antiguos sin JSON aparecerian de golpe con
+     * multisede encendida y un selector de sucursal que nadie pidio.
+     *
      * @var list<string>
      */
-    public const OPT_IN_ONLY = ['online_store'];
+    public const OPT_IN_ONLY = ['online_store', 'multi_branch'];
 
     /** @return list<string> */
     public static function setupModes(): array
@@ -160,6 +164,7 @@ class BusinessFeaturePresets
             'charges' => false,
             'reminders' => true,
             'online_store' => false,
+            'multi_branch' => false,
         ];
     }
 
@@ -195,6 +200,11 @@ class BusinessFeaturePresets
             // ademas activa `business_store_settings.is_active` y publica sus
             // productos (ver ResolveStorefrontTenant).
             'online_store' => true,
+            // No entra con ningun plan: un negocio con una sola sede no gana
+            // nada teniendola encendida (solo un selector de mas), y quien
+            // abre una segunda sede es una conversacion comercial. Se
+            // enciende negocio por negocio desde SuperAdmin.
+            'multi_branch' => false,
         ];
     }
 
@@ -266,6 +276,8 @@ class BusinessFeaturePresets
             ['key' => 'clients', 'label' => 'Directorio de clientes', 'description' => 'Ficha de cada cliente con su historial de compras.', 'group' => 'Clientes y agenda'],
             ['key' => 'scheduling', 'label' => 'Agenda', 'description' => 'Calendario de citas, independiente del catálogo de servicios.', 'group' => 'Clientes y agenda'],
             ['key' => 'reminders', 'label' => 'Planificador de recordatorios', 'description' => 'Recordatorios internos con fecha de vencimiento.', 'group' => 'Clientes y agenda'],
+
+            ['key' => 'multi_branch', 'label' => 'Multisede (sucursales)', 'description' => 'Permite manejar varias sedes con inventario, caja, empleados y numeración de facturas independientes, con reportes por sede y consolidados. Un negocio de una sola sede no la necesita: sigue operando igual sin encenderla.', 'group' => 'Operación'],
 
             ['key' => 'online_store', 'label' => 'Tienda online', 'description' => 'Publica un catálogo público en internet con el mismo inventario del POS, para que los clientes compren y paguen en línea. Incluida en el plan Full; habilitarla no publica nada hasta que el comerciante active su tienda y publique productos.', 'group' => 'Canales de venta'],
         ];

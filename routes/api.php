@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\BillingProfileController;
+use App\Http\Controllers\Api\V1\BranchController;
 use App\Http\Controllers\Api\V1\BulkStockUpdateController;
 use App\Http\Controllers\Api\V1\BusinessController;
 use App\Http\Controllers\Api\V1\BusinessOverviewController;
@@ -61,6 +62,7 @@ use App\Http\Controllers\Api\V1\ServiceOrderController;
 use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\StockMovementReasonController;
+use App\Http\Controllers\Api\V1\StockTransferController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontCatalogController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontContactController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontOrderController;
@@ -182,11 +184,17 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->name('password.forgot');
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])->name('password.reset');
 
-    Route::middleware(['auth:sanctum', 'sentry.context'])->group(function () {
+    Route::middleware(['auth:sanctum', 'sentry.context', 'branch.context'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
         Route::get('/me', [AuthController::class, 'me'])->name('me');
         Route::put('/me', [AuthController::class, 'updateProfile'])->name('me.update');
         Route::put('/me/password', [AuthController::class, 'updatePassword'])->name('me.password.update');
+
+        // Sedes accesibles + sede activa: lo consume el selector de sucursal
+        // de la barra superior. Sin permiso ni feature detras a proposito -
+        // un negocio monosede tambien lo llama y recibe su unica sede, y el
+        // front decide si muestra el selector o no.
+        Route::get('/branches', [BranchController::class, 'index'])->name('branches.index');
 
         Route::post('/ai/chat', [AiChatController::class, 'send'])->name('ai.chat');
         Route::post('/ai/chat/stream', [AiChatController::class, 'stream'])->name('ai.chat.stream');
@@ -313,6 +321,19 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::get('/products/{product}/cross-sells', [ProductCrossSellController::class, 'index'])
                 ->name('products.cross-sells.index');
             Route::get('/stock-movement-reasons', [StockMovementReasonController::class, 'index'])->name('stock-movement-reasons.index');
+        });
+
+        // Traslados entre sedes. Detras de multi_branch porque para un
+        // negocio de una sola sede no significan nada; crear uno pide
+        // inventory.adjust (mueve saldos) y no inventory.add.
+        Route::middleware('feature:multi_branch')->group(function () {
+            Route::middleware('permission:inventory.view')->group(function () {
+                Route::get('/stock-transfers', [StockTransferController::class, 'index'])->name('stock-transfers.index');
+                Route::get('/stock-transfers/{stockTransfer}', [StockTransferController::class, 'show'])->name('stock-transfers.show');
+            });
+            Route::middleware('permission:inventory.adjust')->group(function () {
+                Route::post('/stock-transfers', [StockTransferController::class, 'store'])->name('stock-transfers.store');
+            });
         });
         Route::middleware('permission:inventory.add')->group(function () {
             Route::apiResource('product-categories', ProductCategoryController::class)->only(['store', 'update', 'destroy']);

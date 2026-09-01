@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Traits\BelongsToBusiness;
+use App\Traits\HasBranchStock;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -19,7 +20,10 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 #[Fillable(['business_id', 'name', 'unit', 'stock', 'cost_price', 'min_stock', 'is_active'])]
 class Ingredient extends Model
 {
-    use BelongsToBusiness, HasFactory;
+    use BelongsToBusiness, HasBranchStock, HasFactory;
+
+    /** Columna de este modelo en branch_stocks (ver HasBranchStock). */
+    public const BRANCH_STOCK_COLUMN = 'ingredient_id';
 
     protected function casts(): array
     {
