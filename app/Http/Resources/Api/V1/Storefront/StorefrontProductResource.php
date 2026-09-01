@@ -113,7 +113,15 @@ class StorefrontProductResource extends JsonResource
             // en el catalogo interno; en la tienda es contenido de venta, asi
             // que va aparte de la descripcion y no concatenado a ella.
             'how_to_use' => $this->how_to_use,
-            'price' => (float) ($hasVariants ? $this->variants->min('price') : $this->price),
+            // priceAt()/stockAt() y no la columna cruda: el middleware del
+            // storefront fija la sede de despacho como contexto (ver
+            // ResolveStorefrontTenant), asi que esto responde el precio y el
+            // stock DE ESA SEDE. Con la columna cruda el comprador veria el
+            // agregado del negocio y podria comprar algo que solo existe en
+            // el otro local.
+            'price' => (float) ($hasVariants
+                ? $this->variants->min(fn ($variant) => $variant->priceAt())
+                : $this->priceAt()),
             'has_variants' => $hasVariants,
             'category' => $this->whenLoaded('category', fn () => [
                 'id' => $this->category->id,
@@ -140,8 +148,8 @@ class StorefrontProductResource extends JsonResource
                     'id' => $related->id,
                     'name' => $related->name,
                     'price' => (float) ($related->variants->isNotEmpty()
-                        ? $related->variants->min('price')
-                        : $related->price),
+                        ? $related->variants->min(fn ($variant) => $variant->priceAt())
+                        : $related->priceAt()),
                     'has_variants' => $related->variants->isNotEmpty(),
                     'image' => $related->images->first()?->thumbnailUrl() ?? $related->image,
                 ])->values(),
@@ -159,8 +167,8 @@ class StorefrontProductResource extends JsonResource
 
         $stock = $hasVariants
             ? (float) $this->variants->where('is_active', true)
-                ->sum(fn ($variant) => max(0, $variant->stock - self::reservedForVariant($variant->id)))
-            : (float) $this->stock - self::reservedForProduct($this->id);
+                ->sum(fn ($variant) => max(0, $variant->stockAt() - self::reservedForVariant($variant->id)))
+            : $this->stockAt() - self::reservedForProduct($this->id);
 
         return [
             'in_stock' => $stock > 0,

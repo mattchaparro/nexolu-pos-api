@@ -59,7 +59,7 @@ class BusinessMigrationPatchControllerTest extends TestCase
         $response->assertOk();
     }
 
-    public function test_runs_the_three_commands_scoped_to_the_business(): void
+    public function test_runs_the_patch_commands_scoped_to_the_business(): void
     {
         $business = Business::factory()->create();
         Expense::factory()->create(['business_id' => $business->id, 'payment_method' => 'Efectivo']);
@@ -68,7 +68,11 @@ class BusinessMigrationPatchControllerTest extends TestCase
 
         $response->assertOk()->assertJsonStructure(['results' => [['command', 'ok', 'output']]]);
         $commands = collect($response->json('results'))->pluck('command')->all();
+        // branches:ensure-main primero: el negocio migrado entra sin sede y
+        // todo lo operativo esta scopeado por sede, asi que hasta que corra
+        // no ve ni sus propias ventas.
         $this->assertSame([
+            'branches:ensure-main',
             'legacy:normalize-payment-methods',
             'payment-methods:migrate-catalog',
             'clients:backfill-links',

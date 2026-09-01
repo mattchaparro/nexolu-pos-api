@@ -17,24 +17,39 @@ use Illuminate\Support\Facades\Artisan;
  * Sanctum.
  *
  * Cada comando corre en su propio try/catch: que uno falle no debe tirar
- * abajo los otros dos, ni impedir ver el resultado de los que si
- * corrieron.
+ * abajo los otros, ni impedir ver el resultado de los que si corrieron.
  */
 class BusinessMigrationPatchController extends Controller
 {
-    private const COMMANDS = [
-        'legacy:normalize-payment-methods',
-        'payment-methods:migrate-catalog',
-        'clients:backfill-links',
-    ];
+    /**
+     * Comando => argumentos, porque no todos reciben el negocio igual:
+     * los tres parches de datos lo toman como --business y
+     * branches:ensure-main como argumento posicional (acepta id o slug).
+     *
+     * branches:ensure-main va PRIMERO y no al final: el negocio que llega
+     * por migracion entra sin sede (BusinessDataExporter copia sus filas
+     * pero no puede inventarle una), y todo lo operativo esta scopeado por
+     * sede. Hasta que corra, ese negocio no ve ni sus propias ventas.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function commandsFor(Business $business): array
+    {
+        return [
+            'branches:ensure-main' => ['business' => $business->id],
+            'legacy:normalize-payment-methods' => ['--business' => $business->id],
+            'payment-methods:migrate-catalog' => ['--business' => $business->id],
+            'clients:backfill-links' => ['--business' => $business->id],
+        ];
+    }
 
     public function run(Business $business): JsonResponse
     {
         $results = [];
 
-        foreach (self::COMMANDS as $command) {
+        foreach ($this->commandsFor($business) as $command => $arguments) {
             try {
-                Artisan::call($command, ['--business' => $business->id]);
+                Artisan::call($command, $arguments);
                 $results[] = [
                     'command' => $command,
                     'ok' => true,

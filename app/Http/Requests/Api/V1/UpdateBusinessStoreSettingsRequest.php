@@ -4,6 +4,7 @@ namespace App\Http\Requests\Api\V1;
 
 use App\Models\BusinessStoreSettings;
 use App\Support\StoreHomeBlocks;
+use App\Support\Validation\BusinessScopedExists;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -23,6 +24,13 @@ class UpdateBusinessStoreSettingsRequest extends FormRequest
     {
         return [
             'is_active' => ['sometimes', 'boolean'],
+            // Sede desde la que se despacha. null vuelve a la principal, que
+            // es lo que significa la ausencia de valor (ver
+            // BusinessStoreSettings::fulfillmentBranchId).
+            'fulfillment_branch_id' => [
+                'sometimes', 'nullable', 'integer',
+                BusinessScopedExists::for('branches', $this->user()?->business_id),
+            ],
             'store_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
             // Hex de 6 digitos: el color va directo a un style del storefront,

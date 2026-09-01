@@ -19,6 +19,11 @@ class BusinessStoreSettingsResource extends JsonResource
     {
         return [
             'is_active' => (bool) $this->is_active,
+            // Crudo y resuelto: el formulario necesita saber si el
+            // comerciante eligio una sede o esta heredando la principal,
+            // y la pantalla necesita saber cual es en cualquier caso.
+            'fulfillment_branch_id' => $this->fulfillment_branch_id,
+            'resolved_fulfillment_branch_id' => $this->fulfillmentBranchId(),
             'store_name' => $this->store_name,
             'description' => $this->description,
             'logo_url' => $this->logoUrl(),

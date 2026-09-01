@@ -70,9 +70,18 @@ class StorefrontCatalogController extends Controller
 
     public function products(Request $request): AnonymousResourceCollection
     {
+        // Precarga el saldo y el precio de la sede de despacho: sin esto,
+        // StorefrontProductResource consultaria una vez por producto (ver
+        // HasBranchStock::stockAt).
         $query = Product::query()
             ->tap(fn (Builder $q) => $this->visible($q))
-            ->with(['category', 'images', 'variants' => fn ($q) => $q->where('is_active', true)])
+            ->withBranchStock()
+            ->withBranchPrice()
+            ->with([
+                'category',
+                'images',
+                'variants' => fn ($q) => $q->where('is_active', true)->withBranchStock()->withBranchPrice(),
+            ])
             ->with('variants.attributeValues.productAttribute');
 
         if ($request->filled('search')) {

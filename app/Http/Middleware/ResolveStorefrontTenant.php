@@ -2,7 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Branch;
 use App\Models\Business;
+use App\Support\BranchContext;
 use App\Support\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
@@ -49,6 +51,22 @@ class ResolveStorefrontTenant
         }
 
         TenantContext::set($business);
+
+        // La tienda despacha desde UNA sede, y fijarla aca hace que todo lo
+        // de adentro la herede sin saber que existe: el catalogo muestra el
+        // stock de ese local (ver HasBranchStock::stockAt), los precios usan
+        // sus overrides, el pedido nace con esa sede y el descuento de stock
+        // al confirmarlo sale de ahi. La alternativa era acordarse de pasarla
+        // en cuatro sitios distintos.
+        //
+        // Sin ella el comprador veria el total del negocio y podria comprar
+        // algo que solo existe en el otro local, a dos horas.
+        if ($branchId = $settings->fulfillmentBranchId()) {
+            if ($branch = Branch::withoutGlobalScopes()->find($branchId)) {
+                BranchContext::set($branch);
+            }
+        }
+
         $request->attributes->set('storeSettings', $settings);
 
         return $next($request);
@@ -68,6 +86,7 @@ class ResolveStorefrontTenant
     public function terminate(Request $request, Response $response): void
     {
         TenantContext::forget();
+        BranchContext::forget();
     }
 
     /**

@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Services\BranchService;
 use App\Traits\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -17,7 +19,7 @@ use Illuminate\Support\Facades\Storage;
  * responda - ver App\Http\Middleware\ResolveStorefrontTenant.
  */
 #[Fillable([
-    'business_id', 'is_active', 'store_name', 'description', 'disk', 'logo_path', 'banner_path',
+    'business_id', 'fulfillment_branch_id', 'is_active', 'store_name', 'description', 'disk', 'logo_path', 'banner_path',
     'primary_color', 'surface_color', 'accent_color', 'font_preset', 'home_blocks',
     'whatsapp_number', 'shipping_flat_fee', 'min_order_amount', 'pickup_enabled',
     'order_email_enabled', 'order_email',
@@ -33,6 +35,30 @@ class BusinessStoreSettings extends Model
     use BelongsToBusiness, HasFactory;
 
     protected $table = 'business_store_settings';
+
+    /**
+     * Sede desde la que despacha la tienda: la que decide que stock ve el
+     * comprador y de donde sale la mercancia.
+     *
+     * NULL significa la principal, no "ninguna". Es lo correcto para el
+     * monosede y evita obligar al comerciante a tomar una decision que no
+     * tiene (una sola sede posible). Resolverlo aqui y no en cada consumidor
+     * es lo que impide que el storefront y OrderService acaben eligiendo
+     * sedes distintas para el mismo pedido.
+     */
+    public function fulfillmentBranchId(): ?int
+    {
+        if ($this->fulfillment_branch_id) {
+            return (int) $this->fulfillment_branch_id;
+        }
+
+        return app(BranchService::class)->mainBranchId((int) $this->business_id);
+    }
+
+    public function fulfillmentBranch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class, 'fulfillment_branch_id');
+    }
 
     /**
      * Combinaciones tipograficas curadas. Cerradas a proposito: fuente libre
