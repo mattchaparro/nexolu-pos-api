@@ -170,10 +170,26 @@ class ProcessWhatsAppInbound implements ShouldQueue
         );
     }
 
+    /**
+     * Lo que recibe quien escribe sin tener el numero vinculado.
+     *
+     * No se contesta la pregunta a proposito: un numero de WhatsApp por si
+     * solo no dice a que negocio pertenece, y este asistente consulta
+     * ventas, caja e inventario. Responderle a un numero sin vincular seria
+     * abrirle los datos de un negocio a cualquiera que consiga el telefono.
+     *
+     * Se dice de una vez que el codigo llega por aca mismo: sin eso la
+     * gente sale a buscar un SMS que nunca va a llegar.
+     */
     private function onboardingMessage(): string
     {
-        return 'Hola 👋 Para usar el asistente de Nexolú por WhatsApp, primero vincula '
-            .'este numero desde el POS: entra a tu cuenta, ve al Asistente y elige '
-            .'"Asistente por WhatsApp".';
+        return "Hola 👋 Soy el asistente de Nexolú.\n\n"
+            .'Para poder ayudarte necesito saber de qué negocio eres, así que '
+            ."primero hay que vincular este número.\n\n"
+            .'Entra a tu cuenta en el POS, ve a *Asistente* y elige *Asistente '
+            .'por WhatsApp*. Te enviaré un código aquí mismo para confirmar '
+            ."que este teléfono es tuyo.\n\n"
+            .'Cuando termines, escríbeme y ya podrás preguntarme por tus '
+            .'ventas, tu caja o tu inventario.';
     }
 }
