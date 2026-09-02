@@ -7,7 +7,9 @@ use App\Models\BusinessStoreSettings;
 use App\Models\Discount;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\Sale;
 use App\Models\User;
+use App\Services\OrderService;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Testing\TestResponse;
@@ -238,6 +240,42 @@ class StorefrontCouponTest extends TestCase
             ->assertOk()
             ->assertJsonPath('valid', false)
             ->assertJsonPath('message', 'Ese cupón no existe.');
+    }
+
+    /**
+     * La venta tiene que cobrar lo que se cobro.
+     *
+     * Encontrado en produccion con el pedido #4: el cupon se aplicaba al
+     * pedido (15.800) pero la venta se creaba por el total sin descuento
+     * (17.000). El comerciante quedaba con 1.200 de mas en sus ventas del
+     * dia, en su cierre de caja y en el cuadre contra la pasarela -- que es
+     * justo donde se vuelve un descuadre que nadie sabe explicar.
+     */
+    public function test_la_venta_del_pedido_confirmado_cobra_el_total_con_descuento(): void
+    {
+        $business = $this->tienda();
+        $product = $this->producto($business);
+        $this->cupon($business);
+
+        $this->comprar($business, $product, ['coupon_code' => 'BIENVENIDA10'])
+            ->assertCreated()
+            ->assertJsonPath('total', 18000);
+
+        $order = Order::withoutGlobalScopes()->where('business_id', $business->id)->latest('id')->first();
+        $owner = User::withoutGlobalScopes()->where('business_id', $business->id)->first();
+
+        app(OrderService::class)->transition(
+            $owner, $order, Order::STATUS_CONFIRMED, 'Pago aprobado', 'transfer'
+        );
+
+        $sale = Sale::withoutGlobalScopes()->find($order->fresh()->sale_id);
+        $this->assertNotNull($sale, 'Confirmar el pedido debe crear la venta.');
+        $this->assertSame(
+            18000.0,
+            (float) $sale->total,
+            'La venta no puede quedar por encima de lo que el comprador pago.'
+        );
+        $this->assertSame(2000.0, (float) $sale->cart_discount_amount);
     }
 
     /** Un descuento del mostrador (sin código) no es un cupón. */

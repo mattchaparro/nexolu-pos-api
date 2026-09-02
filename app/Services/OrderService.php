@@ -419,6 +419,12 @@ class OrderService
             // una diferencia que su cliente jamas acepto.
             'apply_service_charge' => false,
             'apply_ipoconsumo' => false,
+            // El cupon que el comprador redimio. Va el MONTO ademas del id
+            // porque es el que ya pago: recalcularlo aqui haria que un cupon
+            // editado despues moviera el total de una venta ya cobrada, y
+            // dejaria la venta por encima de lo que entro en caja.
+            'cart_discount_id' => $order->discount_id,
+            'cart_discount_amount' => (float) $order->discount_amount,
         ]);
     }
 

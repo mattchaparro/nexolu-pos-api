@@ -53,7 +53,13 @@ class SaleService
             $total = $this->applyItems($user, $sale, $business, $data['items']);
 
             [$cartDiscountId, $cartDiscountAmount, $total] = $this->applyCartDiscount(
-                $business, $total, $data['cart_discount_id'] ?? null
+                $business, $total, $data['cart_discount_id'] ?? null,
+                // Monto ya fijado en otra parte (hoy: el cupon de un pedido
+                // de la tienda). Se respeta tal cual en vez de recalcularlo:
+                // el comprador ya pago ese numero, y un cupon que cambie de
+                // porcentaje despues no puede mover el total de una venta
+                // que ya se cobro.
+                isset($data['cart_discount_amount']) ? (float) $data['cart_discount_amount'] : null,
             );
 
             [$serviceChargeAmount, $ipoconsumoAmount] = $this->resolveCharges($business, $total, $data);
@@ -524,8 +530,26 @@ class SaleService
     /**
      * @return array{0: ?int, 1: float, 2: float} [cart_discount_id, monto, total resultante]
      */
-    public function applyCartDiscount(Business $business, float $total, ?int $cartDiscountId): array
-    {
+    public function applyCartDiscount(
+        Business $business,
+        float $total,
+        ?int $cartDiscountId,
+        ?float $fixedAmount = null,
+    ): array {
+        // Monto ya fijado: se cobra lo que se cobro. Pasa con los cupones de
+        // la tienda online, donde el comprador vio y pago un total antes de
+        // que el comerciante confirmara.
+        //
+        // No se exige `discounts` aca a proposito: ese feature gobierna si el
+        // negocio puede CREAR descuentos en el mostrador, no si respeta un
+        // cobro que ya ocurrio. Ignorarlo dejaria la venta por encima de lo
+        // que entro en caja.
+        if ($fixedAmount !== null && $fixedAmount > 0) {
+            $amount = min(round($fixedAmount, 2), $total);
+
+            return [$cartDiscountId, $amount, $total - $amount];
+        }
+
         if (! $business->hasFeature('discounts') || ! $cartDiscountId) {
             return [null, 0.0, $total];
         }
