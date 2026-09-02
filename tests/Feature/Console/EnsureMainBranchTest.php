@@ -11,9 +11,15 @@ use Tests\TestCase;
 
 /**
  * `branches:ensure-main` es la puerta de entrada de los negocios que existian
- * antes del modulo multisede y de los que llegan por migracion desde el
- * monolito: BusinessDataExporter copia sus filas pero no puede inventarles una
- * sede, asi que entran con branch_id en NULL.
+ * antes del modulo multisede y de los que llegaron por migracion desde el
+ * monolito con la version vieja del exportador, que copiaba sus filas sin
+ * inventarles una sede: entraban con branch_id en NULL.
+ *
+ * Desde 2026-09-01 BusinessDataExporter crea la sede y estampa branch_id
+ * durante el export (no le queda opcion: stock_movements y cash_closings lo
+ * exigen NOT NULL), asi que para una migracion nueva este comando ya no
+ * encuentra filas sueltas - pero sigue siendo el que asigna empleados a la
+ * sede y siembra branch_stocks, y el que repara a los negocios viejos.
  *
  * Que sea repetible sin daño no es un detalle: es lo que permite volver a
  * correrlo cada vez que una tabla nueva entra a

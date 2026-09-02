@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Branch;
 use App\Models\Business;
 use App\Models\CashClosing;
 use App\Models\LayawayPayment;
@@ -11,12 +12,15 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SalePaymentSplit;
 use App\Models\ServicePayment;
+use App\Models\User;
+use App\Services\BranchService;
 use App\Support\RevenueByPaymentMethod;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Verificacion profunda POST-migracion de un negocio, del lado nuevo
@@ -43,6 +47,7 @@ use Illuminate\Support\Facades\DB;
  *   C5 cierres_de_caja        - el payment_breakdown guardado usa vocabulario normalizado (WARN)
  *   C6 sin_huerfanos          - FKs del negocio resuelven en destino
  *   C7 sin_contaminacion      - ninguna fila del negocio referencia datos de otro negocio
+ *   C8 sedes                  - sede principal unica + nada operativo sin sede (multisede)
  */
 #[Signature('businesses:verify-migration {business? : business_id en destino a verificar} {--all : Verifica todos los negocios} {--tolerance=0.02 : Tolerancia en pesos para las comparaciones de dinero}')]
 #[Description('Verificacion profunda post-migracion (solo lectura): lo vendido == lo reportado por medio de pago + integridad estructural')]
@@ -122,6 +127,7 @@ class VerifyBusinessMigration extends Command
             $this->checkCashClosings($business),
             $this->checkNoOrphans($business),
             $this->checkNoCrossTenant($business),
+            $this->checkBranchCoverage($business),
         ];
 
         $hardFailed = false;
@@ -440,5 +446,74 @@ class VerifyBusinessMigration extends Command
         }
 
         return ['code' => 'C7 contaminacion', 'level' => 'ok', 'message' => 'Sin contaminacion cruzada entre negocios.'];
+    }
+
+    /**
+     * Multisede: el negocio tiene sede principal y NADA operativo quedo sin
+     * sede. Es el check que faltaba y que habria atrapado de entrada el
+     * bloqueador del 2026-09-01 (el exportador no creaba sede, y con
+     * stock_movements/cash_closings en NOT NULL la migracion abortaba; en las
+     * tablas donde branch_id sigue siendo nullable habria sido peor - filas
+     * migradas invisibles para su propio dueño, sin ningun error).
+     *
+     * Todo lo operativo esta scopeado por sede, asi que una fila sin
+     * branch_id no es un detalle cosmetico: el negocio no la ve.
+     *
+     * @return array{code: string, level: 'ok'|'warn'|'fail', message: string, details?: list<string>}
+     */
+    private function checkBranchCoverage(Business $business): array
+    {
+        if (! Schema::hasTable('branches')) {
+            return ['code' => 'C8 sedes', 'level' => 'ok', 'message' => 'Destino sin multisede: no aplica.'];
+        }
+
+        // withoutGlobalScope('business') y no withoutGlobalScopes(): el
+        // segundo apagaria tambien el de SoftDeletes y una sede borrada
+        // contaria como valida, que es justo lo contrario de lo que hay que
+        // verificar (un negocio cuya unica sede fue borrada esta tan roto
+        // como uno sin ninguna).
+        $branches = Branch::withoutGlobalScope('business')->where('business_id', $business->id)->get();
+        $mainCount = $branches->where('is_main', true)->count();
+
+        if ($branches->isEmpty()) {
+            return ['code' => 'C8 sedes', 'level' => 'fail', 'message' => 'El negocio no tiene NINGUNA sede: con el scope de sede activo no vera sus propios datos. Corre `branches:ensure-main '.$business->id.'`.'];
+        }
+        if ($mainCount !== 1) {
+            return ['code' => 'C8 sedes', 'level' => 'fail', 'message' => "El negocio tiene {$mainCount} sedes marcadas como principal (deberia ser exactamente 1)."];
+        }
+
+        // Filas operativas sin sede, tabla por tabla.
+        $orphanRows = [];
+        foreach (BranchService::OPERATIONAL_TABLES as $table) {
+            if (! Schema::hasTable($table)
+                || ! Schema::hasColumn($table, 'branch_id')) {
+                continue;
+            }
+
+            $count = DB::table($table)
+                ->where('business_id', $business->id)
+                ->whereNull('branch_id')
+                ->count();
+
+            if ($count > 0) {
+                $orphanRows[] = "{$table}: {$count} fila(s) sin sede";
+            }
+        }
+
+        if ($orphanRows !== []) {
+            return ['code' => 'C8 sedes', 'level' => 'fail', 'message' => 'Hay filas operativas sin sede (invisibles para el negocio). Corre `branches:ensure-main '.$business->id.'`.', 'details' => $orphanRows];
+        }
+
+        // Empleados sin sede asignada: no bloquea la lectura de datos, pero un
+        // empleado sin sede no puede operar en el POS multisede.
+        $usersWithoutBranch = User::where('business_id', $business->id)
+            ->whereDoesntHave('branches')
+            ->count();
+
+        if ($usersWithoutBranch > 0) {
+            return ['code' => 'C8 sedes', 'level' => 'warn', 'message' => "{$usersWithoutBranch} empleado(s) sin sede asignada (corre `branches:ensure-main {$business->id}`).", 'details' => ["{$branches->count()} sede(s), filas operativas todas con sede"]];
+        }
+
+        return ['code' => 'C8 sedes', 'level' => 'ok', 'message' => "{$branches->count()} sede(s), todas las filas operativas y empleados con sede asignada."];
     }
 }
