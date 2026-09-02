@@ -26,10 +26,20 @@ class BusinessMigrationPatchController extends Controller
      * los tres parches de datos lo toman como --business y
      * branches:ensure-main como argumento posicional (acepta id o slug).
      *
-     * branches:ensure-main va PRIMERO y no al final: el negocio que llega
-     * por migracion entra sin sede (BusinessDataExporter copia sus filas
-     * pero no puede inventarle una), y todo lo operativo esta scopeado por
-     * sede. Hasta que corra, ese negocio no ve ni sus propias ventas.
+     * branches:ensure-main va PRIMERO y no al final: todo lo operativo esta
+     * scopeado por sede, asi que cualquier fila que quedara sin sede seria
+     * invisible para su propio dueño.
+     *
+     * Desde 2026-09-01 BusinessDataExporter ya crea la sede principal y
+     * estampa branch_id durante el export (no le queda opcion:
+     * stock_movements y cash_closings exigen branch_id NOT NULL con FK, ver
+     * su metodo createMainBranch). O sea que para una migracion nueva este
+     * comando encuentra las filas ya asignadas y solo hace lo que el
+     * exportador deliberadamente no hace: asignar los empleados migrados a
+     * la sede (pivote branch_user) y sembrar branch_stocks. Sigue siendo
+     * imprescindible - y como es idempotente, tambien cubre a los negocios
+     * migrados con la version anterior del exportador, que si entraron sin
+     * sede.
      *
      * @return array<string, array<string, mixed>>
      */
