@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Traits\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -32,7 +33,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['business_id', 'user_id', 'ai_conversation_id', 'pregunta', 'respuesta', 'revisada'])]
 class AiUnansweredQuestion extends Model
 {
-    use BelongsToBusiness;
+    use BelongsToBusiness, HasFactory;
 
     protected function casts(): array
     {

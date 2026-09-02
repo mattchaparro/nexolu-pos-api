@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\SuperAdmin\AiUsageController;
 use App\Http\Controllers\Api\V1\SuperAdmin\AnnouncementController;
 use App\Http\Controllers\Api\V1\SuperAdmin\AuditLogController;
 use App\Http\Controllers\Api\V1\SuperAdmin\BusinessDataController;
@@ -89,6 +90,10 @@ Route::post('/businesses/{business}/communications', [CommunicationController::c
 Route::get('/whatsapp-templates', [WhatsAppTemplateController::class, 'index'])->name('whatsapp-templates.index');
 
 Route::get('/feature-catalog', [FeatureCatalogController::class, 'index'])->name('feature-catalog.index');
+
+// Asistente de IA: uso, costo y preguntas que no supo responder.
+Route::get('/ai/usage', [AiUsageController::class, 'index'])->name('ai.usage.index');
+Route::patch('/ai/unanswered/{question}/reviewed', [AiUsageController::class, 'markQuestionReviewed'])->name('ai.unanswered.reviewed');
 
 Route::get('/emails/logs', [EmailController::class, 'logs'])->name('emails.logs');
 Route::get('/emails/templates', [EmailController::class, 'templates'])->name('emails.templates.index');
