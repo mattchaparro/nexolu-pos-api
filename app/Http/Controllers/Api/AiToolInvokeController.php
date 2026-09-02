@@ -55,9 +55,13 @@ class AiToolInvokeController extends Controller
             return response()->json(['error' => 'Este negocio no tiene habilitada esa funcion.'], 403);
         }
 
+        // hasBusinessPermission() y no hasPermissionTo(): este ultimo lanza
+        // PermissionDoesNotExist si el permiso no existe en la base, asi que
+        // un nombre mal escrito en una capacidad se convertia en un 500 en vez
+        // de un "no tienes permiso". Con 30+ herramientas esa posibilidad deja
+        // de ser teorica.
         if ($capability->requiredPermission()
-            && ! $user->hasRole('admin')
-            && ! $user->hasPermissionTo($capability->requiredPermission(), 'web')) {
+            && ! $user->hasBusinessPermission($capability->requiredPermission())) {
             return response()->json(['error' => 'El usuario no tiene permiso para esta accion.'], 403);
         }
 
