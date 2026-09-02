@@ -5,11 +5,13 @@ namespace App\Services;
 use App\Mail\NewOnlineOrderMail;
 use App\Models\Business;
 use App\Models\Client;
+use App\Models\Discount;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Sale;
+use App\Models\StoreCart;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -85,9 +87,35 @@ class OrderService
     }
 
     /**
+     * Resuelve el cupon que el comprador escribio.
+     *
+     * Un cupon invalido NO tumba la compra: se ignora y el pedido se crea
+     * sin descuento. El checkout ya lo valida antes de enviar (ver
+     * `POST /storefront/{slug}/coupons/validate`), asi que llegar aca con
+     * uno malo significa que vencio o se agoto entre que lo escribio y
+     * apreto comprar -- y perder la venta por eso seria peor que cobrarle el
+     * precio de lista.
+     *
+     * @return array{0: ?Discount, 1: float}
+     */
+    private function resolveCoupon(Business $business, ?string $code, float $subtotal): array
+    {
+        if ($code === null || trim($code) === '') {
+            return [null, 0.0];
+        }
+
+        $coupon = Discount::findCoupon($business->id, $code);
+        if ($coupon === null || ! $coupon->isCoupon() || $coupon->rejectionReason($subtotal) !== null) {
+            return [null, 0.0];
+        }
+
+        return [$coupon, $coupon->computeAmount($subtotal)];
+    }
+
+    /**
      * Crea un pedido desde el checkout publico.
      *
-     * @param  array{items: list<array{product_id: int, product_variant_id?: ?int, quantity: int}>, customer_name: string, customer_phone: string, customer_email?: ?string, is_pickup?: bool, shipping_address?: ?string, shipping_city?: ?string, shipping_notes?: ?string}  $data
+     * @param  array{items: list<array{product_id: int, product_variant_id?: ?int, quantity: int}>, customer_name: string, customer_phone: string, customer_email?: ?string, is_pickup?: bool, shipping_address?: ?string, shipping_city?: ?string, shipping_notes?: ?string, coupon_code?: ?string, cart_token?: ?string}  $data
      */
     public function createFromStorefront(Business $business, array $data): Order
     {
@@ -109,13 +137,23 @@ class OrderService
             // cliente: es un importe que el comprador podria poner en cero.
             $shipping = $isPickup ? 0.0 : (float) ($settings?->shipping_flat_fee ?? 0);
 
+            // El cupon se resuelve y se calcula ACA, contra la base. Del
+            // comprador solo se acepta el codigo: aceptar el monto seria
+            // dejar que se ponga el descuento que quiera.
+            [$coupon, $discountAmount] = $this->resolveCoupon($business, $data['coupon_code'] ?? null, $subtotal);
+
             $order = Order::create([
                 'business_id' => $business->id,
                 'number' => $this->nextNumber($business->id),
                 'status' => Order::STATUS_PENDING,
                 'subtotal' => $subtotal,
                 'shipping_fee' => $shipping,
-                'total' => round($subtotal + $shipping, 2),
+                'discount_id' => $coupon?->id,
+                // El codigo se congela: el cupon puede desactivarse o
+                // borrarse y el pedido tiene que seguir explicando su total.
+                'coupon_code' => $coupon?->code,
+                'discount_amount' => $discountAmount,
+                'total' => round($subtotal + $shipping - $discountAmount, 2),
                 'customer_name' => trim($data['customer_name']),
                 'customer_phone' => trim($data['customer_phone']),
                 'customer_email' => $data['customer_email'] ?? null,
@@ -133,6 +171,22 @@ class OrderService
             }
 
             $this->recordStatus($order, null, Order::STATUS_PENDING, null, 'Pedido recibido desde la tienda');
+
+            // El carrito deja de estar abandonado: compro. Se enlaza en vez
+            // de borrarse para poder medir cuantos se recuperaron.
+            if (! empty($data['cart_token'])) {
+                StoreCart::withoutGlobalScopes()
+                    ->where('business_id', $business->id)
+                    ->where('token', $data['cart_token'])
+                    ->update(['order_id' => $order->id]);
+            }
+
+            // El uso se cuenta al CREAR el pedido, no al pagarlo. Contarlo
+            // al pagar dejaria un cupon de un solo uso disponible para todo
+            // el que estuviera pagando a la vez.
+            if ($coupon !== null) {
+                Discount::withoutGlobalScopes()->whereKey($coupon->id)->increment('used_count');
+            }
 
             return $order->load('items');
         });

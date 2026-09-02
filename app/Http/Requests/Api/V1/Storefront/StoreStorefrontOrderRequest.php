@@ -26,6 +26,11 @@ class StoreStorefrontOrderRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // El carrito del que salio este pedido, para dejar de
+            // considerarlo abandonado.
+            'cart_token' => ['sometimes', 'nullable', 'string', 'size:64'],
+            // Solo el CODIGO: el monto lo calcula el servidor contra la base.
+            'coupon_code' => ['sometimes', 'nullable', 'string', 'max:40'],
             'items' => ['required', 'array', 'min:1', 'max:50'],
             'items.*.product_id' => ['required', 'integer'],
             'items.*.product_variant_id' => ['sometimes', 'nullable', 'integer'],

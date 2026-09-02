@@ -27,6 +27,10 @@ $logCronRun = fn (string $command, string $jobKey) => CronJobLogger::attachTo(Sc
 $logCronRun('subscriptions:notify-expiring', 'subscription_expiring')->dailyAt('08:30');
 $logCronRun('trials:notify-expiring', 'trial_expiring')->dailyAt('09:00');
 $logCronRun('audit:prune', 'audit_prune')->dailyAt('03:15');
+// Cada 15 min y no una hora fija: un carrito se abandona a cualquier hora y
+// el recordatorio pierde valor rapido -- a la hora ya se le paso la
+// intencion de compra, no al dia siguiente.
+$logCronRun('carts:send-abandoned-reminders', 'abandoned_cart_reminders')->everyFifteenMinutes();
 $logCronRun('appointments:send-reminders', 'appointment_reminders')->dailyAt('09:00');
 // Cada 5 min, mismo motivo que reminder_whatsapp: una cita a cualquier hora
 // necesita que el aviso se dispare cerca de "2h antes", no en una hora fija.

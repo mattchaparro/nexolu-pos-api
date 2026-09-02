@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 #[Fillable([
     'business_id', 'number', 'status', 'subtotal', 'shipping_fee', 'total',
+    'discount_id', 'coupon_code', 'discount_amount',
     'customer_name', 'customer_phone', 'customer_email',
     'is_pickup', 'shipping_address', 'shipping_city', 'shipping_notes',
     'public_token', 'expires_at', 'confirmed_at', 'sale_id', 'client_id',

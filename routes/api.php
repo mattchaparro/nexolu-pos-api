@@ -65,8 +65,10 @@ use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\StockMovementReasonController;
 use App\Http\Controllers\Api\V1\StockTransferController;
+use App\Http\Controllers\Api\V1\Storefront\StorefrontCartController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontCatalogController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontContactController;
+use App\Http\Controllers\Api\V1\Storefront\StorefrontCouponController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontOrderController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontReviewController;
 use App\Http\Controllers\Api\V1\SubscriptionController;
@@ -155,6 +157,24 @@ Route::prefix('v1/storefront/{business}')
         Route::post('/orders', [StorefrontOrderController::class, 'store'])
             ->middleware('throttle:20,1')
             ->name('orders.store');
+        // Validar un cupon mientras el comprador escribe. Throttle propio:
+        // es un endpoint publico donde probar codigos al azar es barato, y
+        // sin freno seria un adivinador de cupones.
+        Route::post('/coupons/validate', [StorefrontCouponController::class, 'validateCode'])
+            ->middleware('throttle:20,1')
+            ->name('coupons.validate');
+        // Espejo del carrito, para poder recuperarlo si lo abandona. No hay
+        // GET: leer un carrito por token convertiria un token adivinado en
+        // el carrito de otro (el enlace de recuperacion viaja firmado).
+        Route::post('/cart', [StorefrontCartController::class, 'sync'])
+            ->middleware('throttle:60,1')
+            ->name('cart.sync');
+        // La firma de la URL es la unica autenticacion, igual que el snooze
+        // de inventario bajo. Vence a las 48 horas: un correo se reenvia y
+        // se archiva, y con el iria una llave permanente al carrito.
+        Route::get('/cart/recover', [StorefrontCartController::class, 'recover'])
+            ->middleware('signed')
+            ->name('cart.recover');
         Route::get('/orders/{token}', [StorefrontOrderController::class, 'show'])->name('orders.show');
         // Confirmar el pago contra la pasarela, sin esperar el webhook (Bold
         // no lo manda en pruebas y en produccion tarda hasta 10 minutos).

@@ -27,6 +27,16 @@ class StoreDiscountRequest extends FormRequest
         $businessId = $this->user()?->business_id;
 
         return [
+            // Campos de CUPON: solo los usa la tienda online. Un descuento
+            // del mostrador los deja todos nulos.
+            'code' => [
+                'sometimes', 'nullable', 'string', 'max:40', 'alpha_dash',
+                Rule::unique('discounts', 'code')->where('business_id', $businessId),
+            ],
+            'starts_at' => ['sometimes', 'nullable', 'date'],
+            'ends_at' => ['sometimes', 'nullable', 'date', 'after:starts_at'],
+            'max_uses' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'min_order_amount' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'name' => [
                 'required',
                 'string',

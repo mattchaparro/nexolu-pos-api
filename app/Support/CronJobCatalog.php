@@ -42,6 +42,13 @@ class CronJobCatalog
             'command' => 'orders:expire-stale',
         ],
         [
+            'key' => 'abandoned_cart_reminders',
+            'name' => 'Recordar carritos abandonados',
+            'description' => 'Escribe una sola vez a quien dejo el carrito lleno y dejo como contactarlo, y poda los carritos viejos.',
+            'schedule' => 'Cada 15 minutos',
+            'command' => 'carts:send-abandoned-reminders',
+        ],
+        [
             'key' => 'audit_prune',
             'name' => 'Limpieza de logs de auditoria',
             'description' => 'Elimina registros de auditoria vencidos segun la retencion configurada.',
