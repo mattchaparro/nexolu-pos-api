@@ -57,6 +57,73 @@ class AiChatStreamTest extends TestCase
         Http::assertNothingSent();
     }
 
+    /**
+     * Sin esto, un hueco de cobertura solo se descubre si alguien manda una
+     * captura de pantalla. Fue exactamente lo que paso con el chat del
+     * legacy: el unico rastro de "no tengo herramienta para crear
+     * proveedores" quedo en esta misma tabla.
+     */
+    public function test_a_reply_without_tools_is_recorded_as_an_unanswered_question(): void
+    {
+        $sse = 'data: '.json_encode([
+            'delta' => null,
+            'done' => true,
+            'conversation_id' => 'conv-1',
+            'text' => 'No tengo una herramienta para crear proveedores.',
+            'tools_used' => [],
+            'drafts' => [],
+        ])."\n\n";
+
+        Http::fake(['ia-core.test/*' => Http::response($sse, 200, ['Content-Type' => 'text/event-stream'])]);
+
+        $business = Business::factory()->create();
+        $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/v1/ai/chat/stream', [
+                'agent' => 'asistente',
+                'message' => 'Crea un proveedor llamado Postobon',
+            ])
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertDatabaseHas('ai_unanswered_questions', [
+            'business_id' => $business->id,
+            'user_id' => $admin->id,
+            'pregunta' => 'Crea un proveedor llamado Postobon',
+        ]);
+    }
+
+    /** Una respuesta que SI uso una herramienta no es un hueco de cobertura. */
+    public function test_a_reply_that_used_tools_is_not_recorded(): void
+    {
+        $sse = 'data: '.json_encode([
+            'delta' => null,
+            'done' => true,
+            'conversation_id' => 'conv-2',
+            'text' => 'Hoy vendiste $50.000.',
+            'tools_used' => ['ventas_resumen'],
+            'drafts' => [],
+        ])."\n\n";
+
+        Http::fake(['ia-core.test/*' => Http::response($sse, 200, ['Content-Type' => 'text/event-stream'])]);
+
+        $business = Business::factory()->create();
+        $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/v1/ai/chat/stream', [
+                'agent' => 'asistente',
+                'message' => 'Cuanto vendi hoy?',
+            ])
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertDatabaseCount('ai_unanswered_questions', 0);
+    }
+
     public function test_admin_can_stream_a_message_and_the_context_is_built_correctly(): void
     {
         $sse = 'data: '.json_encode(['delta' => 'La caja ', 'done' => false])."\n\n"
