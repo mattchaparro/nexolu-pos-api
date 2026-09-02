@@ -6,8 +6,16 @@ en el WhatsApp Business Manager (Meta). El patrón en todos los casos es
 tolerante: sin el nombre real configurado, el envío correspondiente se salta
 en silencio (log, sin romper el flujo) - ver cada servicio referenciado abajo.
 
-Cuando se cree/apruebe una plantilla, actualizar la env correspondiente en
-producción y tachar el ítem aquí con la fecha.
+Cuando se cree/apruebe una plantilla, tachar el ítem aquí con la fecha. Cómo
+se activa depende de cómo esté declarada:
+
+- Las que tienen **env** (las de citas): poner el nombre real en esa variable.
+- Las de **pedidos** (§5-§8): el nombre ya está escrito en `config/services.php`
+  y lo único que hay que hacer es **borrarles la línea `'pending_approval' => true`**.
+  El nombre no va en env porque no es un secreto, no cambia entre ambientes y
+  es el mismo para todos los negocios — hay un solo WABA. `pending_approval`
+  existe para que una plantilla declarada pero sin aprobar no genere un envío
+  fallido contra Meta por cada pedido.
 
 ---
 
@@ -74,3 +82,58 @@ producción y tachar el ítem aquí con la fecha.
 | `welcome` | `welcome_whatsapp_linked` | Bienvenida al vincular WhatsApp |
 | `recordatorio` | `general_reminder` | `reminders:send-whatsapp-notifications` |
 | `inventario_bajo` | `low_stock_alert` | `inventory:send-low-stock-alerts` |
+
+---
+
+## 5. `pedido_recibido` - al comprador, su pedido llegó a la tienda
+
+- **Config:** `whatsapp.templates.pedido_recibido`, con `pending_approval => true`.
+- **Dispara:** `OnlineOrderNotifier::sendReceived()`, al crear un pedido en la
+  tienda online. Hoy sale solo el correo.
+- **Categoría en Meta:** Utility.
+- **Variables (body):** `{{1}}` comprador · `{{2}}` tienda · `{{3}}` número de
+  pedido · `{{4}}` total.
+- **Texto sugerido:**
+  > Hola {{1}}, recibimos tu pedido #{{3}} en {{2}} por {{4}}. Te avisamos
+  > apenas la tienda lo confirme.
+- **Estado:** sin crear en Meta.
+
+## 6. `pedido_confirmado` - al comprador, la tienda lo confirmó
+
+- **Config:** `whatsapp.templates.pedido_confirmado`, con `pending_approval => true`.
+- **Dispara:** `OnlineOrderNotifier::sendConfirmed()`.
+- **Categoría en Meta:** Utility.
+- **Variables (body):** `{{1}}` comprador · `{{2}}` tienda · `{{3}}` número.
+- **Texto sugerido:**
+  > {{1}}, {{2}} confirmó tu pedido #{{3}} y ya lo está alistando.
+- **Estado:** sin crear en Meta.
+
+## 7. `pedido_enviado` - al comprador, su pedido va en camino
+
+- **Config:** `whatsapp.templates.pedido_enviado`, con `pending_approval => true`.
+- **Dispara:** `OnlineOrderNotifier::sendShipped()`.
+- **Categoría en Meta:** Utility.
+- **Variables (body):** `{{1}}` comprador · `{{2}}` tienda · `{{3}}` número.
+- **Texto sugerido:**
+  > {{1}}, tu pedido #{{3}} de {{2}} ya va en camino.
+- **Estado:** sin crear en Meta.
+
+## 8. `pedido_nuevo_comercio` - al COMERCIANTE, entró un pedido
+
+La más urgente de las cuatro. Hasta ahora al comerciante solo le llegaba
+correo, que es justo el canal que no mira quien está atendiendo el mostrador:
+un pedido del que se entera tarde es un pedido que se despacha tarde.
+
+- **Config:** `whatsapp.templates.pedido_nuevo_comercio`, con `pending_approval => true`.
+- **Dispara:** `OrderService::notifyMerchantOnWhatsApp()`, desde
+  `StorefrontOrderController::store` junto al correo (no lo reemplaza: el
+  correo deja constancia, WhatsApp es el que se ve).
+- **Destino:** `businesses.whatsapp_number`, y si no `businesses.phone`, y si
+  no el `cellphone` del dueño.
+- **Categoría en Meta:** Utility.
+- **Variables (body):** `{{1}}` número de pedido · `{{2}}` total · `{{3}}`
+  nombre del comprador.
+- **Texto sugerido:**
+  > Entró el pedido #{{1}} por {{2}} de {{3}}. Míralo en tu POS para
+  > confirmarlo.
+- **Estado:** sin crear en Meta.

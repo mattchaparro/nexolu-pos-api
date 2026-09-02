@@ -37,6 +37,9 @@ class StorefrontOrderController extends Controller
         // OrderService::attachPaymentLink).
         $order = $this->orders->attachPaymentLink($order);
         $this->orders->notifyMerchant($order);
+        // Y por WhatsApp, que es el que de verdad se ve: quien atiende el
+        // mostrador no revisa el correo.
+        $this->orders->notifyMerchantOnWhatsApp($order);
         // Y al comprador, que hasta ahora no recibia nada despues de comprar.
         app(OnlineOrderNotifier::class)->sendReceived($order);
 

@@ -119,6 +119,13 @@ class OnlineOrderNotifier
             return null;
         }
 
+        // Declarada pero sin aprobar en Meta. Intentar enviarla generaria un
+        // fallo por cada pedido; el correo sale igual y el comprador queda
+        // avisado. Ver docs/WHATSAPP_TEMPLATES_PENDING.md.
+        if ($template['pending_approval'] ?? false) {
+            return null;
+        }
+
         return [
             'name' => $template['name'],
             'language' => $template['lang'] ?? 'es_CO',

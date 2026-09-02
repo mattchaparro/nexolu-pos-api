@@ -179,23 +179,47 @@ return [
             // Variables, en orden: {{1}} nombre del comprador,
             // {{2}} nombre de la tienda, {{3}} numero de pedido,
             // {{4}} total (solo en pedido_recibido).
+            // Estas cuatro NO existen todavia en Meta. El nombre va escrito
+            // igual que el de las demas -- no en env() -- porque el nombre de
+            // una plantilla no es un secreto, no cambia entre ambientes y es
+            // el mismo para todos los negocios (un solo WABA, ver arriba).
+            // `pending_approval` es lo que evita intentar enviarlas: sin esa
+            // bandera cada pedido generaria un envio fallido contra Meta.
+            // Al aprobarlas se borra esa linea y ya. Ver
+            // docs/WHATSAPP_TEMPLATES_PENDING.md para el texto a crear.
             'pedido_recibido' => [
-                'name' => env('WHATSAPP_TEMPLATE_PEDIDO_RECIBIDO', ''),
+                'name' => 'pedido_recibido',
                 'lang' => 'es_CO',
-                'description' => 'Al comprador: su pedido llegó a la tienda. Sin crear en Meta todavía.',
+                'pending_approval' => true,
+                'description' => 'Al comprador: su pedido llegó a la tienda.',
                 'triggered_by' => 'OnlineOrderNotifier::sendReceived',
             ],
             'pedido_confirmado' => [
-                'name' => env('WHATSAPP_TEMPLATE_PEDIDO_CONFIRMADO', ''),
+                'name' => 'pedido_confirmado',
                 'lang' => 'es_CO',
-                'description' => 'Al comprador: la tienda confirmó su pedido. Sin crear en Meta todavía.',
+                'pending_approval' => true,
+                'description' => 'Al comprador: la tienda confirmó su pedido.',
                 'triggered_by' => 'OnlineOrderNotifier::sendConfirmed',
             ],
             'pedido_enviado' => [
-                'name' => env('WHATSAPP_TEMPLATE_PEDIDO_ENVIADO', ''),
+                'name' => 'pedido_enviado',
                 'lang' => 'es_CO',
-                'description' => 'Al comprador: su pedido va en camino. Sin crear en Meta todavía.',
+                'pending_approval' => true,
+                'description' => 'Al comprador: su pedido va en camino.',
                 'triggered_by' => 'OnlineOrderNotifier::sendShipped',
+            ],
+            // Al COMERCIANTE. Es el aviso mas urgente de los cuatro y era el
+            // unico que no tenia canal: el correo es justo el que no mira
+            // quien esta atendiendo el mostrador.
+            //
+            // Variables: {{1}} numero de pedido, {{2}} total, {{3}} nombre
+            // del comprador.
+            'pedido_nuevo_comercio' => [
+                'name' => 'pedido_nuevo_comercio',
+                'lang' => 'es_CO',
+                'pending_approval' => true,
+                'description' => 'Al comerciante: entró un pedido nuevo en su tienda online.',
+                'triggered_by' => 'OrderService::notifyMerchant',
             ],
         ],
 

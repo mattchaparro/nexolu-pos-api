@@ -464,7 +464,14 @@ class StorefrontOrderTest extends TestCase
     {
         Mail::fake();
         $this->fakeComms();
-        config(['services.whatsapp.templates.pedido_recibido.name' => 'pedido_recibido_v1']);
+        // Se reemplaza la definicion COMPLETA, no solo el nombre: una
+        // plantilla cuenta como usable cuando tiene nombre Y esta aprobada
+        // en Meta (`pending_approval` ausente). Es la forma que va a tener
+        // en produccion el dia que Meta la apruebe.
+        config(['services.whatsapp.templates.pedido_recibido' => [
+            'name' => 'pedido_recibido_v1',
+            'lang' => 'es_CO',
+        ]]);
 
         $product = $this->publishedProduct(['stock' => 5, 'price' => 10000]);
         $this->checkout([

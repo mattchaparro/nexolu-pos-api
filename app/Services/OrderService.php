@@ -13,6 +13,8 @@ use App\Models\ProductVariant;
 use App\Models\Sale;
 use App\Models\StoreCart;
 use App\Models\User;
+use App\Services\Messaging\Contracts\MessagingChannel;
+use App\Support\ChannelPhone;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -455,6 +457,67 @@ class OrderService
         Mail::to($to)->queue(new NewOnlineOrderMail($business, $order->loadMissing('items')));
 
         return true;
+    }
+
+    /**
+     * Avisa al comerciante por WhatsApp que entro un pedido.
+     *
+     * Va aparte del correo y no lo reemplaza: el correo deja constancia y
+     * WhatsApp es el que de verdad se ve. Quien esta atendiendo el mostrador
+     * no revisa el correo, y un pedido que se entera tarde es un pedido que
+     * se despacha tarde.
+     *
+     * No tumba nada si falla: el pedido ya existe y el correo ya salio.
+     */
+    public function notifyMerchantOnWhatsApp(Order $order): bool
+    {
+        $business = $order->business;
+        if ($business === null) {
+            return false;
+        }
+
+        $template = config('services.whatsapp.templates.pedido_nuevo_comercio');
+        // Declarada pero sin aprobar en Meta: se sale en silencio en vez de
+        // generar un envio fallido por cada pedido.
+        if (! filled($template['name'] ?? null) || ($template['pending_approval'] ?? false)) {
+            return false;
+        }
+
+        // En orden: el WhatsApp declarado del negocio, su telefono, y por
+        // ultimo el celular del dueño. `whatsapp_number` va primero porque
+        // es el unico de los tres que el comerciante puso SABIENDO que era
+        // para WhatsApp -- los otros dos pueden ser un fijo.
+        $phone = ChannelPhone::normalize((string) (
+            $business->whatsapp_number
+            ?: $business->phone
+            ?: $business->users()->where('is_business_owner', true)->value('cellphone')
+        ));
+
+        if ($phone === null) {
+            return false;
+        }
+
+        try {
+            return app(MessagingChannel::class)->sendTemplate(
+                $phone,
+                (string) $template['name'],
+                (string) ($template['lang'] ?? 'es_CO'),
+                [['type' => 'body', 'parameters' => [
+                    ['type' => 'text', 'text' => (string) $order->number],
+                    ['type' => 'text', 'text' => '$'.number_format((float) $order->total, 0, ',', '.')],
+                    ['type' => 'text', 'text' => mb_substr((string) $order->customer_name, 0, 60)],
+                ]]],
+                $business->id,
+                'pedido_nuevo',
+            );
+        } catch (\Throwable $e) {
+            Log::warning('online_order.merchant_whatsapp_failed', [
+                'order_id' => $order->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     /**
