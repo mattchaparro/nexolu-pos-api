@@ -35,7 +35,19 @@ class AiInsightController extends Controller
             return response()->json(['error' => $e->getMessage()], 403);
         }
 
-        $data = collect(InsightCatalog::all())
+        // Filtro por tipo: el dashboard embebe UNA tarjeta, y sin esto
+        // pintarla generaria los siete insights -- seis llamadas de IA
+        // (con su costo real, ver ai_usage_daily.cost_micros) para tarjetas
+        // que nadie va a ver. Un tipo desconocido devuelve lista vacia, no
+        // error: la tarjeta se oculta sola y no rompe la pantalla que la
+        // embebe.
+        $catalog = InsightCatalog::all();
+
+        if ($type = $request->string('type')->toString()) {
+            $catalog = array_filter($catalog, fn (string $key) => $key === $type, ARRAY_FILTER_USE_KEY);
+        }
+
+        $data = collect($catalog)
             ->map(fn (AiInsightDefinition $definition) => $this->buildEntry($user->business, $definition, $context))
             ->filter()
             ->values();

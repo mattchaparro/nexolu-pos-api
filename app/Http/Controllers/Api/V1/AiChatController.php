@@ -31,7 +31,7 @@ class AiChatController extends Controller
     {
         $user = $request->user();
 
-        if (! $user->hasRole('admin') && ! $user->hasPermissionTo('ai_chat.use', 'web')) {
+        if (! $user->hasBusinessPermission('ai_chat.use')) {
             throw ValidationException::withMessages(['agent' => 'No tienes permiso para usar el Asistente de IA.']);
         }
 
@@ -72,7 +72,7 @@ class AiChatController extends Controller
     {
         $user = $request->user();
 
-        if (! $user->hasRole('admin') && ! $user->hasPermissionTo('ai_chat.use', 'web')) {
+        if (! $user->hasBusinessPermission('ai_chat.use')) {
             throw ValidationException::withMessages(['agent' => 'No tienes permiso para usar el Asistente de IA.']);
         }
 

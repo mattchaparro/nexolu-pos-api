@@ -68,6 +68,43 @@ class AiInsightTest extends TestCase
         $this->assertNotContains('gastos_resumen', $types);
     }
 
+    /**
+     * El dashboard embebe UNA tarjeta. Sin este filtro, pintarla generaria
+     * los siete insights: seis llamadas de IA con su costo real, para
+     * tarjetas que nadie ve.
+     */
+    public function test_the_list_can_be_narrowed_to_a_single_type(): void
+    {
+        Http::fake(['ia-core.test/*' => Http::response(['text' => 'Hoy vas muy bien.'], 200)]);
+
+        $business = Business::factory()->create(['feature_flags' => []]);
+        $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
+        Sale::factory()->create(['business_id' => $business->id, 'total' => 50000, 'closed_at' => now()]);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/insights?type=resumen_inteligente')
+            ->assertOk();
+
+        $this->assertSame(['resumen_inteligente'], collect($response->json('data'))->pluck('type')->all());
+    }
+
+    /**
+     * Un tipo desconocido devuelve lista vacia y no error: la tarjeta que lo
+     * pidio se oculta sola en vez de romper la pantalla que la embebe.
+     */
+    public function test_an_unknown_type_returns_an_empty_list(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => []]);
+        $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
+
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/insights?type=no_existe')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
     public function test_refresh_forces_regeneration_of_a_single_insight_type(): void
     {
         Http::fake(['ia-core.test/*' => Http::response(['text' => 'Texto fresco.'], 200)]);
