@@ -10,10 +10,12 @@ use App\Http\Resources\Api\V1\CashShiftResource;
 use App\Models\CashClosing;
 use App\Models\CashShift;
 use App\Services\CashClosingService;
+use App\Services\GatewayReconciliationService;
 use App\Support\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
+use Illuminate\Support\Carbon;
 
 class CashClosingController extends Controller
 {
@@ -67,6 +69,56 @@ class CashClosingController extends Controller
             'suggested_opening_cash' => $suggestedOpeningCash,
             'existing_closing' => $existingClosing ? new CashClosingResource($existingClosing) : null,
             'shifts_to_auto_close' => CashShiftResource::collection($shiftsToAutoClose),
+            // Cuadre contra la pasarela: lo que el POS registro por medios
+            // electronicos frente a lo que el proveedor dice haber cobrado.
+            // Nulo si el negocio no tiene pasarela conectada -- mostrarle un
+            // cuadre en ceros a quien solo cobra en efectivo seria ruido.
+            'gateway_reconciliation' => $this->gatewayReconciliation($request, $date),
+        ];
+    }
+
+    /**
+     * El cuadre del dia contra la pasarela.
+     *
+     * Va en el preview del cierre y no en una pantalla aparte porque es
+     * justo cuando el comerciante esta contando: si el QR del datafono
+     * cobro algo que nadie registro, este es el momento en que todavia se
+     * acuerda de esa venta. Dias despues, cuando aparezca en el extracto,
+     * ya no.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function gatewayReconciliation(Request $request, string $date): ?array
+    {
+        $business = $request->user()?->business;
+        if ($business === null || $business->activePaymentGateway() === null) {
+            return null;
+        }
+
+        $resumen = app(GatewayReconciliationService::class)->summary(
+            $business,
+            Carbon::parse($date)->startOfDay(),
+            Carbon::parse($date)->endOfDay(),
+        );
+
+        return [
+            'pos' => $resumen['pos'],
+            'gateway' => $resumen['gateway'],
+            'balanced' => $resumen['balanced'],
+            'unmatched_payments' => $resumen['unmatched_payments']->map(fn ($p) => [
+                'amount' => (float) $p->amount,
+                'payment_method' => $p->payment_method,
+                // Es el numero del voucher fisico: con eso reclama.
+                'approval_number' => $p->approval_number,
+                'occurred_at' => $p->occurred_at?->toIso8601String(),
+            ])->all(),
+            'unmatched_sales' => $resumen['unmatched_sales']->map(fn ($s) => [
+                'id' => $s->id,
+                'invoice_number' => $s->invoice_number,
+                'total' => (float) $s->total,
+                'payment_method' => $s->payment_method,
+                'created_at' => $s->created_at?->toIso8601String(),
+            ])->all(),
         ];
     }
 

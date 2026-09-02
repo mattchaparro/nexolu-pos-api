@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\SubscriptionPaymentResultMail;
 use App\Mail\SubscriptionPaymentSuperadminNoticeMail;
 use App\Models\AiMessagePackCheckoutOrder;
+use App\Models\Business;
 use App\Models\BusinessPaymentGateway;
 use App\Models\Order;
 use App\Models\SaasSubscriptionPayment;
@@ -13,6 +14,7 @@ use App\Models\SubscriptionCheckoutOrder;
 use App\Models\TerminalCharge;
 use App\Models\User;
 use App\Services\AiMessagePackService;
+use App\Services\GatewayReconciliationService;
 use App\Services\OnlineOrderPaymentService;
 use App\Services\TerminalChargeService;
 use Illuminate\Http\JsonResponse;
@@ -51,6 +53,13 @@ class PaymentsCoreWebhookController extends Controller
         $reference = (string) ($payload['reference'] ?? '');
         $event = (string) ($payload['event'] ?? '');
 
+        // Un cobro que el comercio hizo por fuera del POS (el QR fisico del
+        // datafono). No tiene `reference` nuestra porque no lo originamos
+        // nosotros, asi que se rutea por el comercio y no por la orden.
+        if ($event === 'merchant_payment.received') {
+            return $this->handleMerchantPayment($request, $payload);
+        }
+
         if ($reference === '') {
             return response()->json(['error' => 'missing_reference'], 422);
         }
@@ -73,6 +82,45 @@ class PaymentsCoreWebhookController extends Controller
             'payment.voided' => $this->void($reference, $payload),
             default => null, // payment.pending u otros: nada que hacer todavia.
         };
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Un cobro de la pasarela que el POS no origino.
+     *
+     * Se guarda como extracto del proveedor y se cruza contra las ventas,
+     * nunca se convierte en una -- ver GatewayReconciliationService. El
+     * comercio viene en el cuerpo y eso no concede nada por si solo: igual
+     * que la referencia, solo dice CON QUE secreto verificar, y es la firma
+     * la que prueba que el evento es de esa integracion.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function handleMerchantPayment(Request $request, array $payload): JsonResponse
+    {
+        $merchantId = (string) ($payload['merchant_id'] ?? '');
+
+        $gateway = $merchantId === '' ? null : BusinessPaymentGateway::withoutGlobalScopes()
+            ->where('payments_core_merchant_id', $merchantId)
+            ->where('is_active', true)
+            ->first();
+
+        if ($gateway === null || ! $this->hasValidSignature($request, (string) $gateway->webhook_secret)) {
+            Log::warning('payments_core.webhook: pago de comercio con firma invalida', [
+                'ip' => $request->ip(),
+                'merchant' => $merchantId,
+            ]);
+
+            return response()->json(['error' => 'invalid_signature'], 401);
+        }
+
+        $business = Business::withoutGlobalScopes()->find($gateway->business_id);
+        if ($business === null) {
+            return response()->json(['ok' => true]);
+        }
+
+        app(GatewayReconciliationService::class)->record($business, $payload);
 
         return response()->json(['ok' => true]);
     }
