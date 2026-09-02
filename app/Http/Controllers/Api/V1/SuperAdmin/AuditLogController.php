@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\SuperAdmin\LogActionResource;
+use App\Support\AuditActionDictionary;
 use App\Support\AuditLogQuery;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -16,6 +17,21 @@ class AuditLogController extends Controller
         return LogActionResource::collection(
             AuditLogQuery::forSuperadmin($request)->latest()->paginate(30)->withQueryString()
         );
+    }
+
+    /**
+     * Diccionario {codigo: texto} para el filtro por tipo de accion.
+     *
+     * Duplica el endpoint equivalente del panel de negocio a proposito: aquel
+     * exige el feature `audit_logs` y el permiso `audit_logs.view`, que son
+     * del negocio del usuario - un superadmin cuyo propio negocio no tenga el
+     * modulo no podria abrir el filtro de la auditoria global.
+     *
+     * @return array<string, string>
+     */
+    public function actions(): array
+    {
+        return AuditActionDictionary::all();
     }
 
     public function export(Request $request): StreamedResponse

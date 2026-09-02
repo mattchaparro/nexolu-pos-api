@@ -99,6 +99,7 @@ Route::get('/emails/logs', [EmailController::class, 'logs'])->name('emails.logs'
 Route::get('/emails/templates', [EmailController::class, 'templates'])->name('emails.templates.index');
 Route::put('/emails/templates/{type}', [EmailController::class, 'updateTemplate'])->name('emails.templates.update');
 
+Route::get('/audit-logs/actions', [AuditLogController::class, 'actions'])->name('audit-logs.actions');
 Route::get('/audit-logs/export', [AuditLogController::class, 'export'])->name('audit-logs.export');
 Route::get('/audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index');
 

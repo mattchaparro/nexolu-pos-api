@@ -43,6 +43,14 @@ class AuditLogQuery
 
     private static function applySearch(Builder $query, Request $request): void
     {
+        // `action` es el codigo exacto que elige el filtro desplegable;
+        // `search` es texto libre. Son distintos a proposito: buscar
+        // "sale.created" por LIKE tambien trae "sale.created.employee", que
+        // es justo lo que el desplegable viene a evitar.
+        if ($request->filled('action')) {
+            $query->where('action', $request->string('action'));
+        }
+
         if ($request->filled('search')) {
             $query->where('action', 'like', '%'.$request->string('search').'%');
         }
