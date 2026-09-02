@@ -17,10 +17,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * schema compartido con legacy - no se traducen, la tabla ya existe en
  * produccion y el legacy la escribe con esos nombres.
  *
- * Ojo al leerla: tambien cae aqui la charla suelta ("hola", "gracias") y las
- * preguntas sobre el propio asistente ("que sabes hacer"), que no son huecos
- * de cobertura. En los datos reales del legacy, 2 de 5 registros eran eso.
- * Se filtra a ojo al revisar; preferible ese ruido a perder la señal.
+ * Ojo al leerla: tambien cae aqui la charla suelta ("hola", "cualquiera esta
+ * ok") y las preguntas sobre el propio asistente ("que herramientas tienes"),
+ * que no son huecos de cobertura.
+ *
+ * Y algo mas importante, visto en los 24 registros que dejo el legacy: casi
+ * ninguno era una herramienta que faltara. "Compre 7 gaseosas", "pague un
+ * recibo de luz por 25.000" o "cuanto he vendido desde que tengo el programa"
+ * TENIAN herramienta en el legacy y aun asi quedaron sin responder, porque el
+ * usuario tenia que elegir un agente y elegia el que no la llevaba. Antes de
+ * escribir una herramienta nueva por una fila de esta tabla, verificar que no
+ * exista ya.
  */
 #[Fillable(['business_id', 'user_id', 'ai_conversation_id', 'pregunta', 'respuesta', 'revisada'])]
 class AiUnansweredQuestion extends Model
