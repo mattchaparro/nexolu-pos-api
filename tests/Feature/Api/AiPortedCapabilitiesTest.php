@@ -516,6 +516,36 @@ class AiPortedCapabilitiesTest extends TestCase
         $this->assertEquals(20.0, (float) $product->fresh()->stock);
     }
 
+    public function test_crear_proveedor_registers_it(): void
+    {
+        $data = $this->invoke('crear_proveedor', ['nombre' => 'Postobon', 'telefono' => '3001234567']);
+
+        $this->assertDatabaseHas('suppliers', [
+            'id' => $data['id'],
+            'business_id' => $this->business->id,
+            'name' => 'Postobon',
+        ]);
+    }
+
+    /**
+     * Duplicar un proveedor parte su historial de compras en dos, y a partir
+     * de ahi "cuanto le he comprado a X" responde mal para siempre.
+     */
+    public function test_crear_proveedor_refuses_to_duplicate_an_existing_one(): void
+    {
+        Supplier::factory()->create(['business_id' => $this->business->id, 'name' => 'Postobon SA']);
+
+        $response = $this->withHeader('Authorization', 'Bearer test-ia-core-key')
+            ->postJson('/api/ai/tools/invoke', [
+                'tool' => 'crear_proveedor',
+                'arguments' => ['nombre' => 'postobon sa'],
+                'context' => ['business_id' => (string) $this->business->id, 'user_id' => (string) $this->admin->id],
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertStringContainsString('Ya existe un proveedor', $response->json('error'));
+    }
+
     public function test_crear_entrada_ingrediente_returns_the_configured_unit(): void
     {
         $this->business->update(['feature_flags' => ['ingredients' => true, 'inventory' => true]]);

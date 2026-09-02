@@ -23,6 +23,7 @@ use App\Capabilities\Inventory\StockHistoryCapability;
 use App\Capabilities\Layaways\LayawaysCapability;
 use App\Capabilities\Products\CreateProductCapability;
 use App\Capabilities\Purchases\CreatePurchaseCapability;
+use App\Capabilities\Purchases\CreateSupplierCapability;
 use App\Capabilities\Purchases\PayablesCapability;
 use App\Capabilities\Purchases\PurchasesDetailCapability;
 use App\Capabilities\Purchases\PurchasesSummaryCapability;
@@ -87,6 +88,7 @@ class Registry
         'servicios_estado' => ServiceOrdersCapability::class,
         'recordatorios_pendientes' => PendingRemindersCapability::class,
         'crear_compra' => CreatePurchaseCapability::class,
+        'crear_proveedor' => CreateSupplierCapability::class,
         'crear_entrada_inventario' => CreateStockEntryCapability::class,
         'crear_entrada_ingrediente' => CreateIngredientEntryCapability::class,
         'crear_recordatorio' => CreateReminderCapability::class,
