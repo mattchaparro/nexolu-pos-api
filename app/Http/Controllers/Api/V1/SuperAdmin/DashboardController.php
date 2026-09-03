@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api\V1\SuperAdmin;
 use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Models\Sale;
-use App\Models\SupportTicket;
 use App\Models\User;
 use App\Services\SuperAdmin\PlatformFinanceService;
 
@@ -29,7 +28,6 @@ class DashboardController extends Controller
             'mrr_cop' => $this->finance->realMonthlyRecurringRevenueCop(),
             'total_users' => User::count(),
             'new_businesses_last_30_days' => Business::where('created_at', '>=', now()->subDays(30))->count(),
-            'open_support_tickets' => SupportTicket::whereIn('status', ['open', 'in_progress'])->count(),
             'closed_sales_last_30_days' => Sale::where('status', 'closed')->where('closed_at', '>=', now()->subDays(30))->count(),
         ];
 

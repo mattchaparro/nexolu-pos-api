@@ -506,3 +506,29 @@ cambia, el nuestro se alinea al de él.
   ítem 4. Antes de tocar producción, correr `SELECT @@global.time_zone,
   NOW(), UTC_TIMESTAMP();` ahí primero (no asumir que está en el mismo
   estado que SG) - ver cómo se verificó en SG antes de aplicar.
+
+---
+
+## 9. Tabla `support_tickets` huérfana en este repo (2026-09-03)
+
+Se retiró el módulo de tickets de soporte de `nexolu-pos-api`: controllers
+(negocio y superadmin), modelo, resource, requests, factory, rutas y el
+contador `open_support_tickets` del dashboard y del detalle de negocio.
+Motivo: nadie lo usó nunca — en el frontend nuevo ni siquiera llegó a
+existir una pantalla que lo consumiera. El soporte ahora es por WhatsApp
+(`App\Support\SupportContact` + `GET /v1/support/contact`).
+
+**La tabla `support_tickets` NO se borró y no debe borrarse todavía**: es
+parte del esquema compartido y el monolito legacy sigue leyéndola y
+escribiéndola desde su propio panel. Un `DROP TABLE` desde este repo
+rompería el legacy en producción.
+
+Precondición para borrarla: que el monolito esté retirado (o que se quite
+primero su módulo de tickets allá). Recién entonces:
+
+```sql
+DROP TABLE support_tickets;
+```
+
+Las **guías de ayuda** (`support_guide_categories`, `support_guide_articles`)
+son otra cosa y siguen activas en este repo — no confundirlas al limpiar.

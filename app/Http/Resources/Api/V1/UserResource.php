@@ -25,6 +25,12 @@ class UserResource extends JsonResource
             'is_active' => $this->is_active,
             'is_business_owner' => $this->is_business_owner,
             'business_id' => $this->business_id,
+            // Solo cuando se carga la relacion (panel de superadmin, que lista
+            // usuarios de TODOS los negocios): dentro de un negocio el dato es
+            // siempre el mismo y no aporta.
+            'business' => $this->whenLoaded('business', fn () => $this->business
+                ? ['id' => $this->business->id, 'name' => $this->business->name]
+                : null),
             'roles' => $this->whenLoaded('roles', fn () => $this->roles->pluck('name')),
             // getAllPermissions() incluye los heredados por rol; con
             // getPermissionNames() un admin devolveria [] porque no tiene

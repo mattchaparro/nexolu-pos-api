@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\Business;
+use App\Support\SupportContact;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -42,7 +43,7 @@ class InactiveTrialWarningMail extends Mailable
                 'owner_name' => $this->ownerName,
                 'trial_expired_at' => $this->business->trial_ends_at?->setTimezone('America/Bogota')->format('d/m/Y'),
                 'app_url' => config('app.url'),
-                'whatsapp_url' => 'https://wa.me/573239251072?text=Hola!+quiero+reactivar+mi+cuenta+en+Nexolu',
+                'whatsapp_url' => SupportContact::whatsappUrl('Hola! quiero reactivar mi cuenta en Nexolu'),
             ],
         );
     }

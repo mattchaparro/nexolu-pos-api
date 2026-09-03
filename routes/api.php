@@ -74,7 +74,7 @@ use App\Http\Controllers\Api\V1\Storefront\StorefrontReviewController;
 use App\Http\Controllers\Api\V1\SubscriptionController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\SupplierReportController;
-use App\Http\Controllers\Api\V1\SupportTicketController;
+use App\Http\Controllers\Api\V1\SupportController;
 use App\Http\Controllers\Api\V1\TerminalChargeController;
 use App\Http\Controllers\Api\WhatsappWebhookController;
 use App\Services\ReceiptPdfService;
@@ -216,6 +216,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
     Route::middleware(['auth:sanctum', 'sentry.context', 'branch.context'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+        // Soporte por WhatsApp: cualquier usuario autenticado, sin permiso ni
+        // feature. Pedir ayuda no puede depender de tener un modulo contratado.
+        Route::get('/support/contact', [SupportController::class, 'contact'])->name('support.contact');
+
         Route::get('/me', [AuthController::class, 'me'])->name('me');
         Route::put('/me', [AuthController::class, 'updateProfile'])->name('me.update');
         Route::put('/me/password', [AuthController::class, 'updatePassword'])->name('me.password.update');
@@ -318,8 +322,6 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::get('/actions', [AuditLogController::class, 'actions'])->name('actions');
             Route::get('/export', [AuditLogController::class, 'export'])->name('export');
         });
-
-        Route::apiResource('support-tickets', SupportTicketController::class)->only(['index', 'store']);
 
         // Empleados y admins del propio negocio - la autorizacion (rol admin
         // + business_id) vive en cada Request para que 'index' liste pero no

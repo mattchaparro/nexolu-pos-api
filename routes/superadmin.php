@@ -16,7 +16,7 @@ use App\Http\Controllers\Api\V1\SuperAdmin\PosPaymentMethodController;
 use App\Http\Controllers\Api\V1\SuperAdmin\ServiceWorkflowController;
 use App\Http\Controllers\Api\V1\SuperAdmin\SubscriptionTransactionController;
 use App\Http\Controllers\Api\V1\SuperAdmin\SupportGuideController;
-use App\Http\Controllers\Api\V1\SuperAdmin\SupportTicketController;
+use App\Http\Controllers\Api\V1\SuperAdmin\SystemController;
 use App\Http\Controllers\Api\V1\SuperAdmin\UserController;
 use App\Http\Controllers\Api\V1\SuperAdmin\WhatsAppTemplateController;
 use Illuminate\Support\Facades\Route;
@@ -103,9 +103,8 @@ Route::get('/audit-logs/actions', [AuditLogController::class, 'actions'])->name(
 Route::get('/audit-logs/export', [AuditLogController::class, 'export'])->name('audit-logs.export');
 Route::get('/audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index');
 
-Route::get('/support-tickets', [SupportTicketController::class, 'index'])->name('support-tickets.index');
-Route::get('/support-tickets/{ticket}', [SupportTicketController::class, 'show'])->name('support-tickets.show');
-Route::patch('/support-tickets/{ticket}/status', [SupportTicketController::class, 'updateStatus'])->name('support-tickets.status.update');
+// Sistema: logs de la aplicacion sin entrar por SSH.
+Route::get('/system/logs', [SystemController::class, 'logs'])->name('system.logs');
 
 Route::get('/cron-jobs', [CronJobController::class, 'index'])->name('cron-jobs.index');
 Route::patch('/cron-jobs/{key}/toggle', [CronJobController::class, 'toggle'])->name('cron-jobs.toggle');

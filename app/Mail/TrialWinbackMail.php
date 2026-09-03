@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\Business;
+use App\Support\SupportContact;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -44,7 +45,7 @@ class TrialWinbackMail extends Mailable
                 'trial_days' => $this->trialDays,
                 'trial_ends_date' => $this->business->trial_ends_at?->setTimezone('America/Bogota')->format('d/m/Y') ?? '',
                 'app_url' => config('app.url'),
-                'whatsapp_url' => 'https://wa.me/573239251072?text=Hola!+quiero+retomar+mi+prueba+en+Nexolu',
+                'whatsapp_url' => SupportContact::whatsappUrl('Hola! quiero retomar mi prueba en Nexolu'),
             ],
         );
     }

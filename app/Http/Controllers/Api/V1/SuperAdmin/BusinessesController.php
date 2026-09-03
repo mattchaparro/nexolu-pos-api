@@ -18,7 +18,6 @@ use App\Models\Business;
 use App\Models\LogAction;
 use App\Models\SaasSubscriptionPayment;
 use App\Models\Sale;
-use App\Models\SupportTicket;
 use App\Models\User;
 use App\Services\BusinessRegistrationService;
 use App\Services\SuperAdmin\SuperAdminBusinessService;
@@ -148,10 +147,6 @@ class BusinessesController extends Controller
             ->latest('id')
             ->limit(5)
             ->get();
-
-        $stats['open_support_tickets'] = SupportTicket::where('business_id', $business->id)
-            ->whereIn('status', ['open', 'in_progress'])
-            ->count();
 
         return [
             'business' => new BusinessResource($business),
