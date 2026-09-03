@@ -428,6 +428,11 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::post('/terminals/sync', [TerminalChargeController::class, 'sync'])->name('terminals.sync');
             Route::get('/payment-gateways', [BusinessPaymentGatewayController::class, 'index'])->name('payment-gateways.index');
             Route::post('/payment-gateways', [BusinessPaymentGatewayController::class, 'store'])->name('payment-gateways.store');
+            // Comprobar las llaves sin cobrarle a nadie. Throttle propio:
+            // cada prueba pide un link de pago real al proveedor.
+            Route::post('/payment-gateways/{provider}/test', [BusinessPaymentGatewayController::class, 'test'])
+                ->middleware('throttle:10,1')
+                ->name('payment-gateways.test');
             Route::delete('/payment-gateways/{provider}', [BusinessPaymentGatewayController::class, 'destroy'])
                 ->whereIn('provider', ['wompi', 'bold'])
                 ->name('payment-gateways.destroy');

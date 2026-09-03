@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\BusinessPaymentGateway;
 use App\Services\BusinessPaymentGatewayService;
+use App\Services\PaymentsCoreService;
 use App\Support\PaymentCapabilities;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use RuntimeException;
 
@@ -56,10 +58,36 @@ class BusinessPaymentGatewayController extends Controller
                 'environment' => $gateway?->environment,
                 'connected_at' => $gateway?->connected_at?->toIso8601String(),
                 'last_error' => $gateway?->last_error,
+                // La URL que el comerciante tiene que pegar en el panel de
+                // SU proveedor. Sin esto conectaba las llaves, veia
+                // "Conectado" y creia que habia terminado -- y su primer
+                // pedido se quedaba esperando un pago que ya habia entrado.
+                'webhook_url' => $gateway !== null ? $this->webhookUrl($gateway) : null,
             ];
         })->values();
 
         return response()->json(['providers' => $providers]);
+    }
+
+    /**
+     * A donde debe avisar el proveedor cuando alguien paga.
+     *
+     * Es POR COMERCIO y no una URL central: asi entran tambien los cobros
+     * que el POS no origino -- el QR fisico pegado al datafono --, que sin
+     * esto no habria forma de cuadrar (ver GatewayReconciliationService).
+     * Los pagos de nuestros propios links llegan por la misma ruta y se
+     * reconocen por su referencia.
+     */
+    private function webhookUrl(BusinessPaymentGateway $gateway): ?string
+    {
+        $merchantId = $gateway->payments_core_merchant_id;
+        if (! $merchantId) {
+            return null;
+        }
+
+        $base = rtrim((string) config('services.payments_core.base_url'), '/');
+
+        return "{$base}/v1/webhooks/{$gateway->provider_slug}/merchants/{$merchantId}";
     }
 
     public function store(Request $request): JsonResponse
@@ -143,6 +171,63 @@ class BusinessPaymentGatewayController extends Controller
             'environment' => $gateway->environment,
             'connected_at' => $gateway->connected_at?->toIso8601String(),
         ], 201);
+    }
+
+    /**
+     * Comprobar que las llaves sirven, sin cobrarle a nadie.
+     *
+     * Existe porque conectar no daba ninguna señal: el comerciante guardaba
+     * unas llaves equivocadas, veia "Conectado" -- que solo significa "hay
+     * algo guardado" -- y se enteraba del error con el primer comprador que
+     * no pudo pagar.
+     *
+     * Se pide un link de pago de prueba por un monto simbolico y NO se le
+     * muestra a nadie: lo unico que interesa es si el proveedor lo acepta.
+     * Es la unica forma de probar unas llaves de verdad; un endpoint de
+     * "validar credenciales" no existe en ninguna de las dos pasarelas.
+     */
+    public function test(Request $request, string $provider): JsonResponse
+    {
+        $business = $request->user()->business;
+        $gateway = BusinessPaymentGateway::query()->where('provider_slug', $provider)->first();
+
+        if ($gateway === null || ! $gateway->isUsable()) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Todavía no has conectado esta pasarela.',
+            ], 422);
+        }
+
+        try {
+            app(PaymentsCoreService::class)->usingGateway($gateway)->createPaymentLink(
+                amountCop: 1000,
+                description: 'Prueba de conexión de '.($business->name ?? 'tu negocio'),
+                customer: ['email' => (string) $request->user()->email],
+                redirectUrl: rtrim((string) config('app.storefront_url'), '/'),
+                metadata: ['test' => true],
+                expiresInMinutes: 5,
+            );
+        } catch (\Throwable $e) {
+            Log::warning('payment_gateway.test_failed', [
+                'business_id' => $business->id,
+                'provider' => $provider,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'ok' => false,
+                // El mensaje del proveedor tal cual: "llave invalida" o
+                // "comercio inactivo" le dice que corregir. Uno generico no.
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'message' => $gateway->environment === 'sandbox'
+                ? 'Tus llaves de pruebas funcionan. Recuerda que en pruebas no entra dinero real.'
+                : '¡Listo! Tus llaves funcionan y puedes cobrar.',
+        ]);
     }
 
     public function destroy(string $provider): JsonResponse
