@@ -108,6 +108,71 @@ class PaymentGatewayOnboardingTest extends TestCase
             ->assertJsonPath('ok', false);
     }
 
+    /**
+     * Quien solo vende por internet no tiene que dar las llaves del
+     * datafono. Es la razon de que cada juego se valide por separado: el
+     * segundo es de Bold "API Datafono", y exigirlo dejaria sin conectar a
+     * medio mundo.
+     */
+    public function test_se_puede_conectar_solo_para_cobrar_por_internet(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['online_store' => true]]);
+        Sanctum::actingAs(User::factory()->create([
+            'business_id' => $business->id,
+            'is_business_owner' => true,
+        ]));
+
+        // El alta de un comercio nuevo pasa por el Core, que exige su clave
+        // de aprovisionamiento. En pruebas no hay .env con ella.
+        config([
+            'services.payments_core.base_url' => 'https://payments.test',
+            'services.payments_core.provisioning_key' => 'prov-test',
+        ]);
+
+        // Una sola respuesta con todo lo que pide la cadena de alta
+        // (merchant, integracion y credenciales): son tres llamadas al Core
+        // y falsearlas por separado solo agrega ruido a lo que este test
+        // quiere probar, que es la validacion del formulario.
+        Http::fake(['*' => Http::response([
+            'id' => 'mrc_nuevo',
+            'api_key' => 'nxl_x',
+            'webhook_secret' => 'whsec_x',
+            'configured' => true,
+        ], 201)]);
+
+        $this->postJson('/api/v1/payment-gateways', [
+            'provider_slug' => 'bold',
+            'environment' => 'sandbox',
+            // SIN terminal_identity_key ni terminal_secret_key.
+            'credentials' => ['identity_key' => 'ik', 'secret_key' => 'sk'],
+        ])->assertSuccessful();
+
+        $this->assertDatabaseHas('business_payment_gateways', [
+            'business_id' => $business->id,
+            'provider_slug' => 'bold',
+            'is_active' => true,
+        ]);
+    }
+
+    /** Medio juego guardado es un 403 despues, sin nada que lo explique. */
+    public function test_medio_juego_de_llaves_se_rechaza(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['online_store' => true]]);
+        Sanctum::actingAs(User::factory()->create([
+            'business_id' => $business->id,
+            'is_business_owner' => true,
+        ]));
+
+        Http::fake();
+
+        $this->postJson('/api/v1/payment-gateways', [
+            'provider_slug' => 'bold',
+            'environment' => 'sandbox',
+            'credentials' => ['identity_key' => 'ik', 'secret_key' => 'sk', 'terminal_identity_key' => 'solo-una'],
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors('credentials.terminal_secret_key');
+    }
+
     public function test_no_se_puede_probar_una_pasarela_sin_conectar(): void
     {
         $business = Business::factory()->create(['feature_flags' => ['online_store' => true]]);
