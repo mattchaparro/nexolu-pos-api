@@ -20,6 +20,9 @@ class SalePartialPaymentResource extends JsonResource
             'payment_method' => $this->payment_method,
             'payer_label' => $this->payer_label,
             'user_id' => $this->user_id,
+            // Cuando se registro el abono - el POS lo muestra en el detalle
+            // de la cuenta ("no es claro cuando ni cuanto abono").
+            'created_at' => $this->created_at,
         ];
     }
 }

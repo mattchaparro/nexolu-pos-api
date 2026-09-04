@@ -84,7 +84,11 @@ class OpenTabService
             $sale->increment('total', $addedTotal);
             $sale->update(['kitchen_status' => 'pending', 'kitchen_updated_at' => now()]);
 
-            return $sale->fresh()->load('items.product', 'items.productVariant.attributeValues.productAttribute');
+            // partialPayments viaja en la respuesta a proposito: el frontend
+            // asigna esta venta a su estado local (activeSale) y de ahi
+            // calcula el saldo pendiente (balance_due) - sin la relacion, un
+            // "confirmar cambios" borraba la seña de abonos de la pantalla.
+            return $sale->fresh()->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'partialPayments');
         });
     }
 
@@ -231,7 +235,11 @@ class OpenTabService
                 'kitchen_updated_at' => now(),
             ]);
 
-            return $sale->fresh()->load('items.product', 'items.productVariant.attributeValues.productAttribute');
+            // partialPayments viaja en la respuesta a proposito: el frontend
+            // asigna esta venta a su estado local (activeSale) y de ahi
+            // calcula el saldo pendiente (balance_due) - sin la relacion, un
+            // "confirmar cambios" borraba la seña de abonos de la pantalla.
+            return $sale->fresh()->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'partialPayments');
         });
     }
 
