@@ -321,4 +321,16 @@ class DashboardTest extends TestCase
             ->assertOk()
             ->assertContent('null');
     }
+
+    public function test_a_user_without_business_gets_403_not_a_type_error(): void
+    {
+        // Un superadmin (business_id NULL) navegando el POS sin impersonar:
+        // antes era un TypeError 500 (unico error del primer dia real de un
+        // negocio migrado, 2026-09-03).
+        $superadmin = User::factory()->create(['business_id' => null]);
+
+        $this->actingAs($superadmin, 'sanctum')
+            ->getJson('/api/v1/dashboard/summary')
+            ->assertForbidden();
+    }
 }

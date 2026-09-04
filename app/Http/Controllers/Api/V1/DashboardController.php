@@ -13,8 +13,16 @@ class DashboardController extends Controller
 
     public function summary(Request $request): JsonResponse
     {
+        // Un superadmin (business_id NULL) que navega el POS sin impersonar
+        // no tiene resumen que mostrar - sin esta guarda era un TypeError
+        // 500 (unico error del primer dia real de un negocio migrado,
+        // 2026-09-03). 403 y no 404: la ruta existe, es el usuario el que
+        // no aplica aca.
+        $business = $request->user()->business;
+        abort_unless($business !== null, 403, 'Tu usuario no pertenece a un negocio. Impersona un negocio para ver su dashboard.');
+
         return response()->json([
-            ...$this->dashboard->todaySummary($request->user()->business),
+            ...$this->dashboard->todaySummary($business),
             // dashboard_shortcuts, no la resolucion completa contra el menu:
             // el frontend ya resuelve {route_name, color} contra su propia
             // lista de nav items filtrada por permiso (useNavItems()), igual

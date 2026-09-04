@@ -33,7 +33,11 @@ class OpenTabController extends Controller
     {
         $sale = $this->openTabService->openTab($request->user(), $request->validated());
 
-        AuditLogger::log('tab.opened', ['sale_id' => $sale->id, 'table_id' => $sale->table_id]);
+        // customer_name viaja en el detalle a proposito: si la cuenta se
+        // cancela despues (borrado en duro), la auditoria es lo UNICO que
+        // recuerda de quien era - sin esto, "¿de quien era la cuenta
+        // borrada?" quedo sin respuesta en un caso real (2026-09-03).
+        AuditLogger::log('tab.opened', ['sale_id' => $sale->id, 'table_id' => $sale->table_id, 'customer_name' => $sale->customer_name]);
 
         return new SaleResource($sale);
     }
@@ -91,7 +95,12 @@ class OpenTabController extends Controller
 
     public function destroy(Request $request, Sale $sale): Response
     {
-        AuditLogger::log('tab.cancelled', ['sale_id' => $sale->id]);
+        AuditLogger::log('tab.cancelled', [
+            'sale_id' => $sale->id,
+            'table_id' => $sale->table_id,
+            'customer_name' => $sale->customer_name,
+            'total' => $sale->total,
+        ]);
 
         $this->openTabService->cancelOpenTab($request->user(), $sale);
 
