@@ -176,6 +176,80 @@ class AiToolInvokeTest extends TestCase
         $this->assertEquals(12000, $dias[0]['total_vendido']);
     }
 
+    /**
+     * El asistente y el "Resumen del dia" tienen que dar el MISMO numero. Caso
+     * real (2026-09-03, Las Banquitas): la IA respondia $662.900/59 ventas y la
+     * pantalla $686.700/60 - la IA sumaba por created_at sin excluir cortesias,
+     * asi que contaba de mas una cortesia y de menos las cuentas de dias
+     * previos cobradas ese dia. Un dueño no puede tener dos verdades.
+     */
+    public function test_ventas_resumen_matches_the_daily_summary_criteria(): void
+    {
+        $business = Business::factory()->create();
+        $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
+
+        // Venta normal de hoy: cuenta.
+        Sale::factory()->create([
+            'business_id' => $business->id, 'total' => 10000, 'status' => 'closed', 'closed_at' => now(),
+        ]);
+        // Cortesia: NO es venta, se regalo.
+        Sale::factory()->create([
+            'business_id' => $business->id, 'total' => 3000, 'status' => 'closed',
+            'closed_at' => now(), 'is_non_revenue' => true,
+        ]);
+        // Fiado: entra recien cuando se cobra, no al generarse.
+        Sale::factory()->create([
+            'business_id' => $business->id, 'total' => 5000, 'status' => 'closed',
+            'closed_at' => now(), 'is_credit' => true,
+        ]);
+        // Cuenta ABIERTA ayer y cobrada HOY: es venta de hoy, cuando entro la plata.
+        Sale::factory()->create([
+            'business_id' => $business->id, 'total' => 8000, 'status' => 'closed',
+            'created_at' => now()->subDay(), 'closed_at' => now(),
+        ]);
+
+        $response = $this->invoke([
+            'tool' => 'ventas_resumen',
+            'arguments' => ['desde' => now()->toDateString(), 'hasta' => now()->toDateString()],
+            'context' => $this->context($admin),
+        ]);
+
+        $response->assertOk();
+        $this->assertSame(2, $response->json('data.numero_ventas'));
+        $this->assertEquals(18000, $response->json('data.total_vendido'));
+    }
+
+    public function test_ventas_por_dia_counts_a_tab_on_the_day_it_was_charged(): void
+    {
+        $business = Business::factory()->create();
+        $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
+
+        // Abierta ayer, cobrada hoy: el dinero entro HOY.
+        Sale::factory()->create([
+            'business_id' => $business->id, 'total' => 9000, 'status' => 'closed',
+            'created_at' => now()->subDay(), 'closed_at' => now(),
+        ]);
+        Sale::factory()->create([
+            'business_id' => $business->id, 'total' => 1000, 'status' => 'closed',
+            'closed_at' => now(), 'is_non_revenue' => true,
+        ]);
+
+        $response = $this->invoke([
+            'tool' => 'ventas_por_dia',
+            'arguments' => ['desde' => now()->toDateString(), 'hasta' => now()->toDateString()],
+            'context' => $this->context($admin),
+        ]);
+
+        $response->assertOk();
+        $dias = $response->json('data.dias');
+        $this->assertCount(1, $dias);
+        $this->assertSame(now()->toDateString(), $dias[0]['fecha']);
+        $this->assertSame(1, $dias[0]['numero_ventas'], 'La cortesia no debe contar como venta.');
+        $this->assertEquals(9000, $dias[0]['total_vendido']);
+    }
+
     public function test_estado_caja_reports_no_open_shift(): void
     {
         $business = Business::factory()->create();

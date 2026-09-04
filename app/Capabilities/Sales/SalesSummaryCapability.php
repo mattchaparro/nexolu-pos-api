@@ -38,8 +38,24 @@ class SalesSummaryCapability implements Capability
         // La consulta se scopea sola al negocio via el global scope de
         // BelongsToBusiness, que lee auth()->user() - ya seteado por el
         // dispatcher antes de llegar aca.
+        //
+        // Mismos tres filtros que SalesReportService::dailySummary (el
+        // "Resumen del dia" que el negocio ve en pantalla), y por la misma
+        // razon: si el asistente responde otro numero que la pantalla, el
+        // dueño no sabe a cual creerle. Caso real 2026-09-03: la IA dijo
+        // $662.900/59 ventas y el Resumen $686.700/60 - la diferencia era
+        // exactamente una cortesia sumada de mas y dos cuentas de dias
+        // previos cobradas ese dia que faltaban.
+        //
+        // - closed_at, no created_at: una cuenta abierta el lunes y cobrada
+        //   el martes es venta DEL MARTES, que es cuando entro la plata.
+        // - is_non_revenue: una cortesia no es venta, se regalo.
+        // - is_credit: un fiado entra recien cuando se cobra (ahi es un
+        //   Receivable pagado con su medio real).
         $sales = Sale::where('status', 'closed')
-            ->whereBetween('created_at', [$start, $end])
+            ->where('is_non_revenue', false)
+            ->where('is_credit', false)
+            ->whereBetween('closed_at', [$start, $end])
             ->get(['total']);
 
         $count = $sales->count();

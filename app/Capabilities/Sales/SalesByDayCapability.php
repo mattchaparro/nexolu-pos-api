@@ -35,9 +35,16 @@ class SalesByDayCapability implements Capability
     {
         [$start, $end] = $this->resolveDateRange($arguments['desde'], $arguments['hasta']);
 
+        // closed_at + solo ventas de ingreso, igual que SalesSummaryCapability
+        // y que el "Resumen del dia" en pantalla - ver el docblock de
+        // SalesSummaryCapability::execute() para el porque (y el caso real
+        // que lo destapo). Agrupar por DATE(created_at) ademas partia una
+        // cuenta abierta el lunes y cobrada el martes en el dia equivocado.
         $rows = Sale::where('status', 'closed')
-            ->whereBetween('created_at', [$start, $end])
-            ->selectRaw('DATE(created_at) as fecha, COUNT(*) as numero_ventas, SUM(total) as total_vendido')
+            ->where('is_non_revenue', false)
+            ->where('is_credit', false)
+            ->whereBetween('closed_at', [$start, $end])
+            ->selectRaw('DATE(closed_at) as fecha, COUNT(*) as numero_ventas, SUM(total) as total_vendido')
             ->groupBy('fecha')
             ->orderBy('fecha')
             ->get();
