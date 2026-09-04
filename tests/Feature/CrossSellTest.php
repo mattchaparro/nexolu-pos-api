@@ -230,4 +230,29 @@ class CrossSellTest extends TestCase
             ->assertOk()
             ->assertJsonCount(0);
     }
+
+    /**
+     * Desde 2026-09-04 las ventas cruzadas son exclusivas de la tienda online
+     * (antes tambien alimentaban las sugerencias del cajero en Vender, y por
+     * eso las rutas no tenian gate). Sin tienda no hay donde se muestren:
+     * configurarlas seria trabajo perdido, asi que el modulo no existe.
+     */
+    public function test_un_negocio_sin_tienda_online_no_puede_administrar_ventas_cruzadas(): void
+    {
+        $sinTienda = Business::factory()->create([
+            'subscription_plan' => 'full',
+            'feature_flags' => [...BusinessFeaturePresets::full(), 'online_store' => false],
+        ]);
+        $admin = User::factory()->create(['business_id' => $sinTienda->id, 'is_business_owner' => true]);
+        $admin->assignRole('admin');
+        $producto = Product::factory()->create(['business_id' => $sinTienda->id]);
+
+        $this->actingAs($admin, 'sanctum')
+            ->getJson("/api/v1/products/{$producto->id}/cross-sells")
+            ->assertForbidden();
+
+        $this->actingAs($admin, 'sanctum')
+            ->putJson("/api/v1/products/{$producto->id}/cross-sells", ['product_ids' => []])
+            ->assertForbidden();
+    }
 }

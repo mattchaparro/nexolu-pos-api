@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Capabilities\Sales\SalesSummaryCapability;
 use App\Models\Business;
 use App\Models\Sale;
 use Illuminate\Console\Attributes\Description;
@@ -54,6 +55,7 @@ class BusinessDayReport extends Command
             $this->checkStockMovements($business, $date),
             $this->checkStockInvariants($business),
             $this->checkCash($business, $date),
+            $this->checkAssistantMatchesSummary($business, $date),
         ];
 
         $failed = false;
@@ -268,6 +270,67 @@ class BusinessDayReport extends Command
         }
 
         return ['code' => 'D5 invariantes', 'level' => 'ok', 'message' => 'Agregado==sedes y sin stock negativo.'];
+    }
+
+    /**
+     * El asistente de IA y el "Resumen del dia" tienen que responder el MISMO
+     * numero. Corre la capacidad `ventas_resumen` de verdad (la misma que
+     * contesta en el chat) y la compara contra la consulta del resumen.
+     *
+     * Existe por un caso real (2026-09-03): la IA decia $662.900/59 ventas y
+     * la pantalla $686.700/60 porque la capacidad agrupaba por created_at sin
+     * excluir cortesias. Lo detecto el dueño comparando a ojo - esto lo
+     * detecta solo. Un numero distinto en el chat que en pantalla no es un
+     * detalle: es no saber a cual creerle.
+     *
+     * @return array{code: string, level: 'ok'|'warn'|'fail', message: string, details?: list<string>}
+     */
+    private function checkAssistantMatchesSummary(Business $business, string $date): array
+    {
+        $owner = $business->users()->where('is_business_owner', true)->first()
+            ?? $business->users()->first();
+
+        if ($owner === null) {
+            return ['code' => 'D7 IA=resumen', 'level' => 'warn', 'message' => 'Sin usuario del negocio para ejercitar la capacidad.'];
+        }
+
+        // La capacidad se scopea via auth()->user() (igual que cuando la
+        // invoca el IA Core), asi que hay que actuar como el dueño.
+        $previous = auth()->user();
+        auth()->setUser($owner);
+
+        try {
+            $data = (new SalesSummaryCapability)->execute($business, $owner, ['desde' => $date, 'hasta' => $date]);
+        } catch (\Throwable $e) {
+            return ['code' => 'D7 IA=resumen', 'level' => 'fail', 'message' => 'La capacidad ventas_resumen fallo: '.$e->getMessage()];
+        } finally {
+            if ($previous !== null) {
+                auth()->setUser($previous);
+            }
+        }
+
+        $ventas = Sale::where('business_id', $business->id)->whereDate('closed_at', $date)
+            ->where('status', 'closed')->where('is_non_revenue', false)->where('is_credit', false)
+            ->get(['total']);
+
+        $esperadoTotal = round((float) $ventas->sum('total'), 2);
+        $esperadoCount = $ventas->count();
+        $iaTotal = round((float) $data['total_vendido'], 2);
+        $iaCount = (int) $data['numero_ventas'];
+
+        $details = [];
+        if (abs($iaTotal - $esperadoTotal) > $this->tolerance) {
+            $details[] = "total: IA=\${$iaTotal} resumen=\${$esperadoTotal}";
+        }
+        if ($iaCount !== $esperadoCount) {
+            $details[] = "numero de ventas: IA={$iaCount} resumen={$esperadoCount}";
+        }
+
+        if ($details !== []) {
+            return ['code' => 'D7 IA=resumen', 'level' => 'fail', 'message' => 'El asistente responde distinto que el Resumen del dia.', 'details' => $details];
+        }
+
+        return ['code' => 'D7 IA=resumen', 'level' => 'ok', 'message' => "El asistente responde lo mismo que el Resumen ({$iaCount} ventas, \$".number_format($iaTotal, 0).')'];
     }
 
     /**

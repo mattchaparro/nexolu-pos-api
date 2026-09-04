@@ -107,6 +107,25 @@ class BusinessDayReportTest extends TestCase
             ->assertFailed();
     }
 
+    public function test_flags_when_the_assistant_would_answer_differently_than_the_summary(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+        $this->makeCleanSale($business, $user, 10000);
+
+        // Cortesia del mismo dia (CON sus items, para no disparar D1): el
+        // Resumen la excluye del ingreso y la capacidad del asistente tambien
+        // debe hacerlo. Si alguien vuelve a desalinear los criterios (el bug
+        // real del 2026-09-03), D7 lo canta.
+        $cortesia = $this->makeCleanSale($business, $user, 3000);
+        $cortesia->forceFill(['is_non_revenue' => true])->save();
+
+        $this->artisan('businesses:day-report', ['business' => $business->id])
+            ->expectsOutputToContain('D7 IA=resumen')
+            ->expectsOutputToContain('DIA CUADRADO')
+            ->assertSuccessful();
+    }
+
     public function test_detects_negative_stock(): void
     {
         $business = Business::factory()->create();

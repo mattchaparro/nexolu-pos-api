@@ -359,8 +359,14 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             // compartida por el formulario de "Ajustar stock" de productos e
             // insumos, no atada a la feature "ingredients" (los productos
             // ajustan stock sin necesitarla).
-            Route::get('/products/{product}/cross-sells', [ProductCrossSellController::class, 'index'])
-                ->name('products.cross-sells.index');
+            // Ventas cruzadas: SOLO tienda online (decision del usuario,
+            // 2026-09-04). Antes tambien alimentaban las sugerencias del
+            // cajero en Vender y por eso no tenian gate; ese consumo se
+            // elimino, asi que sin tienda no hay donde se muestren.
+            Route::middleware('feature:online_store')->group(function () {
+                Route::get('/products/{product}/cross-sells', [ProductCrossSellController::class, 'index'])
+                    ->name('products.cross-sells.index');
+            });
             // Precios por sede: detras de multi_branch, porque en un negocio
             // de una sola sede la pantalla no tiene sentido.
             Route::middleware('feature:multi_branch')->group(function () {
@@ -398,11 +404,12 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::apiResource('product-categories', ProductCategoryController::class)->only(['store', 'update', 'destroy']);
             Route::post('/products/{product}/duplicate', [ProductController::class, 'duplicate'])->name('products.duplicate');
             // Ventas cruzadas: cuelgan del producto porque asi se piensan
-            // ("a quien lleve esto, ofrecele..."). NO van detras del feature
-            // online_store: le sirven al mostrador aunque el negocio nunca
-            // abra su tienda, que es justamente donde mas se factura.
-            Route::put('/products/{product}/cross-sells', [ProductCrossSellController::class, 'update'])
-                ->name('products.cross-sells.update');
+            // ("a quien lleve esto, ofrecele..."), y desde 2026-09-04 son
+            // exclusivas de la tienda online - ver la nota de la ruta index.
+            Route::middleware('feature:online_store')->group(function () {
+                Route::put('/products/{product}/cross-sells', [ProductCrossSellController::class, 'update'])
+                    ->name('products.cross-sells.update');
+            });
             Route::apiResource('products', ProductController::class)->only(['store', 'update', 'destroy']);
         });
 
