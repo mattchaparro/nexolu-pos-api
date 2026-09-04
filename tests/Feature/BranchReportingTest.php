@@ -194,6 +194,81 @@ class BranchReportingTest extends TestCase
     }
 
     /** @return array{0: Business, 1: Branch, 2: Branch, 3: User} */
+    /**
+     * El reporte de margenes mezclaba escalas: sus ventas SI se filtraban por
+     * sede (BranchFilter sobre el join de sale_items) pero el stock de la
+     * misma fila salia de la columna agregada del catalogo. El dueño leia
+     * "vendi 3 en esta sede y me quedan 40" cuando en esa sede quedaba 1.
+     */
+    public function test_the_margins_report_uses_the_stock_of_the_active_branch(): void
+    {
+        [$business, $main, $second, $user] = $this->scenario();
+        // El reporte de margenes exige inventory_advanced (o ingredients)
+        // ademas del permiso - ver InventoryReportController::margins().
+        $business->update(['feature_flags' => $business->feature_flags + ['inventory_advanced' => true]]);
+
+        // Se crea en 0 y se reparte a mano: crearlo con saldo dispara el
+        // sembrado automatico de bootHasBranchStock en la sede principal y el
+        // reparto dejaria de ser el que dice el test.
+        $product = Product::factory()->for($business)->create([
+            'price' => 10000,
+            'cost_price' => 6000,
+            'stock' => 50,
+            'track_stock' => true,
+            'is_active' => true,
+            'is_single_sale' => false,
+        ]);
+        BranchStock::query()->where('product_id', $product->id)->delete();
+        BranchStock::add($business->id, $main->id, 'product_id', $product->id, 40);
+        BranchStock::add($business->id, $second->id, 'product_id', $product->id, 10);
+
+        // El contenedor se reusa entre requests del test, asi que la sede de
+        // la llamada anterior sobreviviria; en produccion cada request
+        // arranca limpio.
+        $rowFor = function (string $header) use ($user): array {
+            BranchContext::forget();
+
+            return $this->actingAs($user, 'sanctum')
+                ->withHeader('X-Branch-Id', $header)
+                ->getJson('/api/v1/reports/inventory/margins')
+                ->assertOk()
+                ->json('margin_rows.0');
+        };
+
+        $this->assertSame(10, $rowFor((string) $second->id)['stock']);
+        $this->assertSame(40, $rowFor((string) $main->id)['stock']);
+        // El consolidado se pide explicitamente con 'all': omitir el header NO
+        // significa "todas las sedes", cae en la principal (ver ResolveBranch).
+        $this->assertSame(50, $rowFor('all')['stock']);
+    }
+
+    /** La utilidad potencial se calcula sobre ese mismo stock, no sobre el total. */
+    public function test_the_margins_potential_profit_follows_the_branch_stock(): void
+    {
+        [$business, , $second, $user] = $this->scenario();
+        $business->update(['feature_flags' => $business->feature_flags + ['inventory_advanced' => true]]);
+
+        $product = Product::factory()->for($business)->create([
+            'price' => 10000,
+            'cost_price' => 6000,
+            'stock' => 50,
+            'track_stock' => true,
+            'is_active' => true,
+            'is_single_sale' => false,
+        ]);
+        BranchStock::query()->where('product_id', $product->id)->delete();
+        BranchStock::add($business->id, $second->id, 'product_id', $product->id, 10);
+
+        $row = $this->actingAs($user, 'sanctum')
+            ->withHeader('X-Branch-Id', (string) $second->id)
+            ->getJson('/api/v1/reports/inventory/margins')
+            ->assertOk()
+            ->json('margin_rows.0');
+
+        // 10 unidades x $4.000 de margen, no 50.
+        $this->assertEquals(40000.0, $row['profit_total']);
+    }
+
     private function scenario(): array
     {
         $business = Business::factory()->create([

@@ -10,6 +10,7 @@ use App\Models\ProductVariant;
 use App\Models\SaleItem;
 use App\Models\StockMovement;
 use App\Models\StockMovementReason;
+use App\Support\BranchContext;
 use App\Support\BranchFilter;
 use App\Support\SortableQuery;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -223,7 +224,21 @@ class InventoryReportService
                 ->where('is_single_sale', false)
                 ->where('cost_price', '>', 0)
                 ->when($business->hasFeature('variants'), fn ($q) => $q->whereDoesntHave('variants'))
-                ->with(['category:id,name', 'ingredients:id,stock'])
+                // withBranchStock + branchStocks del insumo: sin esto la fila
+                // mezclaba escalas. Las ventas de arriba SI se filtran por
+                // sede (ver BranchFilter en $salesAgg), asi que un stock
+                // agregado al lado daba "vendi 3 en esta sede y me quedan 40"
+                // cuando en esta sede quedaba 1. Es exactamente el descuadre
+                // que BranchFilter existe para evitar.
+                ->withBranchStock()
+                ->with([
+                    'category:id,name',
+                    'ingredients:id,stock',
+                    'ingredients.branchStocks' => fn ($relation) => $relation->when(
+                        BranchContext::branchId(),
+                        fn ($q, $branchId) => $q->where('branch_id', $branchId),
+                    ),
+                ])
                 ->when($categoryId, fn ($q) => $q->whereIn('category_id', ProductCategory::idsIncludingChildren($categoryId)))
                 ->orderBy('name')
                 ->get(['id', 'name', 'stock', 'price', 'cost_price', 'category_id'])
@@ -234,12 +249,12 @@ class InventoryReportService
                         foreach ($p->ingredients as $ing) {
                             $req = (float) $ing->pivot->quantity;
                             if ($req > 0) {
-                                $batches = min($batches, (int) floor((float) $ing->stock / $req));
+                                $batches = min($batches, (int) floor($ing->stockAt() / $req));
                             }
                         }
                         $effectiveStock = $batches === PHP_INT_MAX ? 0 : $batches;
                     } else {
-                        $effectiveStock = (int) $p->stock;
+                        $effectiveStock = (int) $p->stockAt();
                     }
 
                     $margin = (float) $p->price - (float) $p->cost_price;
