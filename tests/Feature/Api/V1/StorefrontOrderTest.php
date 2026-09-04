@@ -5,6 +5,7 @@ namespace Tests\Feature\Api\V1;
 use App\Mail\NewOnlineOrderMail;
 use App\Models\Business;
 use App\Models\BusinessStoreSettings;
+use App\Models\Discount;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductAttribute;
@@ -659,5 +660,76 @@ class StorefrontOrderTest extends TestCase
 
         $this->assertSame(1, $first);
         $this->assertSame(2, $second);
+    }
+
+    /**
+     * La bandeja se busca por lo que el comerciante tiene a mano cuando
+     * alguien le reclama: el numero que le dijeron, o el nombre/telefono del
+     * que llamo. Filtrar por estado no alcanza con cuarenta pedidos al dia.
+     */
+    public function test_la_bandeja_se_puede_buscar_por_cliente_y_por_numero(): void
+    {
+        $product = $this->publishedProduct(['stock' => 20, 'price' => 5000]);
+        // Telefonos sin los digitos de los numeros de pedido (1 y 2): la
+        // busqueda numerica tambien cruza contra el telefono -- que es lo
+        // util cuando alguien llama -- y si no, la prueba no distingue cual
+        // de los dos criterios funciono.
+        $this->checkout([
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            'customer_name' => 'Ana Buscada',
+            'customer_phone' => '3005550000',
+        ])->assertCreated();
+        $this->checkout([
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            'customer_name' => 'Otro Comprador',
+            'customer_phone' => '3007770000',
+        ])->assertCreated();
+
+        $porNombre = $this->actingAs($this->owner, 'sanctum')
+            ->getJson('/api/v1/orders?search=Ana')
+            ->assertOk();
+        $this->assertCount(1, $porNombre->json('data'));
+        $this->assertSame('Ana Buscada', $porNombre->json('data.0.customer_name'));
+
+        // El numero se busca exacto: quien lo busca lo sabe completo, y "1"
+        // trayendo el 1, el 10 y el 21 no le sirve a nadie.
+        $numero = $porNombre->json('data.0.number');
+        $porNumero = $this->actingAs($this->owner, 'sanctum')
+            ->getJson("/api/v1/orders?search={$numero}")
+            ->assertOk();
+        $this->assertCount(1, $porNumero->json('data'));
+    }
+
+    /**
+     * Sin el descuento en la respuesta, el comerciante ve subtotal + envio y
+     * un total menor, sin nada que explique la diferencia.
+     */
+    public function test_la_bandeja_muestra_el_cupon_y_el_estado_de_pago(): void
+    {
+        $product = $this->publishedProduct(['stock' => 20, 'price' => 10000]);
+        Discount::withoutGlobalScopes()->create([
+            'business_id' => $this->business->id,
+            'name' => 'Prueba',
+            'code' => 'DIEZ',
+            'type' => 'percentage',
+            'value' => 10,
+            'scope' => 'cart',
+            'is_active' => true,
+        ]);
+
+        $this->checkout([
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            'coupon_code' => 'DIEZ',
+        ])->assertCreated();
+
+        $response = $this->actingAs($this->owner, 'sanctum')
+            ->getJson('/api/v1/orders')
+            ->assertOk();
+
+        $this->assertSame('DIEZ', $response->json('data.0.coupon_code'));
+        $this->assertSame(1000, $response->json('data.0.discount_amount'));
+        // Todavia sin pagar: es lo que distingue "ya me pagaron" de "lo
+        // confirme yo a mano".
+        $this->assertNull($response->json('data.0.paid_at'));
     }
 }

@@ -32,6 +32,10 @@ class OrderResource extends JsonResource
             'shipping_address' => $this->shipping_address,
             'shipping_city' => $this->shipping_city,
             'shipping_notes' => $this->shipping_notes,
+            // Sin esto el total no cuadra en pantalla: el comerciante ve
+            // subtotal + envio y un total menor, sin explicacion.
+            'coupon_code' => $this->coupon_code,
+            'discount_amount' => (float) $this->discount_amount,
             'payment_provider' => $this->payment_provider,
             'paid_at' => $this->paid_at?->toIso8601String(),
             'sale_id' => $this->sale_id,

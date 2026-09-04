@@ -30,6 +30,24 @@ class OrderController extends Controller
             $query->where('status', $request->string('status'));
         }
 
+        // Buscar por lo que el comerciante tiene a mano cuando alguien le
+        // reclama: el numero que le dijeron, o el nombre/telefono del que
+        // llamo. Filtrar por estado no alcanza cuando hay cuarenta al dia.
+        if ($request->filled('search')) {
+            $termino = trim((string) $request->string('search'));
+
+            $query->where(function ($q) use ($termino) {
+                $q->where('customer_name', 'like', "%{$termino}%")
+                    ->orWhere('customer_phone', 'like', "%{$termino}%");
+
+                // El numero se busca exacto: "12" no debe traer el 120 y el
+                // 512. Quien busca un numero de pedido lo sabe completo.
+                if (ctype_digit($termino)) {
+                    $q->orWhere('number', (int) $termino);
+                }
+            });
+        }
+
         return OrderResource::collection($query->paginate(20)->withQueryString());
     }
 
