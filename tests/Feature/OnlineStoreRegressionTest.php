@@ -64,11 +64,17 @@ class OnlineStoreRegressionTest extends TestCase
     }
 
     /**
-     * Las ventas cruzadas NO van detras del feature de tienda: le sirven al
-     * mostrador aunque el negocio nunca abra su tienda. Si algun dia alguien
-     * las mete detras del flag, esto lo cacha.
+     * Las ventas cruzadas SI van detras del feature de tienda (decision del
+     * usuario, 2026-09-04). Hasta esa fecha era al reves - tambien alimentaban
+     * las sugerencias del cajero en Vender ("¿papas con eso?") y este mismo
+     * test defendia que funcionaran sin tienda. Ese consumo se elimino del
+     * front: sin tienda no hay donde se muestren, asi que ofrecer la
+     * configuracion seria trabajo perdido.
+     *
+     * Se invierte en vez de borrarse para que la regla vigente quede
+     * defendida, igual que lo estaba la anterior.
      */
-    public function test_las_ventas_cruzadas_funcionan_sin_tienda_online(): void
+    public function test_las_ventas_cruzadas_exigen_tienda_online(): void
     {
         $business = Business::factory()->create([
             'subscription_plan' => 'full',
@@ -82,7 +88,7 @@ class OnlineStoreRegressionTest extends TestCase
 
         $this->actingAs($owner, 'sanctum')
             ->putJson("/api/v1/products/{$hamburguesa->id}/cross-sells", ['cross_sell_ids' => [$papas->id]])
-            ->assertOk();
+            ->assertForbidden();
     }
 
     // -----------------------------------------------------------------
