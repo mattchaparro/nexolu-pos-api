@@ -72,6 +72,7 @@ RUN apk add --no-cache nginx supervisor libzip tzdata libpng libjpeg-turbo freet
 # php-fpm en cada deploy (el entrypoint no lo hace por si solo) - lo dejamos
 # en 1 (default) para no sorprender a un deploy futuro que no reinicie.
 COPY docker/opcache.ini /usr/local/etc/php/conf.d/opcache-custom.ini
+COPY docker/php-uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 
 # La imagen no sale si no puede procesar una foto.
 #
