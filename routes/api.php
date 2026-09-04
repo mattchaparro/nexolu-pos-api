@@ -476,6 +476,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus'])
                 ->whereNumber('order')
                 ->name('orders.status');
+            Route::post('/orders/{order}/notes', [OrderController::class, 'storeNote'])
+                ->whereNumber('order')
+                ->name('orders.notes.store');
         });
 
         // Fotos de producto. Atadas a la tienda online a proposito: son el

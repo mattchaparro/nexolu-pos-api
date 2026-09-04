@@ -40,8 +40,37 @@ class CommsNotificationService
         ?int $businessId = null,
         ?string $reference = null,
     ): bool {
+        return $this->dispatch(
+            $channels, $to, $subject, $html, $text, $whatsappTemplate, $businessId, $reference,
+        ) !== [];
+    }
+
+    /**
+     * Igual que send(), pero devuelve QUE paso en cada canal.
+     *
+     * El Core responde por canal y nunca tumba uno por culpa de otro: correo
+     * puede salir y WhatsApp fallar en la misma notificacion. Quien solo
+     * necesita saber si algo salio usa send(); quien tiene que MOSTRARLE al
+     * usuario que se entrego y que no -- una nota al comprador -- necesita el
+     * detalle, incluido el motivo del fallo.
+     *
+     * @param  list<string>  $channels
+     * @param  array<string, string>  $to
+     * @param  array<string, mixed>|null  $whatsappTemplate
+     * @return array<string, array{status: string, error: string|null}> por canal; vacio si no se pudo ni preguntar
+     */
+    public function dispatch(
+        array $channels,
+        array $to,
+        ?string $subject = null,
+        ?string $html = null,
+        ?string $text = null,
+        ?array $whatsappTemplate = null,
+        ?int $businessId = null,
+        ?string $reference = null,
+    ): array {
         if ($channels === [] || $to === []) {
-            return false;
+            return [];
         }
 
         $payload = array_filter([
@@ -68,7 +97,7 @@ class CommsNotificationService
                 'message' => $e->getMessage(),
             ]);
 
-            return false;
+            return [];
         }
 
         if ($response->failed()) {
@@ -79,9 +108,24 @@ class CommsNotificationService
                 'body' => $response->json('detail') ?? $response->body(),
             ]);
 
-            return false;
+            return [];
         }
 
-        return true;
+        $porCanal = [];
+        foreach ($response->json('results') ?? [] as $resultado) {
+            $canal = $resultado['channel'] ?? null;
+            if ($canal === null) {
+                continue;
+            }
+
+            $porCanal[$canal] = [
+                'status' => (string) ($resultado['status'] ?? 'sent'),
+                'error' => $resultado['error'] ?? null,
+            ];
+        }
+
+        // El Core acepto, pero es una version que no detalla por canal: no hay
+        // nada que reportar salvo que no fallo.
+        return $porCanal !== [] ? $porCanal : array_fill_keys($channels, ['status' => 'sent', 'error' => null]);
     }
 }

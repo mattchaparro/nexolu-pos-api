@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Api\V1;
 
 use App\Models\Order;
+use App\Services\OrderNoteService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -56,6 +57,24 @@ class OrderResource extends JsonResource
                 'unit_price' => (float) $item->unit_price,
                 'subtotal' => (float) $item->subtotal,
             ])->values()),
+            'notes' => $this->whenLoaded('notes', fn () => $this->notes->map(fn ($row) => [
+                'id' => $row->id,
+                'visibility' => $row->visibility,
+                'body' => $row->body,
+                'channels' => $row->channels ?? [],
+                // Que dijo cada canal. La pantalla tiene que poder mostrar
+                // "el correo salio, el WhatsApp no" y el motivo.
+                'delivery' => $row->delivery ?? [],
+                'user' => $row->user?->name,
+                'at' => $row->created_at?->toIso8601String(),
+            ])->values()),
+            // Por donde se le puede escribir HOY a este comprador: compro como
+            // invitado y puede haber dejado solo el telefono.
+            'contact_channels' => $this->when(
+                // Solo en el detalle: en el listado seria ruido en cada fila.
+                $this->resource->relationLoaded('notes'),
+                fn () => app(OrderNoteService::class)->availableChannels($this->resource),
+            ),
             'history' => $this->whenLoaded('history', fn () => $this->history->map(fn ($row) => [
                 'from_status' => $row->from_status,
                 'to_status' => $row->to_status,

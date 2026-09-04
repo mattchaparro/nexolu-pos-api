@@ -92,6 +92,15 @@ class Order extends Model
         return $this->hasMany(OrderStatusHistory::class)->latest('id');
     }
 
+    /**
+     * Notas internas y mensajes al comprador, en el orden en que se
+     * escribieron: se leen como una conversacion, no como una pila.
+     */
+    public function notes(): HasMany
+    {
+        return $this->hasMany(OrderNote::class)->oldest('id');
+    }
+
     public function sale(): BelongsTo
     {
         return $this->belongsTo(Sale::class);
