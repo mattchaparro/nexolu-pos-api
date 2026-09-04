@@ -16,7 +16,12 @@ RUN npm run build
 FROM composer:2 AS vendor
 WORKDIR /app
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
+# --ignore-platform-reqs: esta etapa solo RESUELVE dependencias, y corre
+# sobre el PHP de la imagen de composer, que no es el de produccion. Exigirle
+# aqui las extensiones del runtime (ext-gd) es preguntarle a la maquina
+# equivocada. Quien las verifica de verdad es la etapa 3, contra el PHP que
+# se va a desplegar.
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --ignore-platform-reqs
 COPY . .
 RUN composer dump-autoload --optimize --no-dev
 
@@ -30,11 +35,27 @@ RUN composer dump-autoload --optimize --no-dev
 # runtime (entrypoint.sh, nginx.conf, supervisord.conf) los usa.
 FROM php:8.4-fpm-alpine
 
-RUN apk add --no-cache nginx supervisor libzip tzdata \
+RUN apk add --no-cache nginx supervisor libzip tzdata libpng libjpeg-turbo freetype libwebp \
     && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS libzip-dev libpng-dev oniguruma-dev \
-    && docker-php-ext-install pdo_mysql zip opcache \
+       libjpeg-turbo-dev freetype-dev libwebp-dev \
+    && docker-php-ext-configure gd --with-jpeg --with-freetype --with-webp \
+    && docker-php-ext-install pdo_mysql zip opcache gd \
     && pecl install redis && docker-php-ext-enable redis \
     && apk del .build-deps
+# gd: Intervention Image lo necesita para TODA foto que entra al sistema
+# (catalogo, logo, banner, home de la tienda). Sin la extension, cada subida
+# revienta con un 500 en produccion mientras local -- que corre sobre la
+# imagen de Sail, que si la trae -- funciona perfecto. Paso de verdad: un
+# comercio nuevo subio las fotos de su producto el 2026-09-04 y no llego
+# ninguna. `ext-gd` esta declarada en composer.json justamente para que este
+# Dockerfile no pueda volver a quedarse atras en silencio: si falta, ahora
+# falla el `composer install` de la etapa `vendor` y no hay imagen que
+# desplegar.
+#
+# --with-webp NO es opcional: ImageProcessor codifica todo a WebP, y un gd
+# sin webp compila bien, arranca bien, y falla solo al guardar la primera
+# foto -- exactamente el mismo tipo de fallo que esto viene a cerrar.
+#
 # tzdata: sin esto, TZ=America/Bogota (ver nexolu-infra/docker-compose.yml)
 # no resuelve a nada - Alpine no trae la base de datos de zonas horarias
 # por defecto. Laravel/Carbon ya funcionan bien sin esto (traen su propia
@@ -51,6 +72,15 @@ RUN apk add --no-cache nginx supervisor libzip tzdata \
 # php-fpm en cada deploy (el entrypoint no lo hace por si solo) - lo dejamos
 # en 1 (default) para no sorprender a un deploy futuro que no reinicie.
 COPY docker/opcache.ini /usr/local/etc/php/conf.d/opcache-custom.ini
+
+# La imagen no sale si no puede procesar una foto.
+#
+# Esto es lo que impide que el fallo del 2026-09-04 se repita: la extension
+# faltaba, la imagen se construia igual, se desplegaba igual, y el problema
+# solo aparecia cuando un comercio subia su primera foto y no llegaba
+# ninguna. Se comprueba WebP ademas de gd porque ImageProcessor codifica todo
+# a WebP: un gd sin webp pasa `extension_loaded` y falla igual de tarde.
+RUN php -r 'if (! extension_loaded("gd") || empty(gd_info()["WebP Support"])) { fwrite(STDERR, "Falta la extension gd con soporte WebP.\n"); exit(1); }'
 
 WORKDIR /var/www/html
 COPY --from=vendor /app ./

@@ -15,6 +15,19 @@ set -e
 # cualquier causa futura de este mismo problema, no solo la de hoy.
 chown -R www-data:www-data /var/www/html/storage
 
+# El enlace public/storage -> storage/app/public, que es por donde nginx
+# sirve las fotos del catalogo y de la tienda (disco `public`).
+#
+# Se rehace en CADA arranque a proposito: `public/` viene dentro de la imagen
+# y `storage/` es un volumen nombrado, asi que el enlace no sobrevive a un
+# build nuevo -- y sin el, las fotos se guardan bien y devuelven 404, que es
+# peor que fallar al subirlas.
+#
+# `ln -sfn` y no `php artisan storage:link`: no necesita levantar Laravel, es
+# idempotente, y evita que un artisan corriendo como root deje archivos de
+# log suyos en storage/ (justo lo que el chown de arriba viene a arreglar).
+ln -sfn /var/www/html/storage/app/public /var/www/html/public/storage
+
 # NUNCA se corre `php artisan migrate` aca -- el esquema de esta app viene
 # completo de database/legacy-schema/schema.sql, cargado UNA sola vez a mano
 # contra MySQL (ver deploy/README.md paso "Cargar el esquema"). Un

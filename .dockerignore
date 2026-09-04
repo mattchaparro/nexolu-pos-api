@@ -8,6 +8,11 @@ storage/logs/*
 storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
+# Discos falsos que deja Storage::fake() al correr la suite. No solo no
+# pintan nada en la imagen: los crea el contenedor como root, y el usuario
+# del host no puede ni hacerles stat -- `docker build` aborta antes de
+# empezar, con un error que no se parece en nada a su causa.
+storage/framework/testing
 tests
 .phpunit.cache
 *.md

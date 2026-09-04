@@ -11,6 +11,7 @@ use App\Models\ProductImage;
 use App\Models\ProductVariant;
 use App\Models\User;
 use App\Support\BusinessFeaturePresets;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -352,6 +353,30 @@ class ProductImageTest extends TestCase
         $this->actingAs($employee, 'sanctum')
             ->post("/api/v1/products/{$product->id}/images", ['image' => $this->photo()])
             ->assertForbidden();
+    }
+
+    /**
+     * Si el disco no escribe, la subida FALLA -- no se guarda una fila que
+     * apunte a un archivo inexistente.
+     *
+     * Los discos van con `throw => false` (ver config/filesystems.php), asi
+     * que `put()` devuelve false en silencio cuando el disco esta mal
+     * configurado. Sin esta guarda la foto "se sube bien" y sale rota en la
+     * tienda, que es mucho mas dificil de diagnosticar que un error al subir.
+     */
+    public function test_una_escritura_fallida_no_deja_una_foto_fantasma(): void
+    {
+        $product = $this->product();
+
+        $disco = \Mockery::mock(Filesystem::class);
+        $disco->shouldReceive('put')->andReturn(false);
+        Storage::shouldReceive('disk')->with('public')->andReturn($disco);
+
+        $this->actingAs($this->admin, 'sanctum')
+            ->post("/api/v1/products/{$product->id}/images", ['image' => $this->photo(400, 400)])
+            ->assertStatus(500);
+
+        $this->assertSame(0, ProductImage::withoutGlobalScopes()->where('product_id', $product->id)->count());
     }
 
     public function test_listing_photos_returns_them_in_order(): void

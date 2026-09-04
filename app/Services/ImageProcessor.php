@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use Intervention\Image\Drivers\Gd\Driver;
 use Intervention\Image\Encoders\WebpEncoder;
 use Intervention\Image\ImageManager;
+use RuntimeException;
 
 /**
  * Procesa y guarda una imagen subida: reescala, pasa a WebP, le quita los
@@ -49,7 +50,7 @@ class ImageProcessor
             ->encode(new WebpEncoder(quality: $quality, strip: true));
 
         $path = "{$directory}/{$name}.webp";
-        Storage::disk($disk)->put($path, (string) $full, 'public');
+        $this->put($disk, $path, (string) $full);
 
         $thumbnailPath = null;
         if ($thumbnailDimension !== null) {
@@ -62,10 +63,27 @@ class ImageProcessor
                 ->encode(new WebpEncoder(quality: $thumbnailQuality, strip: true));
 
             $thumbnailPath = "{$directory}/{$name}_thumb.webp";
-            Storage::disk($disk)->put($thumbnailPath, (string) $thumbnail, 'public');
+            $this->put($disk, $thumbnailPath, (string) $thumbnail);
         }
 
         return ['disk' => $disk, 'path' => $path, 'thumbnail_path' => $thumbnailPath];
+    }
+
+    /**
+     * Escribe, o revienta.
+     *
+     * Los discos estan configurados con `throw => false` (ver
+     * config/filesystems.php), asi que un fallo de escritura devuelve `false`
+     * en silencio. Sin esta comprobacion, quien llama sigue de largo y crea
+     * la fila en `product_images` apuntando a un archivo que no existe: la
+     * foto "se subio bien" y sale rota en la tienda, que es mucho mas dificil
+     * de diagnosticar que un error al subirla.
+     */
+    private function put(string $disk, string $path, string $contents): void
+    {
+        if (Storage::disk($disk)->put($path, $contents, 'public') === false) {
+            throw new RuntimeException("No se pudo guardar la imagen en el disco '{$disk}'.");
+        }
     }
 
     /** @param  list<?string>  $paths */
