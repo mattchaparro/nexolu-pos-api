@@ -353,6 +353,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // no tenga inventory.view, asi que abrir esto no filtra margenes.
         Route::apiResource('product-categories', ProductCategoryController::class)->only(['index', 'show']);
         Route::get('/products/sellable', [ProductController::class, 'sellable'])->name('products.sellable');
+        // Atajo "Frecuentes" de Vender: mismo criterio de acceso que el
+        // catalogo de venta (sin permission), porque es parte de vender -
+        // devuelve solo ids, no datos de producto ni de margen.
+        Route::get('/products/frequent', [ProductController::class, 'frequent'])->name('products.frequent');
 
         // inventory.view para leer el catalogo/reportes de inventario,
         // inventory.add para tocarlo - ver PermissionCatalog. apiResource se

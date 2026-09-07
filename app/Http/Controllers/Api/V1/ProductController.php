@@ -9,9 +9,11 @@ use App\Http\Resources\Api\V1\ProductResource;
 use App\Models\Product;
 use App\Models\ProductCategory;
 use App\Models\ProductVariant;
+use App\Models\SaleItem;
 use App\Services\ProductService;
 use App\Support\AuditLogger;
 use App\Support\BranchContext;
+use App\Support\BranchFilter;
 use App\Support\ProductAvailability;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -122,6 +124,57 @@ class ProductController extends Controller
         return ProductResource::collection(
             ProductAvailability::forBusiness($request->user()->business)
         );
+    }
+
+    /** Dias hacia atras que definen "lo que se vende seguido" hoy. */
+    private const FREQUENT_WINDOW_DAYS = 30;
+
+    /** Tope de la lista: es un atajo del cajero, no un reporte. */
+    private const FREQUENT_LIMIT = 20;
+
+    /**
+     * Los productos que mas rotan, para el filtro "Frecuentes" de Vender.
+     *
+     * Devuelve SOLO ids ordenados por unidades vendidas, no productos: el
+     * frontend ya tiene el catalogo cargado (/products/sellable) y lo
+     * reordena con esto. Asi no se duplica el payload ni se corre el riesgo
+     * de que la grilla muestre dos versiones distintas del mismo producto
+     * (stock/precio) segun de que endpoint vino.
+     *
+     * Mismos filtros que TopProductsCapability (el "productos_top" del
+     * asistente), para que el atajo y el chat no se contradigan: ventas
+     * cerradas de ingreso, sin cortesias ni fiados, y sin productos de venta
+     * unica (combos puntuales que no tienen rotacion que ofrecer).
+     */
+    public function frequent(Request $request): JsonResponse
+    {
+        $business = $request->user()->business;
+
+        $ids = SaleItem::query()
+            ->whereHas('sale', function ($query) use ($business) {
+                $query->where('business_id', $business->id)
+                    ->where('status', 'closed')
+                    ->where('is_non_revenue', false)
+                    ->where('is_credit', false)
+                    ->where('closed_at', '>=', now()->subDays(self::FREQUENT_WINDOW_DAYS));
+
+                // whereHas arma una subconsulta sobre `sales` que NO pasa por
+                // el global scope de sede, asi que la sede se aplica a mano -
+                // mismo cuidado que TopProductsCapability. Sin esto, un
+                // negocio multisede veria la rotacion de todas las sedes
+                // mezclada en el mostrador de una sola.
+                BranchFilter::apply($query, 'sales');
+            })
+            ->whereHas('product', fn ($query) => $query->where('is_single_sale', false))
+            ->selectRaw('product_id, SUM(quantity) as units')
+            ->groupBy('product_id')
+            ->orderByDesc('units')
+            ->limit(self::FREQUENT_LIMIT)
+            ->pluck('product_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        return response()->json(['product_ids' => $ids]);
     }
 
     /** @var list<string> */
