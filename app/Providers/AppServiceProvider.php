@@ -14,11 +14,14 @@ use App\Services\WhatsApp\NexoluCommsCostReporter;
 use App\Services\WhatsApp\WhatsAppCloudClient;
 use App\Services\WhatsApp\WhatsAppCostReporter;
 use App\Services\WhatsApp\WhatsAppOtpSender;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -86,5 +89,60 @@ class AppServiceProvider extends ServiceProvider
         // espanol sin importar APP_LOCALE, que se queda en "en" para los
         // mensajes de validacion del framework.
         Carbon::setLocale('es');
+
+        $this->registerAuthRateLimiters();
+    }
+
+    /**
+     * Limites de las puertas publicas de autenticacion.
+     *
+     * Hasta 2026-09-07 /login, /register, /forgot-password y /reset-password
+     * no tenian ninguno: se podian probar contraseñas a la velocidad que
+     * diera la red. Son dos riesgos en uno - fuerza bruta de credenciales, y
+     * agotar el servidor, porque cada intento corre Hash::check (bcrypt), que
+     * es caro A PROPOSITO. En un droplet de 1 core eso tumba el POS de un
+     * negocio en vivo sin necesidad de volumen de red.
+     *
+     * Los mensajes van en espanol: el 429 le llega al cajero, no a un
+     * desarrollador (el default del framework es "Too Many Attempts.").
+     */
+    private function registerAuthRateLimiters(): void
+    {
+        $tooMany = fn (Request $request, array $headers) => response()->json([
+            'message' => 'Demasiados intentos. Espera un momento y vuelve a intentar.',
+        ], 429, $headers);
+
+        RateLimiter::for('login', function (Request $request) use ($tooMany) {
+            $email = strtolower(trim((string) $request->input('email')));
+
+            return [
+                // Por credencial: frena la fuerza bruta contra UNA cuenta.
+                // El email va junto a la IP para que un atacante no pueda
+                // dejar bloqueada la cuenta de un negocio ajeno solo con
+                // fallar adrede (eso seria un DoS contra ese usuario).
+                Limit::perMinute(5)->by($email.'|'.$request->ip())->response($tooMany),
+                // Por IP: frena el barrido de MUCHAS cuentas desde un mismo
+                // origen. Holgado a proposito: varios cajeros de un negocio
+                // pueden compartir la IP publica del local.
+                Limit::perMinute(30)->by($request->ip())->response($tooMany),
+            ];
+        });
+
+        // Registro: crear negocios en masa no tiene uso legitimo a este
+        // ritmo, y cada alta escribe varias tablas.
+        RateLimiter::for('register', fn (Request $request) => Limit::perHour(10)
+            ->by($request->ip())
+            ->response($tooMany));
+
+        // Recuperacion: el limite por email evita usar la app para bombardear
+        // el correo de una persona; el de IP, para barrer muchos.
+        RateLimiter::for('password-recovery', function (Request $request) use ($tooMany) {
+            $email = strtolower(trim((string) $request->input('email')));
+
+            return [
+                Limit::perHour(5)->by($email)->response($tooMany),
+                Limit::perHour(20)->by($request->ip())->response($tooMany),
+            ];
+        });
     }
 }

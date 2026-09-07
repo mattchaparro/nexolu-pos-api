@@ -210,8 +210,17 @@ Route::prefix('v1/storefront/{business}')
 
 Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::get('/plans', [PlanCatalogController::class, 'index'])->name('plans.index');
-    Route::post('/register', [AuthController::class, 'register'])->name('register');
-    Route::post('/login', [AuthController::class, 'login'])->name('login');
+    // Las cuatro puertas publicas de auth van con throttle (ver
+    // AppServiceProvider::registerAuthRateLimiters): sin el se podian probar
+    // contraseñas a la velocidad de la red, y cada intento corre bcrypt, que
+    // es caro a proposito - fuerza bruta y agotamiento del servidor con el
+    // mismo script.
+    Route::post('/register', [AuthController::class, 'register'])
+        ->middleware('throttle:register')
+        ->name('register');
+    Route::post('/login', [AuthController::class, 'login'])
+        ->middleware('throttle:login')
+        ->name('login');
 
     // Canje de una asercion de nexolu-auth por un token de Sanctum. ADITIVO:
     // el /login de arriba no cambia, y en la Fase 1 solo el superadmin puede
@@ -222,8 +231,12 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::post('/auth/sso/exchange', SsoExchangeController::class)
         ->name('auth.sso.exchange')
         ->middleware('throttle:10,1');
-    Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->name('password.forgot');
-    Route::post('/reset-password', [AuthController::class, 'resetPassword'])->name('password.reset');
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])
+        ->middleware('throttle:password-recovery')
+        ->name('password.forgot');
+    Route::post('/reset-password', [AuthController::class, 'resetPassword'])
+        ->middleware('throttle:password-recovery')
+        ->name('password.reset');
 
     Route::middleware(['auth:sanctum', 'sentry.context', 'branch.context'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
