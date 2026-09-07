@@ -62,6 +62,7 @@ use App\Http\Controllers\Api\V1\SaleController;
 use App\Http\Controllers\Api\V1\SalesReportController;
 use App\Http\Controllers\Api\V1\ServiceOrderController;
 use App\Http\Controllers\Api\V1\SettingController;
+use App\Http\Controllers\Api\V1\SsoExchangeController;
 use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\StockMovementReasonController;
 use App\Http\Controllers\Api\V1\StockTransferController;
@@ -211,6 +212,16 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::get('/plans', [PlanCatalogController::class, 'index'])->name('plans.index');
     Route::post('/register', [AuthController::class, 'register'])->name('register');
     Route::post('/login', [AuthController::class, 'login'])->name('login');
+
+    // Canje de una asercion de nexolu-auth por un token de Sanctum. ADITIVO:
+    // el /login de arriba no cambia, y en la Fase 1 solo el superadmin puede
+    // canjear (ver SsoExchangeController::assertEligible), asi que el acceso
+    // de los negocios no se toca. Publica porque la asercion firmada ES la
+    // credencial; con throttle porque /login no lo tiene y esta si es una
+    // puerta nueva.
+    Route::post('/auth/sso/exchange', SsoExchangeController::class)
+        ->name('auth.sso.exchange')
+        ->middleware('throttle:10,1');
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])->name('password.forgot');
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])->name('password.reset');
 
