@@ -18,12 +18,25 @@ class WhatsappCheckCatalog extends Command
 {
     public function handle(NexoluCommsCatalogClient $catalog): int
     {
+        // Sin Connect configurado no hay nada que verificar: eso es exito,
+        // no fallo - este comando corre cada 15 min en el scheduler y un
+        // FAILURE perpetuo ensuciaria el monitoreo de cron jobs de los
+        // ambientes donde el catalogo (aun) no aplica.
+        if (! $catalog->isConfigured()) {
+            $this->info('Connect no esta configurado; nada que verificar.');
+
+            return self::SUCCESS;
+        }
+
         $result = $catalog->check();
 
         if ($result === null) {
-            $this->warn('Sin resultado (Connect no configurado o inalcanzable).');
+            // Connect configurado pero sin catalogo conectado (o caido):
+            // tampoco es un fallo del cron - el detalle queda en el log del
+            // cliente y el panel de Connect muestra el estado real.
+            $this->info('Sin lotes que verificar (sin catalogo conectado, o Connect no respondio).');
 
-            return self::FAILURE;
+            return self::SUCCESS;
         }
 
         $this->info(sprintf(
