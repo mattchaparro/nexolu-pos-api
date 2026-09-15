@@ -51,6 +51,7 @@ class StoreProductRequest extends FormRequest
                 Rule::unique('products', 'sku')->where('business_id', $businessId),
             ],
             'image' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'available_on_whatsapp' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
             'category_id' => [
                 'required',

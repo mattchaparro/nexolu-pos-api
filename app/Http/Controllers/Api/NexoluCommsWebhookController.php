@@ -30,7 +30,10 @@ class NexoluCommsWebhookController extends Controller
             return response()->json(['error' => 'invalid_signature'], 401);
         }
 
-        $this->dispatcher->dispatch($request->input('entry', []));
+        $this->dispatcher->dispatch(
+            $request->input('entry', []),
+            $request->header('X-Nexolu-Business-Id'),
+        );
 
         return response()->json(['ok' => true]);
     }

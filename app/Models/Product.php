@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Jobs\RemoveWhatsAppCatalogItemJob;
+use App\Jobs\SyncWhatsAppCatalogJob;
 use App\Support\ProductAvailability;
 use App\Traits\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -30,6 +32,7 @@ use Illuminate\Support\Facades\DB;
     'category_id',
     'image',
     'is_active',
+    'available_on_whatsapp',
     'business_id',
 ])]
 class Product extends Model
@@ -48,6 +51,7 @@ class Product extends Model
             'is_single_sale' => 'boolean',
             'is_service' => 'boolean',
             'price_varies_at_sale' => 'boolean',
+            'available_on_whatsapp' => 'boolean',
         ];
     }
 
@@ -70,6 +74,51 @@ class Product extends Model
         };
         static::saved($clearCache);
         static::deleted($clearCache);
+
+        // Catalogo de WhatsApp (Nexolu Connect). Dos direcciones:
+        //
+        // - Publicable (o cambio algo de un publicado): sync del lote del
+        //   negocio, con debounce - guardar 20 productos dispara UN job y
+        //   Connect salta lo que no cambio (content_hash).
+        // - Dejo de ser publicable (interruptor apagado, desactivado o
+        //   borrado): retiro puntual por retailer_id, que el sync de lote
+        //   no puede deducir.
+        static::saved(function (Product $product) {
+            if (! $product->business_id) {
+                return;
+            }
+
+            $isPublishable = $product->available_on_whatsapp && $product->is_active;
+
+            // Ojo Eloquent: dentro de `saved`, getOriginal() ya devuelve lo
+            // recien guardado - "estaba publicado antes" se deduce de
+            // wasChanged() + el valor NUEVO.
+            $turnedOff = ($product->wasChanged('available_on_whatsapp') && ! $product->available_on_whatsapp)
+                || ($product->wasChanged('is_active') && ! $product->is_active && $product->available_on_whatsapp);
+
+            if ($isPublishable) {
+                SyncWhatsAppCatalogJob::dispatchDebounced((int) $product->business_id);
+            } elseif ($turnedOff) {
+                RemoveWhatsAppCatalogItemJob::dispatch($product->whatsappRetailerId());
+            }
+        });
+        static::deleted(function (Product $product) {
+            if ($product->business_id && $product->available_on_whatsapp) {
+                RemoveWhatsAppCatalogItemJob::dispatch($product->whatsappRetailerId());
+            }
+        });
+    }
+
+    /**
+     * El identificador del producto en TODO el circuito de WhatsApp: el
+     * `id` del items_batch de Meta, el `product_retailer_id` que vuelve en
+     * el webhook `order`, y el de los mensajes de producto. El prefijo con
+     * el negocio lo hace unico aunque el catalogo sea compartido, y permite
+     * resolver a que negocio pertenece un pedido entrante.
+     */
+    public function whatsappRetailerId(): string
+    {
+        return 'b'.$this->business_id.'-'.$this->sku;
     }
 
     public static function generateSkuForBusiness(int $businessId): string

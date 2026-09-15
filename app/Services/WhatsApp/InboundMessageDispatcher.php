@@ -4,6 +4,7 @@ namespace App\Services\WhatsApp;
 
 use App\Jobs\ProcessWhatsAppFlowReply;
 use App\Jobs\ProcessWhatsAppInbound;
+use App\Jobs\ProcessWhatsAppOrder;
 use App\Jobs\ProcessWhatsAppUnsupportedMessage;
 use App\Support\ChannelPhone;
 use Illuminate\Support\Facades\Cache;
@@ -23,13 +24,22 @@ class InboundMessageDispatcher
 
     /**
      * @param  array<string, mixed>  $entries  el array `entry` completo del payload de Meta
+     * @param  string|null  $businessId  negocio ya resuelto por Nexolu Connect
+     *                                   (header X-Nexolu-Business-Id de los
+     *                                   numeros propios); null en el numero
+     *                                   compartido y en el webhook directo
      */
-    public function dispatch(array $entries): void
+    public function dispatch(array $entries, ?string $businessId = null): void
     {
         foreach ($entries as $entry) {
             foreach ($entry['changes'] ?? [] as $change) {
+                // Nombre del perfil de WhatsApp del remitente: solo lo usa
+                // el pedido entrante, para crear el cliente con un nombre
+                // real en vez de un telefono pelado.
+                $profileName = $change['value']['contacts'][0]['profile']['name'] ?? null;
+
                 foreach ($change['value']['messages'] ?? [] as $message) {
-                    $this->dispatchMessage($message);
+                    $this->dispatchMessage($message, $businessId, $profileName);
                 }
             }
         }
@@ -38,7 +48,7 @@ class InboundMessageDispatcher
     /**
      * @param  array<string, mixed>  $message
      */
-    private function dispatchMessage(array $message): void
+    private function dispatchMessage(array $message, ?string $businessId = null, ?string $profileName = null): void
     {
         $wamid = $message['id'] ?? null;
         $from = $message['from'] ?? null;
@@ -87,6 +97,16 @@ class InboundMessageDispatcher
             if ($title !== null) {
                 ProcessWhatsAppInbound::dispatch($from, $title, $wamid);
             }
+
+            return;
+        }
+
+        // Carrito enviado desde el catalogo de WhatsApp: el pedido completo
+        // viene en message.order (catalog_id + product_items[] con
+        // product_retailer_id/quantity). El job resuelve negocio, cliente y
+        // precios del lado del servidor.
+        if ($type === 'order' && is_array($message['order'] ?? null)) {
+            ProcessWhatsAppOrder::dispatch($from, $message['order'], $wamid, $businessId, $profileName);
 
             return;
         }

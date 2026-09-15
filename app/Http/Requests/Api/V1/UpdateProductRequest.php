@@ -53,6 +53,7 @@ class UpdateProductRequest extends FormRequest
                     ->ignore($this->route('product')),
             ],
             'image' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'available_on_whatsapp' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
             'category_id' => [
                 'sometimes',

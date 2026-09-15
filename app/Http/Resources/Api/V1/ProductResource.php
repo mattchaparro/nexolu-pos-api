@@ -38,6 +38,7 @@ class ProductResource extends JsonResource
             'sku' => $this->sku,
             'image' => $this->image,
             'is_active' => $this->is_active,
+            'available_on_whatsapp' => $this->available_on_whatsapp,
             'ingredients' => IngredientResource::collection($this->whenLoaded('ingredients')),
             'has_recipe' => $this->hasRecipe(),
             'variants' => ProductVariantResource::collection($this->whenLoaded('variants')),

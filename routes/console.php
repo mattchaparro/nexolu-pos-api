@@ -48,3 +48,7 @@ $logCronRun('businesses:warn-inactive-trial', 'inactive_trial_warning')->dailyAt
 // 06:00: temprano, para que TODO gasto del dia (IA y WhatsApp) se pueda
 // valorar con la tasa de ese mismo dia. La TRM ya esta publicada a esa hora.
 $logCronRun('exchange-rate:fetch', 'exchange_rate_fetch')->dailyAt('06:00');
+// El items_batch del catalogo de WhatsApp es asincrono del lado de Meta:
+// este check resuelve los items `pending` (via Nexolu Connect) sin que
+// nadie tenga que acordarse de verificar a mano.
+$logCronRun('whatsapp:check-catalog', 'whatsapp_catalog_check')->everyFifteenMinutes();

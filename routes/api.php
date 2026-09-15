@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BusinessMigrationPatchController;
 use App\Http\Controllers\Api\NexoluCommsWebhookController;
 use App\Http\Controllers\Api\NotificationSnoozeController;
 use App\Http\Controllers\Api\PaymentsCoreWebhookController;
+use App\Http\Controllers\Api\PublicProductImageController;
 use App\Http\Controllers\Api\PublicReceiptController;
 use App\Http\Controllers\Api\V1\AccountingController;
 use App\Http\Controllers\Api\V1\AiChannelLinkController;
@@ -58,6 +59,7 @@ use App\Http\Controllers\Api\V1\SubscriptionController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\SupplierReportController;
 use App\Http\Controllers\Api\V1\SupportTicketController;
+use App\Http\Controllers\Api\V1\WhatsappOrderController;
 use App\Http\Controllers\Api\WhatsappWebhookController;
 use App\Services\ReceiptPdfService;
 use Illuminate\Support\Facades\Route;
@@ -112,6 +114,11 @@ Route::get('/notifications/low-stock/{business}/snooze', [NotificationSnoozeCont
 // comprobante (ver App\Jobs\SendReceiptJob), no el usuario del negocio - la
 // firma de la URL (middleware `signed`, vence a las 24h) es la unica
 // autenticacion, mismo patron que notifications.low-stock.snooze arriba.
+// Imagen publica y estable de un producto, para el catalogo de WhatsApp
+// (Meta cachea el image_link: no sirve una URL firmada con vencimiento).
+Route::get('/public/products/{product}/image', [PublicProductImageController::class, 'show'])
+    ->name('products.public-image');
+
 Route::get('/public/receipts/{type}/{id}', [PublicReceiptController::class, 'show'])
     ->where('type', implode('|', ReceiptPdfService::TYPES))
     ->whereNumber('id')
@@ -233,6 +240,13 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // otorgarle "Ver existencias" (que es sobre reportes/stock, no sobre
         // el catalogo de venta). ProductResource oculta cost_price a quien
         // no tenga inventory.view, asi que abrir esto no filtra margenes.
+        // Bandeja de pedidos de WhatsApp: sin permission especial, igual
+        // que crear una venta (POST /sales) - quien atiende caja atiende
+        // pedidos entrantes.
+        Route::get('/whatsapp-orders', [WhatsappOrderController::class, 'index'])->name('whatsapp-orders.index');
+        Route::post('/whatsapp-orders/{whatsappOrder}/accept', [WhatsappOrderController::class, 'accept'])->name('whatsapp-orders.accept');
+        Route::post('/whatsapp-orders/{whatsappOrder}/reject', [WhatsappOrderController::class, 'reject'])->name('whatsapp-orders.reject');
+
         Route::apiResource('product-categories', ProductCategoryController::class)->only(['index', 'show']);
         Route::get('/products/sellable', [ProductController::class, 'sellable'])->name('products.sellable');
 
