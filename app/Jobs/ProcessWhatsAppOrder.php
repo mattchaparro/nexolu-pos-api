@@ -78,8 +78,14 @@ class ProcessWhatsAppOrder implements ShouldQueue
 
         $user = $this->resolveSystemUser($business);
         if ($user === null) {
-            $whatsappOrder->update(['error' => 'El negocio no tiene un admin activo para atribuir la venta.']);
-            $this->notifyBusiness($whatsapp, $business, $whatsappOrder);
+            // Mismo trato que cualquier fallback: el cliente NUNCA queda en
+            // silencio, y el pedido queda en la bandeja con su motivo.
+            $this->markPendingReview(
+                $whatsapp,
+                $business,
+                $whatsappOrder,
+                'El negocio no tiene un admin activo para atribuir la venta.',
+            );
 
             return;
         }
