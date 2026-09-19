@@ -26,6 +26,15 @@ class BusinessMigrationPatchController extends Controller
      * los tres parches de datos lo toman como --business y
      * branches:ensure-main como argumento posicional (acepta id o slug).
      *
+     * El ORDEN entre los dos de medios de pago importa y estuvo al reves
+     * hasta el 2026-09-18: legacy:normalize-payment-methods normaliza los
+     * datos historicos contra la config VIGENTE del negocio, y
+     * payment-methods:migrate-catalog es justo lo que le cambia esa config
+     * (del JSON libre que venia del legacy - a veces en espanol - a las keys
+     * del catalogo, que son en ingles). Normalizar primero dejaba las filas
+     * apuntando al vocabulario que el negocio estaba a punto de abandonar, y
+     * solo se recuperaba si alguien volvia a apretar "Correr parches".
+     *
      * branches:ensure-main va PRIMERO y no al final: todo lo operativo esta
      * scopeado por sede, asi que cualquier fila que quedara sin sede seria
      * invisible para su propio dueño.
@@ -47,8 +56,8 @@ class BusinessMigrationPatchController extends Controller
     {
         return [
             'branches:ensure-main' => ['business' => $business->id],
-            'legacy:normalize-payment-methods' => ['--business' => $business->id],
             'payment-methods:migrate-catalog' => ['--business' => $business->id],
+            'legacy:normalize-payment-methods' => ['--business' => $business->id],
             'clients:backfill-links' => ['--business' => $business->id],
         ];
     }

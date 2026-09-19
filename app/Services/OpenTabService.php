@@ -318,7 +318,7 @@ class OpenTabService
             $totalWithCharges = round((float) $sale->total + $serviceChargeAmount + $ipoconsumoAmount, 2);
 
             $partials = SalePartialPayment::where('sale_id', $sale->id)->orderBy('id')->get();
-            $partialLines = $this->mapPartialPaymentsToSplitRows($partials);
+            $partialLines = $this->mapPartialPaymentsToSplitRows($business, $partials);
             $partialSum = round(collect($partialLines)->sum('amount'), 2);
             $remainder = round($totalWithCharges - $partialSum, 2);
 
@@ -464,14 +464,26 @@ class OpenTabService
     }
 
     /**
+     * Los abonos se guardaron con el vocabulario que el negocio tenia
+     * configurado EN SU MOMENTO, que no tiene por que ser el de hoy: un
+     * negocio que paso del JSON libre en espanol al catalogo normalizado
+     * (ver Business::paymentMethods()) tiene abonos viejos con
+     * 'transferencia'/'efectivo' y una config que hoy dice 'transfer'/'cash'.
+     * Sin normalizar aca, applyMixedPaymentRows() los revalida contra la
+     * config nueva y la cuenta se vuelve imposible de cobrar - bug real en
+     * produccion (negocio 24, 8 de 25 cuentas abiertas bloqueadas). Es la
+     * misma normalizacion que ya hacen los reportes (SalesReportService),
+     * porque `sale_partial_payments` es la unica tabla de pagos que ningun
+     * comando de normalizacion toca - ver docs/CUTOVER_TODO.md #1.
+     *
      * @param  Collection<int, SalePartialPayment>  $partials
      * @return array<int, array{method: string, amount: float, label: ?string}>
      */
-    private function mapPartialPaymentsToSplitRows($partials): array
+    private function mapPartialPaymentsToSplitRows(Business $business, $partials): array
     {
         return $partials
             ->map(fn ($p) => [
-                'method' => strtolower(trim((string) $p->payment_method)),
+                'method' => (string) $business->normalizePaymentMethodId(strtolower(trim((string) $p->payment_method))),
                 'amount' => round((float) $p->amount, 2),
                 'label' => $p->payer_label !== null && $p->payer_label !== '' ? trim((string) $p->payer_label) : null,
             ])

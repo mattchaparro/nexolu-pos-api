@@ -68,13 +68,21 @@ class BusinessMigrationPatchControllerTest extends TestCase
 
         $response->assertOk()->assertJsonStructure(['results' => [['command', 'ok', 'output']]]);
         $commands = collect($response->json('results'))->pluck('command')->all();
+        // El orden no es cosmetico, son dos reglas:
+        //
         // branches:ensure-main primero: el negocio migrado entra sin sede y
         // todo lo operativo esta scopeado por sede, asi que hasta que corra
         // no ve ni sus propias ventas.
+        //
+        // migrate-catalog ANTES que normalize-payment-methods: el primero
+        // define con que vocabulario se queda el negocio, el segundo reescribe
+        // los datos historicos a ese vocabulario. Al reves (como estuvo hasta
+        // el 2026-09-18) se normaliza contra la config que esta a punto de
+        // cambiar, y las filas quedan apuntando al vocabulario viejo.
         $this->assertSame([
             'branches:ensure-main',
-            'legacy:normalize-payment-methods',
             'payment-methods:migrate-catalog',
+            'legacy:normalize-payment-methods',
             'clients:backfill-links',
         ], $commands);
         $this->assertTrue(collect($response->json('results'))->every(fn ($r) => $r['ok'] === true));

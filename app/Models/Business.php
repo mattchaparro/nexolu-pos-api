@@ -539,10 +539,20 @@ class Business extends Model
      */
     public function assertValidPaymentMethod(string $method, bool $forbidCredit = false): void
     {
-        $allowed = $this->allowedPaymentMethodIds();
-        if (! in_array($method, $allowed, true) || ($forbidCredit && $this->isCreditPaymentMethod($method))) {
+        if ($forbidCredit && $this->isCreditPaymentMethod($method)) {
             throw ValidationException::withMessages([
-                'payment_method' => 'Metodo de pago no permitido para este negocio.',
+                'payment_method' => 'No puedes cubrir este cobro con fiado.',
+            ]);
+        }
+
+        // Nombrar el medio no es cosmetico: el caller puede estar validando
+        // un medio que el cajero NO eligio (los abonos historicos de una
+        // cuenta abierta, ver OpenTabService::mapPartialPaymentsToSplitRows),
+        // y el mensaje generico mandaba a buscar el problema en la config de
+        // Ajustes en vez de en el dato viejo.
+        if (! in_array($method, $this->allowedPaymentMethodIds(), true)) {
+            throw ValidationException::withMessages([
+                'payment_method' => 'El medio de pago "'.$method.'" no esta habilitado para este negocio.',
             ]);
         }
     }

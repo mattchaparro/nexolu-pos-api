@@ -3,11 +3,6 @@
 namespace App\Console\Commands;
 
 use App\Models\Business;
-use App\Models\Expense;
-use App\Models\Receivable;
-use App\Models\Sale;
-use App\Models\SalePaymentSplit;
-use App\Models\ServicePayment;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -33,6 +28,47 @@ use Illuminate\Support\Facades\DB;
 #[Description('Normaliza payment_method a id-minuscula - fuera de local/staging exige --business=ID')]
 class LegacyNormalizePaymentMethods extends Command
 {
+    /**
+     * Toda tabla con un `payment_method` que use el vocabulario POR NEGOCIO,
+     * y como llegar a su business_id: null = columna propia, array = join al
+     * padre que la tiene.
+     *
+     * Faltaban tres, agregadas el 2026-09-18 tras un bug real en produccion.
+     *
+     * `sale_partial_payments` era el caso grave y no es casualidad cual
+     * quedo fuera: la defensa al ESCRIBIR es el trait NormalizesPaymentMethod,
+     * que resuelve el negocio por `$model->business_id`, asi que solo protege
+     * a modelos con esa columna. Las dos tablas de pagos que no la tienen
+     * (`sale_partial_payments` y `sale_payment_splits`) son justo las dos sin
+     * defensa al escribir - y de esas dos, los splits al menos ya estaban en
+     * este comando; los abonos no estaban en ninguno de los dos lados. Cerrar
+     * una cuenta abierta revalida cada abono historico (ver
+     * OpenTabService::close), asi que 8 de las 25 cuentas abiertas del
+     * negocio 24 quedaron imposibles de cobrar.
+     *
+     * `layaway_payments`/`purchase_payments` si tienen el trait, o sea que
+     * nada escrito por esta API se ensucia; entran aca por las filas que
+     * llegan por fuera de Eloquent (el import de la migracion, o el monolito
+     * legacy sobre la base compartida). No rompen un cobro - nadie revalida
+     * sus filas viejas - pero desagrupan reportes.
+     *
+     * `saas_subscription_payments` NO va aca a proposito: su payment_method
+     * es del cobro de la suscripcion a Nexolu (la pasarela), no del
+     * vocabulario que configura cada negocio.
+     *
+     * @var array<string, array{table: string, foreign_key: string}|null>
+     */
+    private const TABLES = [
+        'sales' => null,
+        'sale_payment_splits' => ['table' => 'sales', 'foreign_key' => 'sale_id'],
+        'sale_partial_payments' => ['table' => 'sales', 'foreign_key' => 'sale_id'],
+        'receivables' => null,
+        'service_payments' => null,
+        'expenses' => null,
+        'layaway_payments' => null,
+        'purchase_payments' => null,
+    ];
+
     public function handle(): int
     {
         $onlyBusinessId = $this->option('business') !== null ? (int) $this->option('business') : null;
@@ -45,43 +81,30 @@ class LegacyNormalizePaymentMethods extends Command
 
         $dryRun = (bool) $this->option('dry-run');
 
-        $tables = [
-            'sales' => Sale::class,
-            'sale_payment_splits' => SalePaymentSplit::class,
-            'receivables' => Receivable::class,
-            'service_payments' => ServicePayment::class,
-            'expenses' => Expense::class,
-        ];
-
         $businesses = Business::query()
             ->when($onlyBusinessId, fn ($q) => $q->where('id', $onlyBusinessId))
             ->get()->keyBy('id');
         $totalChanged = 0;
 
-        foreach ($tables as $table => $modelClass) {
-            if (! class_exists($modelClass)) {
-                $this->warn("Modelo {$modelClass} no existe, se salta {$table}.");
-
-                continue;
-            }
-
+        foreach (self::TABLES as $table => $parent) {
             $changed = 0;
 
-            // sale_payment_splits no tiene business_id propio: cuelga de sales.
-            $query = $table === 'sale_payment_splits'
-                ? DB::table('sale_payment_splits')
-                    ->join('sales', 'sales.id', '=', 'sale_payment_splits.sale_id')
-                    ->select('sale_payment_splits.id as row_id', 'sale_payment_splits.payment_method', 'sales.business_id')
-                    ->orderBy('sale_payment_splits.id')
-                    ->where('sale_payment_splits.payment_method', '!=', '')
-                    ->whereNotNull('sale_payment_splits.payment_method')
-                    ->when($onlyBusinessId, fn ($q) => $q->where('sales.business_id', $onlyBusinessId))
-                : DB::table($table)
+            // Las tablas hijas no tienen business_id propio: se llega por su
+            // padre (ver self::TABLES).
+            $query = $parent === null
+                ? DB::table($table)
                     ->select('id as row_id', 'payment_method', 'business_id')
                     ->orderBy('id')
                     ->where('payment_method', '!=', '')
                     ->whereNotNull('payment_method')
-                    ->when($onlyBusinessId, fn ($q) => $q->where('business_id', $onlyBusinessId));
+                    ->when($onlyBusinessId, fn ($q) => $q->where('business_id', $onlyBusinessId))
+                : DB::table($table)
+                    ->join($parent['table'], $parent['table'].'.id', '=', $table.'.'.$parent['foreign_key'])
+                    ->select($table.'.id as row_id', $table.'.payment_method', $parent['table'].'.business_id')
+                    ->orderBy($table.'.id')
+                    ->where($table.'.payment_method', '!=', '')
+                    ->whereNotNull($table.'.payment_method')
+                    ->when($onlyBusinessId, fn ($q) => $q->where($parent['table'].'.business_id', $onlyBusinessId));
 
             $query->chunk(500, function ($rows) use ($table, $businesses, $dryRun, &$changed) {
                 foreach ($rows as $row) {

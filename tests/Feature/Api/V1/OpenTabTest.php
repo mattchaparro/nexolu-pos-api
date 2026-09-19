@@ -6,9 +6,11 @@ use App\Models\Business;
 use App\Models\BusinessTable;
 use App\Models\Client;
 use App\Models\Discount;
+use App\Models\PosPaymentMethod;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SalePartialPayment;
+use App\Models\SalePaymentSplit;
 use App\Models\StockMovement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -548,5 +550,81 @@ class OpenTabTest extends TestCase
         $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/open-tabs')
             ->assertForbidden();
+    }
+
+    /**
+     * Regresion (produccion, negocio 24): un negocio que paso del JSON libre
+     * en espanol al catalogo normalizado tiene abonos viejos guardados como
+     * 'transferencia' y una config que hoy solo conoce 'transfer'. Cerrar la
+     * cuenta revalida cada abono historico, asi que sin normalizarlos la
+     * cuenta queda imposible de cobrar - el cajero veia "metodo de pago no
+     * permitido" señalando el medio que SI eligio bien.
+     */
+    public function test_closing_a_tab_normalizes_partial_payments_saved_with_the_old_vocabulary(): void
+    {
+        $business = Business::factory()->create(['payment_methods' => null]);
+        $cash = PosPaymentMethod::factory()->create(['key' => 'cash', 'label' => 'Efectivo', 'sort_order' => 1]);
+        $transfer = PosPaymentMethod::factory()->create(['key' => 'transfer', 'label' => 'Transferencia', 'sort_order' => 2]);
+        $business->posPaymentMethods()->attach([
+            $cash->id => ['is_enabled' => true],
+            $transfer->id => ['is_enabled' => true],
+        ]);
+
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 80000, 'stock' => 10]);
+
+        $tab = $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->json();
+
+        // Directo por factory: la API de hoy ya rechazaria 'transferencia',
+        // que es justo como quedaron las filas escritas antes de migrar.
+        SalePartialPayment::factory()->create(['sale_id' => $tab['id'], 'amount' => 20000, 'payment_method' => 'transfer']);
+        SalePartialPayment::factory()->create(['sale_id' => $tab['id'], 'amount' => 20000, 'payment_method' => 'transferencia']);
+        SalePartialPayment::factory()->create(['sale_id' => $tab['id'], 'amount' => 20000, 'payment_method' => 'efectivo']);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/open-tabs/{$tab['id']}/close", ['payment_method' => 'transfer'])
+            ->assertOk()
+            ->assertJsonPath('status', 'closed')
+            ->assertJsonPath('payment_method', 'mixed')
+            ->assertJsonCount(4, 'payment_splits');
+
+        // Los abonos viejos quedaron guardados con el vocabulario de hoy.
+        $this->assertDatabaseHas('sale_payment_splits', ['sale_id' => $tab['id'], 'payment_method' => 'cash', 'amount' => 20000]);
+        $this->assertDatabaseMissing('sale_payment_splits', ['sale_id' => $tab['id'], 'payment_method' => 'transferencia']);
+        $this->assertDatabaseMissing('sale_payment_splits', ['sale_id' => $tab['id'], 'payment_method' => 'efectivo']);
+        $this->assertSame(3, SalePaymentSplit::where('sale_id', $tab['id'])->where('payment_method', 'transfer')->count());
+    }
+
+    /**
+     * El contrapeso del test de arriba: normalizar no puede volverse "aceptar
+     * cualquier cosa". Un medio que el negocio nunca configuro y que no tiene
+     * alias sigue bloqueando el cierre, y ahora el mensaje lo nombra.
+     */
+    public function test_closing_a_tab_still_fails_when_a_partial_payment_method_has_no_equivalent(): void
+    {
+        $business = Business::factory()->create(['payment_methods' => null]);
+        $cash = PosPaymentMethod::factory()->create(['key' => 'cash', 'label' => 'Efectivo', 'sort_order' => 1]);
+        $transfer = PosPaymentMethod::factory()->create(['key' => 'transfer', 'label' => 'Transferencia', 'sort_order' => 2]);
+        $business->posPaymentMethods()->attach([
+            $cash->id => ['is_enabled' => true],
+            $transfer->id => ['is_enabled' => true],
+        ]);
+
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 40000, 'stock' => 10]);
+
+        $tab = $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->json();
+
+        SalePartialPayment::factory()->create(['sale_id' => $tab['id'], 'amount' => 20000, 'payment_method' => 'nequi']);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/open-tabs/{$tab['id']}/close", ['payment_method' => 'transfer'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['payment_method'])
+            ->assertJsonPath('errors.payment_method.0', 'El medio de pago "nequi" no esta habilitado para este negocio.');
     }
 }
