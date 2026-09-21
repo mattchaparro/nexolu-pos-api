@@ -45,7 +45,22 @@ class CashShiftController extends Controller
         $open = $this->cashShiftService->findOpenShiftForUser($user);
 
         if (! $open) {
-            return ['shift' => null, 'preview_totals' => null];
+            $businessId = (int) $user->business_id;
+            $expected = $this->cashShiftService->expectedOpeningCash(
+                $businessId,
+                $this->cashShiftService->drawerBranchId($businessId),
+            );
+
+            return [
+                'shift' => null,
+                'preview_totals' => null,
+                // Prellena la apertura con lo que dejo el ultimo cierre, en
+                // vez del $0 que invitaba a abrir sin mirar la caja.
+                'expected_opening' => $expected ? [
+                    'amount' => $expected['amount'],
+                    'closing_date' => $expected['closing_date']->toDateString(),
+                ] : null,
+            ];
         }
 
         $previewTotals = $this->cashClosingService->calculateTotalsBetween(
@@ -64,13 +79,28 @@ class CashShiftController extends Controller
 
     public function store(OpenCashShiftRequest $request): CashShiftResource
     {
+        $businessId = (int) $request->user()->business_id;
+        $openingCash = (float) $request->validated('opening_cash');
+
+        // ANTES de abrir: despues, el propio turno contaria como "alguien
+        // abrio caja desde el ultimo cierre" y ya no habria base esperada.
+        $expected = $this->cashShiftService->expectedOpeningCash(
+            $businessId,
+            $this->cashShiftService->drawerBranchId($businessId),
+        );
+
         $shift = $this->cashShiftService->openShift(
             $request->user(),
-            (float) $request->validated('opening_cash'),
+            $openingCash,
             $request->validated('opening_note')
         );
 
-        AuditLogger::log('cash_shift.opened', ['cash_shift_id' => $shift->id, 'opening_cash' => $shift->opening_cash]);
+        AuditLogger::log('cash_shift.opened', array_filter([
+            'cash_shift_id' => $shift->id,
+            'opening_cash' => $shift->opening_cash,
+            'expected_opening_cash' => $expected['amount'] ?? null,
+            'opening_difference' => $expected !== null ? round($openingCash - $expected['amount'], 2) : null,
+        ], fn ($value) => $value !== null));
 
         return new CashShiftResource($shift);
     }

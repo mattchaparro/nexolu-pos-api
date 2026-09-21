@@ -10,8 +10,10 @@ use App\Http\Resources\Api\V1\CashShiftResource;
 use App\Models\CashClosing;
 use App\Models\CashShift;
 use App\Services\CashClosingService;
+use App\Services\CashShiftService;
 use App\Services\GatewayReconciliationService;
 use App\Support\AuditLogger;
+use App\Support\BranchContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -19,7 +21,10 @@ use Illuminate\Support\Carbon;
 
 class CashClosingController extends Controller
 {
-    public function __construct(private CashClosingService $cashClosingService) {}
+    public function __construct(
+        private CashClosingService $cashClosingService,
+        private CashShiftService $cashShiftService,
+    ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -67,6 +72,16 @@ class CashClosingController extends Controller
             'date' => $date,
             'totals' => $totals,
             'suggested_opening_cash' => $suggestedOpeningCash,
+            // La base con la que abrio el primer turno del dia contra la que
+            // dejo el cierre anterior. En el modo "todas las sedes" no hay
+            // UNA caja con la cual comparar, asi que no se calcula.
+            'opening_mismatch' => BranchContext::isAllBranches()
+                ? null
+                : $this->cashShiftService->openingMismatchOn(
+                    $date,
+                    (int) $user->business_id,
+                    $this->cashShiftService->drawerBranchId((int) $user->business_id),
+                ),
             'existing_closing' => $existingClosing ? new CashClosingResource($existingClosing) : null,
             'shifts_to_auto_close' => CashShiftResource::collection($shiftsToAutoClose),
             // Cuadre contra la pasarela: lo que el POS registro por medios
