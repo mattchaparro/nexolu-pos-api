@@ -81,6 +81,15 @@
         vertical-align: top;
     }
 
+    .items-table .item-name {
+        font-weight: bold;
+        padding-bottom: 0;
+    }
+
+    .items-table .item-detail {
+        padding-top: 0;
+    }
+
     .totals-table td {
         font-size: 9px;
         padding: 0.5mm 0;

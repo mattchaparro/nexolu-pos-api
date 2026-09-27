@@ -3,7 +3,11 @@
 <div class="title">Comprobante de apartado</div>
 <table>
     <tr>
-        <td>Apartado: {{ $invoiceNumber }}</td>
+        <td>Apartado</td>
+        <td class="right">{{ $invoiceNumber }}</td>
+    </tr>
+    <tr>
+        <td>Fecha</td>
         <td class="right">{{ $issuedAt }}</td>
     </tr>
 </table>
@@ -16,19 +20,14 @@
 
 <div class="divider"></div>
 <table class="items-table">
-    <thead>
-        <tr>
-            <th style="width: 50%;">Producto</th>
-            <th style="width: 15%;" class="right">Cant.</th>
-            <th style="width: 35%;" class="right">Subtotal</th>
-        </tr>
-    </thead>
     <tbody>
         @foreach ($layaway->items as $item)
             <tr>
-                <td>{{ $item->product?->name ?: 'Producto eliminado' }}</td>
-                <td class="right">{{ \App\Support\ReceiptFormatter::quantity((float) $item->quantity) }}</td>
-                <td class="right">{{ \App\Support\ReceiptFormatter::money((float) $item->quantity * (float) $item->unit_price) }}</td>
+                <td colspan="2" class="item-name">{{ $item->product?->name ?: 'Producto eliminado' }}</td>
+            </tr>
+            <tr>
+                <td class="item-detail">{{ \App\Support\ReceiptFormatter::quantity((float) $item->quantity) }} x {{ \App\Support\ReceiptFormatter::money((float) $item->unit_price) }}</td>
+                <td class="item-detail right">{{ \App\Support\ReceiptFormatter::money((float) $item->quantity * (float) $item->unit_price) }}</td>
             </tr>
         @endforeach
     </tbody>

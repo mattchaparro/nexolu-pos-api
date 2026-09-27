@@ -100,6 +100,25 @@ class ReceiptTest extends TestCase
         $response->assertSee('Recibo de venta');
     }
 
+    public function test_sale_receipt_print_shows_unit_price_and_line_discount(): void
+    {
+        [$business, $user] = $this->admin();
+        $sale = Sale::factory()->create(['business_id' => $business->id]);
+        SaleItem::factory()->create([
+            'sale_id' => $sale->id,
+            'quantity' => 2,
+            'unit_price' => 15000,
+            'subtotal' => 30000,
+            'discount_amount' => 3000,
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')->get("/api/v1/sales/{$sale->id}/receipt/print");
+
+        $response->assertOk();
+        $response->assertSee('2 x $15.000');
+        $response->assertSee('-$3.000');
+    }
+
     public function test_service_order_receipt_print_returns_printable_html(): void
     {
         [$business, $user] = $this->admin();

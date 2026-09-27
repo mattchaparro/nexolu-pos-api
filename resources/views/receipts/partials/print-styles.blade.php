@@ -24,12 +24,22 @@
         background: #e2e8f0;
     }
 
+    {{--
+        Tipografia del tiquete termico del legacy (invoices/thermal.blade.php
+        en pos-saas), que es con lo que los negocios migrados venian
+        imprimiendo: Courier en negrita y negro puro. La termica no tiene
+        grises - un #888 sale punteado y tenue - y con 12-13px de peso normal
+        el recibo quedaba ilegible (reporte de Central Cell al migrar).
+    --}}
+    @php($narrow = $paperWidthMm === 58)
     body {
-        font-family: 'DejaVu Sans', 'Segoe UI', sans-serif;
-        font-size: 13px;
-        color: #141414;
+        font-family: 'Courier New', monospace;
+        font-size: 15px;
+        font-weight: 600;
+        line-height: 1.35;
+        color: #000;
         margin: 0 auto;
-        padding: 6mm 4mm;
+        padding: 6mm {{ $narrow ? 3 : 4 }}mm;
         max-width: {{ $paperWidthMm }}mm;
         background: #fff;
     }
@@ -43,39 +53,40 @@
     }
 
     .bold {
-        font-weight: bold;
+        font-weight: 800;
     }
 
     .muted {
-        color: #888;
+        color: #000;
     }
 
     .business-logo {
         display: block;
-        max-width: 28mm;
-        max-height: 18mm;
+        max-width: {{ $narrow ? 30 : 44 }}mm;
+        max-height: 22mm;
         margin: 0 auto 2mm;
     }
 
     .business-name {
-        font-size: 16px;
-        font-weight: bold;
+        font-size: {{ $narrow ? 16 : 19 }}px;
+        font-weight: 800;
+        line-height: 1.2;
+        letter-spacing: 0.02em;
     }
 
     .business-meta {
-        font-size: 11px;
-        color: #555;
-        line-height: 1.4;
+        font-size: 14px;
+        line-height: 1.35;
     }
 
     .divider {
-        border-top: 1px dashed #999;
-        margin: 3mm 0;
+        border-top: 1px dashed #000;
+        margin: 9px 0;
     }
 
     .title {
-        font-size: 13px;
-        font-weight: bold;
+        font-size: 15px;
+        font-weight: 800;
         text-align: center;
         margin: 2mm 0;
         text-transform: uppercase;
@@ -86,40 +97,58 @@
         border-collapse: collapse;
     }
 
-    .items-table th {
-        font-size: 11px;
-        text-align: left;
-        border-bottom: 1px solid #ccc;
-        padding: 1.5mm 0;
-    }
-
-    .items-table td {
-        font-size: 12px;
-        padding: 1.5mm 0;
+    {{-- En 58mm caben ~23 caracteres a 14px: un precio de celular en las dos
+         columnas ("1 x $1.250.000  $1.250.000") partia la fila; a 13px cabe,
+         y el monto de la derecha nunca se parte. --}}
+    td {
+        font-size: {{ $narrow ? 13 : 14 }}px;
         vertical-align: top;
     }
 
+    td.right {
+        white-space: nowrap;
+        width: 1%;
+        padding-left: {{ $narrow ? 1 : 2 }}mm;
+    }
+
+    .items-table td {
+        padding: 0.5mm 0;
+    }
+
+    .items-table .item-name {
+        font-size: {{ $narrow ? 14 : 15 }}px;
+        font-weight: 800;
+        line-height: 1.25;
+        padding-top: 1.5mm;
+    }
+
+    .items-table .item-detail {
+        font-size: {{ $narrow ? 13 : 14 }}px;
+    }
+
     .totals-table td {
-        font-size: 12px;
         padding: 0.8mm 0;
     }
 
     .totals-table .grand-total td {
-        font-size: 14px;
-        font-weight: bold;
-        border-top: 1px solid #333;
+        font-size: {{ $narrow ? 18 : 20 }}px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        border-top: 1px solid #000;
         padding-top: 2mm;
     }
 
     .footer-text {
-        font-size: 11px;
-        color: #666;
+        font-size: {{ $narrow ? 12 : 13 }}px;
+        line-height: 1.4;
+        white-space: pre-wrap;
         margin-top: 2mm;
     }
 
     .branding {
-        font-size: 10px;
-        color: #aaa;
+        font-size: 11px;
+        font-weight: normal;
+        color: #555;
         margin-top: 3mm;
     }
 

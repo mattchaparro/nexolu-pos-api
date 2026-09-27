@@ -3,7 +3,11 @@
 <div class="title">Comprobante de orden de servicio</div>
 <table>
     <tr>
-        <td>Orden: {{ $invoiceNumber }}</td>
+        <td>Orden</td>
+        <td class="right">{{ $invoiceNumber }}</td>
+    </tr>
+    <tr>
+        <td>Fecha</td>
         <td class="right">{{ $issuedAt }}</td>
     </tr>
 </table>
@@ -20,19 +24,14 @@
 @if ($serviceOrder->items->isNotEmpty())
     <div class="divider"></div>
     <table class="items-table">
-        <thead>
-            <tr>
-                <th style="width: 50%;">Ítem</th>
-                <th style="width: 15%;" class="right">Cant.</th>
-                <th style="width: 35%;" class="right">Subtotal</th>
-            </tr>
-        </thead>
         <tbody>
             @foreach ($serviceOrder->items as $item)
                 <tr>
-                    <td>{{ $item->name }}</td>
-                    <td class="right">{{ \App\Support\ReceiptFormatter::quantity((float) $item->quantity) }}</td>
-                    <td class="right">{{ \App\Support\ReceiptFormatter::money((float) $item->subtotal) }}</td>
+                    <td colspan="2" class="item-name">{{ $item->name }}</td>
+                </tr>
+                <tr>
+                    <td class="item-detail">{{ \App\Support\ReceiptFormatter::quantity((float) $item->quantity) }} x {{ \App\Support\ReceiptFormatter::money((float) $item->unit_price) }}</td>
+                    <td class="item-detail right">{{ \App\Support\ReceiptFormatter::money((float) $item->subtotal) }}</td>
                 </tr>
             @endforeach
         </tbody>

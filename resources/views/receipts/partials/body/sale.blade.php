@@ -3,7 +3,11 @@
 <div class="title">Recibo de venta</div>
 <table>
     <tr>
-        <td>Factura: {{ $invoiceNumber }}</td>
+        <td>Factura</td>
+        <td class="right">{{ $invoiceNumber }}</td>
+    </tr>
+    <tr>
+        <td>Fecha</td>
         <td class="right">{{ $issuedAt }}</td>
     </tr>
 </table>
@@ -17,21 +21,26 @@
 @endif
 
 <div class="divider"></div>
+{{-- Nombre en su propia fila y "cant x precio | subtotal" debajo, como el
+     tiquete del legacy: con letra de tamaño legible una tabla de 3 columnas
+     no cabe en 58mm (el precio de un celular parte la columna). --}}
 <table class="items-table">
-    <thead>
-        <tr>
-            <th style="width: 50%;">Producto</th>
-            <th style="width: 15%;" class="right">Cant.</th>
-            <th style="width: 35%;" class="right">Subtotal</th>
-        </tr>
-    </thead>
     <tbody>
         @foreach ($sale->items as $item)
             <tr>
-                <td>{{ $item->product?->name ?: 'Producto eliminado' }}</td>
-                <td class="right">{{ \App\Support\ReceiptFormatter::quantity((float) $item->quantity) }}</td>
-                <td class="right">{{ \App\Support\ReceiptFormatter::money((float) $item->subtotal) }}</td>
+                <td colspan="2" class="item-name">{{ $item->product?->name ?: 'Producto eliminado' }}</td>
             </tr>
+            <tr>
+                <td class="item-detail">{{ \App\Support\ReceiptFormatter::quantity((float) $item->quantity) }} x {{ \App\Support\ReceiptFormatter::money((float) $item->unit_price) }}</td>
+                <td class="item-detail right">{{ \App\Support\ReceiptFormatter::money((float) $item->subtotal) }}</td>
+            </tr>
+            {{-- subtotal es bruto (cant x precio); el descuento de la linea va aparte y sin esta fila los items no cuadraban con el TOTAL. --}}
+            @if ((float) $item->discount_amount > 0)
+                <tr>
+                    <td class="item-detail">Descuento</td>
+                    <td class="item-detail right">-{{ \App\Support\ReceiptFormatter::money((float) $item->discount_amount) }}</td>
+                </tr>
+            @endif
         @endforeach
     </tbody>
 </table>
@@ -63,7 +72,7 @@
         </tr>
     @endif
     <tr>
-        <td>Medio de pago</td>
+        <td>Pago</td>
         <td class="right">
             {{ $sale->is_non_revenue ? 'Cortesía' : \App\Support\ReceiptFormatter::paymentMethodLabel($business, $sale->payment_method) }}
         </td>
