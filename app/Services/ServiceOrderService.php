@@ -29,7 +29,7 @@ use Illuminate\Validation\ValidationException;
 class ServiceOrderService
 {
     /**
-     * @param  array{client_id?: ?int, appointment_id?: ?int, product_id?: ?int, service_name: string, total?: float|int|string|null, items?: array<int, array{name: string, quantity: float|int|string, unit_price: float|int|string, user_id?: ?int, notes?: ?string}>, initial_payment?: float|int|string|null, initial_payment_method?: ?string, notes?: ?string}  $data
+     * @param  array{client_id?: ?int, client_name?: ?string, client_phone?: ?string, client_email?: ?string, appointment_id?: ?int, product_id?: ?int, service_name: string, total?: float|int|string|null, items?: array<int, array{name: string, quantity: float|int|string, unit_price: float|int|string, user_id?: ?int, notes?: ?string}>, initial_payment?: float|int|string|null, initial_payment_method?: ?string, notes?: ?string}  $data
      */
     public function create(User $user, array $data): ServiceOrder
     {
@@ -48,6 +48,7 @@ class ServiceOrderService
         $order = ServiceOrder::create([
             'business_id' => $business->id,
             'client_id' => $data['client_id'] ?? null,
+            ...$this->clientText($data),
             'appointment_id' => $data['appointment_id'] ?? null,
             'product_id' => $data['product_id'] ?? null,
             'user_id' => $user->id,
@@ -75,7 +76,7 @@ class ServiceOrderService
     }
 
     /**
-     * @param  array{client_id?: ?int, product_id?: ?int, service_name: string, total?: float|int|string|null, items?: array<int, array{name: string, quantity: float|int|string, unit_price: float|int|string, user_id?: ?int, notes?: ?string}>, notes?: ?string}  $data
+     * @param  array{client_id?: ?int, client_name?: ?string, client_phone?: ?string, client_email?: ?string, product_id?: ?int, service_name: string, total?: float|int|string|null, items?: array<int, array{name: string, quantity: float|int|string, unit_price: float|int|string, user_id?: ?int, notes?: ?string}>, notes?: ?string}  $data
      */
     public function update(ServiceOrder $order, array $data): ServiceOrder
     {
@@ -98,6 +99,7 @@ class ServiceOrderService
 
         $order->update([
             'client_id' => $data['client_id'] ?? $order->client_id,
+            ...$this->clientText($data),
             'product_id' => $data['product_id'] ?? $order->product_id,
             'service_name' => $data['service_name'],
             'total' => $total,
@@ -110,6 +112,23 @@ class ServiceOrderService
         $order->recalculateStatus();
 
         return $order->load('items', 'payments', 'client', 'stage');
+    }
+
+    /**
+     * Nombre/telefono/correo del cliente como texto de la orden (ver la
+     * migracion add_client_text_to_service_orders): no se busca ni se crea
+     * nada en el directorio de clientes.
+     *
+     * @param  array{client_name?: ?string, client_phone?: ?string, client_email?: ?string}  $data
+     * @return array{client_name: ?string, client_phone: ?string, client_email: ?string}
+     */
+    private function clientText(array $data): array
+    {
+        return [
+            'client_name' => trim((string) ($data['client_name'] ?? '')) ?: null,
+            'client_phone' => trim((string) ($data['client_phone'] ?? '')) ?: null,
+            'client_email' => trim((string) ($data['client_email'] ?? '')) ?: null,
+        ];
     }
 
     public function pay(User $user, ServiceOrder $order, float $amount, ?string $paymentMethod, ?string $notes = null): ServiceOrder

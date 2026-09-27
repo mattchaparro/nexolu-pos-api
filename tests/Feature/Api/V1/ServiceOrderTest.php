@@ -55,6 +55,88 @@ class ServiceOrderTest extends TestCase
             ->assertJsonCount(2, 'items');
     }
 
+    public function test_the_typed_client_is_stored_as_text_on_the_order_without_touching_the_directory(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/service-orders', [
+            'client_name' => 'Juan Pérez',
+            'client_phone' => '3109876543',
+            'client_email' => 'juan@example.com',
+            'service_name' => 'Cambio de pantalla',
+            'total' => 180000,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('client_id', null)
+            ->assertJsonPath('client_name', 'Juan Pérez')
+            ->assertJsonPath('client_phone', '3109876543')
+            ->assertJsonPath('client_email', 'juan@example.com');
+        $this->assertSame(0, Client::where('business_id', $business->id)->count());
+    }
+
+    public function test_two_orders_for_different_people_with_the_same_name_keep_their_own_data(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+
+        foreach (['3001112233', '3154445566'] as $phone) {
+            $this->actingAs($user, 'sanctum')->postJson('/api/v1/service-orders', [
+                'client_name' => 'María Gómez',
+                'client_phone' => $phone,
+                'service_name' => 'Revisión batería',
+                'total' => 50000,
+            ])->assertCreated();
+        }
+
+        $this->assertEqualsCanonicalizing(
+            ['3001112233', '3154445566'],
+            ServiceOrder::where('business_id', $business->id)->pluck('client_phone')->all(),
+        );
+    }
+
+    public function test_update_replaces_the_client_text(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $order = ServiceOrder::factory()->create([
+            'business_id' => $business->id,
+            'client_name' => 'Juan Perz',
+            'total' => 20000,
+            'amount_paid' => 0,
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->putJson("/api/v1/service-orders/{$order->id}", [
+                'client_name' => 'Juan Pérez',
+                'client_phone' => '3109876543',
+                'service_name' => $order->service_name,
+                'total' => 20000,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('client_name', 'Juan Pérez')
+            ->assertJsonPath('client_phone', '3109876543');
+    }
+
+    public function test_an_order_with_only_a_directory_client_shows_that_client_as_its_text(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $client = Client::factory()->create(['business_id' => $business->id, 'name' => 'Cliente Migrado', 'phone' => '3000000000']);
+        $order = ServiceOrder::factory()->create(['business_id' => $business->id, 'client_id' => $client->id, 'client_name' => null]);
+
+        $this->actingAs($user, 'sanctum')->getJson("/api/v1/service-orders/{$order->id}")
+            ->assertOk()
+            ->assertJsonPath('client_name', 'Cliente Migrado')
+            ->assertJsonPath('client_phone', '3000000000');
+    }
+
     public function test_creating_without_a_total_or_items_is_rejected(): void
     {
         $business = Business::factory()->create();

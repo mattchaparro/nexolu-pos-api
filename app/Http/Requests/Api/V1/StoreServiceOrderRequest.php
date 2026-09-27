@@ -23,6 +23,9 @@ class StoreServiceOrderRequest extends FormRequest
 
         return [
             'client_id' => ['sometimes', 'nullable', 'integer', BusinessScopedExists::for('clients', $businessId)],
+            'client_name' => ['sometimes', 'nullable', 'string', 'max:150'],
+            'client_phone' => ['sometimes', 'nullable', 'string', 'max:30'],
+            'client_email' => ['sometimes', 'nullable', 'email', 'max:150'],
             'appointment_id' => ['sometimes', 'nullable', 'integer', BusinessScopedExists::for('appointments', $businessId)],
             'product_id' => ['sometimes', 'nullable', 'integer', BusinessScopedExists::for('products', $businessId)],
             'service_name' => ['required', 'string', 'max:200'],

@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Api\V1;
 
+use App\Models\Client;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -16,6 +17,11 @@ class ServiceOrderResource extends JsonResource
             'id' => $this->id,
             'business_id' => $this->business_id,
             'client_id' => $this->client_id,
+            // Texto de la orden; las migradas del legacy (o de una cita con
+            // cliente del directorio) no lo tienen y caen a la ficha.
+            'client_name' => $this->client_name ?? $this->clientFallback()?->name,
+            'client_phone' => $this->client_phone ?? $this->clientFallback()?->phone,
+            'client_email' => $this->client_email ?? $this->clientFallback()?->email,
             'appointment_id' => $this->appointment_id,
             'product_id' => $this->product_id,
             'user_id' => $this->user_id,
@@ -34,5 +40,11 @@ class ServiceOrderResource extends JsonResource
             'stage' => new ServiceWorkflowStageResource($this->whenLoaded('stage')),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
+    }
+
+    /** Solo si ya viene cargada: el fallback no puede costar una consulta por fila. */
+    private function clientFallback(): ?Client
+    {
+        return $this->resource->relationLoaded('client') ? $this->resource->client : null;
     }
 }

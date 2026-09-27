@@ -61,6 +61,8 @@ class ServiceOrderController extends Controller
             $query->where(function ($sub) use ($term) {
                 $sub->where('service_name', 'like', $term)
                     ->orWhere('notes', 'like', $term)
+                    ->orWhere('client_name', 'like', $term)
+                    ->orWhere('client_phone', 'like', $term)
                     ->orWhereHas('client', fn ($c) => $c->where('name', 'like', $term));
             });
         }

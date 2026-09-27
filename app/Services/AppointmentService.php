@@ -61,6 +61,9 @@ class AppointmentService
             if ($primaryProduct) {
                 $this->serviceOrderService->create($user, [
                     'client_id' => $appointment->client_id,
+                    'client_name' => $appointment->client_name,
+                    'client_phone' => $appointment->client_phone,
+                    'client_email' => $appointment->client_email,
                     'appointment_id' => $appointment->id,
                     'product_id' => $appointment->product_id,
                     'service_name' => $this->serviceNamesLabel($serviceLines),
@@ -174,6 +177,9 @@ class AppointmentService
             if ($primaryProduct && $order && $order->status !== 'cancelled') {
                 $this->serviceOrderService->update($order, [
                     'client_id' => $appointment->client_id,
+                    'client_name' => $appointment->client_name,
+                    'client_phone' => $appointment->client_phone,
+                    'client_email' => $appointment->client_email,
                     'product_id' => $appointment->product_id,
                     'service_name' => $this->serviceNamesLabel($serviceLines),
                     'items' => $this->serviceLinesToItems($serviceLines),

@@ -176,7 +176,7 @@ class SalesReportService
             ->map(fn ($o) => [
                 'id' => $o->id,
                 'service_name' => $o->service_name,
-                'client_name' => $o->client?->name,
+                'client_name' => $o->client_name ?? $o->client?->name,
                 'total' => (float) $o->total,
                 'amount_paid' => (float) $o->amount_paid,
                 'amount_paid_today' => (float) $serviceOrdersByOrder->get($o->id, collect())->sum('amount'),

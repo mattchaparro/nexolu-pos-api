@@ -14,10 +14,15 @@
 
 <div class="divider"></div>
 <div><span class="bold">Servicio:</span> {{ $serviceOrder->service_name }}</div>
-@if ($serviceOrder->client)
-    <div>Cliente: {{ $serviceOrder->client->name }}</div>
-    @if ($serviceOrder->client->phone)
-        <div>Teléfono: {{ $serviceOrder->client->phone }}</div>
+@php
+    // Texto de la orden; las migradas del legacy solo tienen la ficha.
+    $clientName = $serviceOrder->client_name ?? $serviceOrder->client?->name;
+    $clientPhone = $serviceOrder->client_phone ?? $serviceOrder->client?->phone;
+@endphp
+@if ($clientName)
+    <div>Cliente: {{ $clientName }}</div>
+    @if ($clientPhone)
+        <div>Teléfono: {{ $clientPhone }}</div>
     @endif
 @endif
 
