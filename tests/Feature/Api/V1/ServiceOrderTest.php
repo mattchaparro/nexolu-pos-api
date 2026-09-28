@@ -10,7 +10,9 @@ use App\Models\ServiceOrder;
 use App\Models\ServiceWorkflow;
 use App\Models\ServiceWorkflowStage;
 use App\Models\User;
+use App\Support\PermissionCatalog;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class ServiceOrderTest extends TestCase
@@ -135,6 +137,37 @@ class ServiceOrderTest extends TestCase
             ->assertOk()
             ->assertJsonPath('client_name', 'Cliente Migrado')
             ->assertJsonPath('client_phone', '3000000000');
+    }
+
+    /**
+     * @return array<string, array{0: list<string>, 1: int}>
+     */
+    public static function employeePermissionCases(): array
+    {
+        return [
+            'con el permiso propio de ordenes' => [['service_orders.manage'], 201],
+            'con gestionar citas (como antes)' => [['appointments.manage'], 201],
+            'sin ninguno de los dos' => [['clients.manage'], 403],
+        ];
+    }
+
+    /**
+     * @param  list<string>  $permissions
+     */
+    #[DataProvider('employeePermissionCases')]
+    public function test_an_employee_needs_service_orders_or_appointments_permission(array $permissions, int $expectedStatus): void
+    {
+        PermissionCatalog::sync();
+        $business = Business::factory()->create();
+        $employee = User::factory()->create(['business_id' => $business->id]);
+        $employee->assignRole('employee');
+        $employee->syncPermissions($permissions);
+
+        $this->actingAs($employee, 'sanctum')->postJson('/api/v1/service-orders', [
+            'client_name' => 'Cliente de mostrador',
+            'service_name' => 'Cambio de pantalla',
+            'total' => 180000,
+        ])->assertStatus($expectedStatus);
     }
 
     public function test_creating_without_a_total_or_items_is_rejected(): void

@@ -722,7 +722,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // sin catalogo de servicios. Antes compartian un solo flag
         // ('services') para ambos, asi que un negocio sin agenda igual veia
         // el modulo habilitado.
-        Route::middleware(['feature:services', 'permission:appointments.manage'])->group(function () {
+        // service_orders.manage es el permiso propio del modulo;
+        // appointments.manage tambien entra porque antes era el unico que lo
+        // abria y quitarselo a quien ya lo usaba seria una regresion.
+        Route::middleware(['feature:services', 'permission:service_orders.manage,appointments.manage'])->group(function () {
             Route::get('/service-workflow', [BusinessServiceWorkflowController::class, 'show'])->name('service-workflow.show');
 
             // Antes del apiResource, mismo motivo que /products/summary.

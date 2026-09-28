@@ -108,6 +108,17 @@ class PermissionCatalog
             'description' => 'Permite crear, editar y cancelar citas en la agenda del negocio.',
         ],
         [
+            // Antes las ordenes colgaban de appointments.manage: para que un
+            // cajero registrara una reparacion habia que darle tambien la
+            // agenda, y a un empleado migrado del legacy (donde bastaba con
+            // usar el POS) le quedaba el modulo cerrado. Quien tenga
+            // appointments.manage sigue entrando (ver routes/api.php).
+            'name' => 'service_orders.manage',
+            'category' => 'clientes',
+            'label' => 'Gestionar órdenes de servicio',
+            'description' => 'Permite crear, editar, abonar y cancelar órdenes de servicio (reparaciones, trabajos por encargo).',
+        ],
+        [
             'name' => 'layaways.manage',
             'category' => 'clientes',
             'label' => 'Gestionar apartados',
