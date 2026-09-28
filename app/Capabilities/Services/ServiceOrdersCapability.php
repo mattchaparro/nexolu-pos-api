@@ -44,7 +44,10 @@ class ServiceOrdersCapability implements Capability
 
         if (! empty($arguments['nombre_cliente'])) {
             $like = '%'.addcslashes((string) $arguments['nombre_cliente'], '%_\\').'%';
-            $query->whereHas('client', fn ($sub) => $sub->where('name', 'like', $like));
+            // El cliente es texto de la orden (client_name); las migradas del
+            // legacy solo tienen la ficha.
+            $query->where(fn ($sub) => $sub->where('client_name', 'like', $like)
+                ->orWhereHas('client', fn ($client) => $client->where('name', 'like', $like)));
         }
 
         $orders = $query->orderByDesc('created_at')->limit(self::MAX_ROWS)->get();
@@ -56,7 +59,7 @@ class ServiceOrdersCapability implements Capability
             return [
                 'orden_id' => $order->id,
                 'servicio' => (string) $order->service_name,
-                'cliente' => $order->client?->name ?? 'Sin cliente asociado',
+                'cliente' => $order->client_name ?? $order->client?->name ?? 'Sin cliente asociado',
                 'estado' => $order->status,
                 'fecha' => $order->created_at->toDateString(),
                 'total' => round($total, 2),

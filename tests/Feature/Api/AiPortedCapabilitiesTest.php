@@ -18,6 +18,7 @@ use App\Models\Receivable;
 use App\Models\Reminder;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\ServiceOrder;
 use App\Models\StockMovement;
 use App\Models\Supplier;
 use App\Models\User;
@@ -561,5 +562,17 @@ class AiPortedCapabilitiesTest extends TestCase
         $this->assertSame('kg', $data['unidad']);
         $this->assertEquals(7.0, $data['stock_resultante']);
         $this->assertEquals(7.0, (float) $ingredient->fresh()->stock);
+    }
+
+    public function test_servicios_estado_reads_the_typed_client_and_filters_by_it(): void
+    {
+        $this->business->update(['feature_flags' => ['services' => true]]);
+        ServiceOrder::factory()->create(['business_id' => $this->business->id, 'client_id' => null, 'client_name' => 'Juan Pérez', 'service_name' => 'Cambio de pantalla']);
+        ServiceOrder::factory()->create(['business_id' => $this->business->id, 'client_id' => null, 'client_name' => 'María Gómez', 'service_name' => 'Revisión batería']);
+
+        $data = $this->invoke('servicios_estado', ['nombre_cliente' => 'Juan']);
+
+        $this->assertSame(1, $data['total_ordenes']);
+        $this->assertSame('Juan Pérez', $data['ordenes'][0]['cliente']);
     }
 }
