@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Api\V1;
 
 use App\Support\NotificationTypes;
+use App\Support\SystemConfigStore;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -103,7 +104,21 @@ class BusinessResource extends JsonResource
             'can_access_layaways' => $this->hasFeature('layaway'),
             'subscription_plan' => $this->subscription_plan,
             'subscription_status' => $this->subscriptionStatus(),
+            // Aviso de vencimiento en todas las pantallas (SubscriptionRenewalBanner
+            // en el front), como el subscription_alert del legacy: sin esto un
+            // negocio llegaba al ultimo dia sin enterarse (Las Banquitas,
+            // 2026-09-28). Mismo umbral configurable que el legacy.
+            'days_remaining' => $this->daysRemaining(),
+            'subscription_warning_days' => $this->subscriptionWarningDays(),
             'active' => $this->active,
         ];
+    }
+
+    /** Dias antes del vencimiento desde los que se avisa (system_config `billing.warning_days`, 5 por defecto). */
+    private function subscriptionWarningDays(): int
+    {
+        $days = (int) SystemConfigStore::get('billing.warning_days', '5');
+
+        return $days >= 1 ? $days : 5;
     }
 }

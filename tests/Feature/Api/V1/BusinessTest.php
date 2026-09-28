@@ -27,6 +27,19 @@ class BusinessTest extends TestCase
             ->assertJsonPath('name', 'Cafe Nexolu');
     }
 
+    public function test_business_resource_exposes_days_remaining_for_the_renewal_banner(): void
+    {
+        $business = Business::factory()->create(['paid_until' => now()->addDay()->addHour(), 'trial_ends_at' => null]);
+        $owner = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+
+        $this->actingAs($owner, 'sanctum')
+            ->getJson('/api/v1/business')
+            ->assertOk()
+            ->assertJsonPath('subscription_status', 'paid')
+            ->assertJsonPath('days_remaining', 1)
+            ->assertJsonPath('subscription_warning_days', 5);
+    }
+
     public function test_business_resource_payment_methods_excludes_disabled_catalog_entries(): void
     {
         // Bug real reportado: el modal de cobro (pago unico, varios medios,
