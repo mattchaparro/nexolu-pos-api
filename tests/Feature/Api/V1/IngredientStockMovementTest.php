@@ -141,4 +141,23 @@ class IngredientStockMovementTest extends TestCase
             'quantity' => 5,
         ])->assertUnprocessable();
     }
+
+    public function test_zero_quantity_entry_with_cost_sets_the_ingredient_cost_and_updates_recipes(): void
+    {
+        $admin = $this->admin();
+        $ingredient = Ingredient::factory()->create(['business_id' => $admin->business_id, 'stock' => 10, 'cost_price' => 1000]);
+        $product = Product::factory()->create(['business_id' => $admin->business_id]);
+        $product->ingredients()->attach($ingredient->id, ['quantity' => 2]);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/v1/ingredient-stock-movements', [
+            'ingredient_id' => $ingredient->id,
+            'type' => 'entry',
+            'quantity' => 0,
+            'unit_cost_cop' => 3000,
+        ])->assertCreated();
+
+        $this->assertSame('3000.0000', (string) $ingredient->fresh()->cost_price);
+        $this->assertSame('6000.00', (string) $product->fresh()->cost_price);
+        $this->assertSame('10.00', (string) $ingredient->fresh()->stock);
+    }
 }

@@ -53,6 +53,11 @@ class StockService
     {
         $this->assertStockIsManuallyManageable($product);
 
+        if ($this->isCostCorrection($quantity, $unitCostCop)) {
+            $product->update(['cost_price' => $unitCostCop]);
+            $notes ??= self::COST_CORRECTION_NOTE;
+        }
+
         return StockMovement::create([
             'product_id' => $product->id,
             'business_id' => $product->business_id,
@@ -63,6 +68,17 @@ class StockService
             'notes' => $notes,
             'user_id' => $user->id,
         ]);
+    }
+
+    private const COST_CORRECTION_NOTE = 'Ajuste de costo';
+
+    /**
+     * Una "entrada" de 0 unidades con costo es una correccion de costo: fija
+     * el costo del articulo al valor dado, sin mover stock ni promediar.
+     */
+    private function isCostCorrection(float $quantity, ?float $unitCostCop): bool
+    {
+        return $quantity == 0.0 && $unitCostCop !== null && $unitCostCop > 0;
     }
 
     public function exit(User $user, Product $product, float $quantity, ?string $notes = null, ?int $reasonId = null, ?float $unitCostCop = null): StockMovement
@@ -122,6 +138,11 @@ class StockService
      */
     public function variantEntry(User $user, ProductVariant $variant, float $quantity, ?string $notes = null, ?int $reasonId = null, ?float $unitCostCop = null): StockMovement
     {
+        if ($this->isCostCorrection($quantity, $unitCostCop)) {
+            $variant->update(['cost_price' => $unitCostCop]);
+            $notes ??= self::COST_CORRECTION_NOTE;
+        }
+
         return StockMovement::create([
             'product_id' => $variant->product_id,
             'product_variant_id' => $variant->id,
@@ -421,6 +442,10 @@ class StockService
     {
         $previousStock = (float) $ingredient->stock;
         $previousCost = (float) $ingredient->cost_price;
+        $isCostCorrection = $this->isCostCorrection($quantity, $unitCostCop);
+        if ($isCostCorrection) {
+            $notes ??= self::COST_CORRECTION_NOTE;
+        }
 
         $movement = StockMovement::create([
             'ingredient_id' => $ingredient->id,
@@ -434,7 +459,9 @@ class StockService
         ]);
 
         if ($unitCostCop !== null && $unitCostCop > 0) {
-            $newAverageCost = WeightedAverageCost::calculate($previousStock, $previousCost, abs($quantity), $unitCostCop);
+            $newAverageCost = $isCostCorrection
+                ? round($unitCostCop, 4)
+                : WeightedAverageCost::calculate($previousStock, $previousCost, abs($quantity), $unitCostCop);
             $ingredient->update(['cost_price' => $newAverageCost]);
             $ingredient->syncLinkedProductCosts();
         }

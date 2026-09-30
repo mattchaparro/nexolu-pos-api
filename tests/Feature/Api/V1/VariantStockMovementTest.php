@@ -270,4 +270,20 @@ class VariantStockMovementTest extends TestCase
 
         $this->assertTrue($foreignVariant->fresh()->is_active);
     }
+
+    public function test_a_zero_quantity_entry_with_cost_sets_the_variant_cost(): void
+    {
+        [$user, $product, $variant] = $this->productWithVariant(10);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/stock-movements', [
+            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
+            'type' => StockMovement::TYPE_ENTRY,
+            'quantity' => 0,
+            'unit_cost_cop' => 2500,
+        ])->assertCreated();
+
+        $this->assertSame('2500.00', (string) $variant->fresh()->cost_price);
+        $this->assertSame(10, $variant->fresh()->stock);
+    }
 }

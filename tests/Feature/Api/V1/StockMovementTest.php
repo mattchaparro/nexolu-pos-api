@@ -211,4 +211,39 @@ class StockMovementTest extends TestCase
         $this->assertNotNull(StockMovementReason::systemIdForCode(StockMovementReason::CODE_MANUAL_OUT));
         $this->assertNotNull(StockMovementReason::systemIdForCode(StockMovementReason::CODE_ADJUSTMENT));
     }
+
+    public function test_zero_quantity_entry_with_cost_sets_the_product_cost_without_moving_stock(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 10, 'cost_price' => 1000]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/stock-movements', [
+            'product_id' => $product->id,
+            'type' => 'entry',
+            'quantity' => 0,
+            'unit_cost_cop' => 1800,
+        ])->assertCreated()->assertJsonPath('notes', 'Ajuste de costo');
+
+        $this->assertSame('1800.00', (string) $product->fresh()->cost_price);
+        $this->assertSame(10, (int) $product->fresh()->stock);
+    }
+
+    public function test_entry_with_quantity_and_cost_does_not_overwrite_the_product_cost(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 10, 'cost_price' => 1000]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/stock-movements', [
+            'product_id' => $product->id,
+            'type' => 'entry',
+            'quantity' => 5,
+            'unit_cost_cop' => 1800,
+        ])->assertCreated();
+
+        $this->assertSame('1000.00', (string) $product->fresh()->cost_price);
+    }
 }
