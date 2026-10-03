@@ -475,6 +475,44 @@ class OpenTabTest extends TestCase
             ->assertJsonPath('total', '16000.00');
     }
 
+    public function test_delivery_can_be_added_when_closing_the_tab(): void
+    {
+        $business = Business::factory()->create(['delivery_enabled' => true, 'delivery_fee' => 5000]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+
+        $tab = $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->json();
+
+        $this->actingAs($user, 'sanctum')->postJson("/api/v1/open-tabs/{$tab['id']}/close", [
+            'payment_method' => 'cash',
+            'is_delivery' => true,
+        ])->assertOk()
+            ->assertJsonPath('is_delivery', true)
+            ->assertJsonPath('delivery_fee', '5000.00')
+            ->assertJsonPath('total', '15000.00');
+    }
+
+    public function test_delivery_can_be_removed_when_closing_the_tab(): void
+    {
+        $business = Business::factory()->create(['delivery_enabled' => true, 'delivery_fee' => 5000]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+
+        $tab = $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            'is_delivery' => true,
+        ])->json();
+
+        $this->actingAs($user, 'sanctum')->postJson("/api/v1/open-tabs/{$tab['id']}/close", [
+            'payment_method' => 'cash',
+            'is_delivery' => false,
+        ])->assertOk()
+            ->assertJsonPath('is_delivery', false)
+            ->assertJsonPath('total', '10000.00');
+    }
+
     public function test_cancelling_a_tab_requires_sales_reverse_permission(): void
     {
         $business = Business::factory()->create();

@@ -45,6 +45,7 @@ class CloseOpenTabRequest extends FormRequest
             'client_id' => ['sometimes', 'nullable', 'integer', BusinessScopedExists::for('clients', $this->user()?->business_id)],
             'apply_service_charge' => ['sometimes', 'boolean'],
             'apply_ipoconsumo' => ['sometimes', 'boolean'],
+            'is_delivery' => ['sometimes', 'boolean'],
         ];
     }
 

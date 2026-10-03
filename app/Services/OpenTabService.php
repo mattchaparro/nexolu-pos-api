@@ -322,10 +322,20 @@ class OpenTabService
             // restarlo antes de calcular el cargo o se cobra servicio/
             // ipoconsumo tambien sobre el domicilio.
             $chargeBase = max(0.0, (float) $sale->total - (float) $sale->delivery_fee);
+
+            // El domicilio tambien se puede decidir al cobrar: si el modal lo
+            // envia, la tarifa y el total se recalculan aqui (nunca el cliente).
+            $isDelivery = (bool) $sale->is_delivery;
+            $deliveryFee = (float) $sale->delivery_fee;
+            if (array_key_exists('is_delivery', $data) && $business->delivery_enabled) {
+                $isDelivery = (bool) $data['is_delivery'];
+                $deliveryFee = $isDelivery ? (float) $business->delivery_fee : 0.0;
+            }
+
             [$serviceChargeAmount, $ipoconsumoAmount] = $this->saleService->resolveCharges(
                 $business, $chargeBase, $data
             );
-            $totalWithCharges = round((float) $sale->total + $serviceChargeAmount + $ipoconsumoAmount, 2);
+            $totalWithCharges = round($chargeBase + $deliveryFee + $serviceChargeAmount + $ipoconsumoAmount, 2);
 
             $partials = SalePartialPayment::where('sale_id', $sale->id)->orderBy('id')->get();
             $partialLines = $this->mapPartialPaymentsToSplitRows($business, $partials);
@@ -398,6 +408,8 @@ class OpenTabService
                 'client_id' => array_key_exists('client_id', $data) ? $data['client_id'] : $sale->client_id,
                 'service_charge_amount' => $serviceChargeAmount,
                 'ipoconsumo_amount' => $ipoconsumoAmount,
+                'is_delivery' => $isDelivery,
+                'delivery_fee' => $deliveryFee,
                 'total' => $totalWithCharges,
             ]);
 
