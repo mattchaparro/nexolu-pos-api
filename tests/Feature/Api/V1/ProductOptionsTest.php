@@ -10,6 +10,7 @@ use App\Models\ProductOption;
 use App\Models\ProductOptionGroup;
 use App\Models\Sale;
 use App\Models\User;
+use App\Support\BusinessFeaturePresets;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
@@ -23,7 +24,7 @@ class ProductOptionsTest extends TestCase
 
     private function adminAndBusiness(): array
     {
-        $business = Business::factory()->create();
+        $business = Business::factory()->create(['feature_flags' => array_merge(BusinessFeaturePresets::full(), ['product_options' => true])]);
         $user = User::factory()->create(['business_id' => $business->id]);
         $user->assignRole('admin');
 
@@ -35,9 +36,10 @@ class ProductOptionsTest extends TestCase
     {
         $wings = Product::factory()->create(['business_id' => $business->id, 'price' => 20000, 'track_stock' => false]);
         $group = ProductOptionGroup::create([
-            'business_id' => $business->id, 'product_id' => $wings->id,
+            'business_id' => $business->id,
             'name' => 'Salsa', 'min_choices' => $min, 'max_choices' => $max,
         ]);
+        $wings->optionGroups()->attach($group->id);
         $bbq = ProductOption::create([
             'business_id' => $business->id, 'product_option_group_id' => $group->id,
             'name' => 'BBQ', 'extra_price' => 0,
@@ -247,5 +249,106 @@ class ProductOptionsTest extends TestCase
             'paperWidthMm' => 80,
         ])->render();
         $this->assertStringContainsString('Picante', $html);
+    }
+
+    public function test_a_group_can_be_shared_by_several_products_and_edits_reach_all_of_them(): void
+    {
+        [$business, $user] = $this->adminAndBusiness();
+        [$wings6, $bbq] = $this->wingsWithSauces($business);
+        $wings12 = Product::factory()->create(['business_id' => $business->id, 'price' => 38000, 'track_stock' => false]);
+        $groupId = $bbq->product_option_group_id;
+
+        $this->actingAs($user, 'sanctum')->putJson("/api/v1/products/{$wings12->id}", [
+            'option_groups' => [['id' => $groupId, 'name' => 'Salsa', 'min_choices' => 1, 'max_choices' => 1,
+                'options' => [['id' => $bbq->id, 'name' => 'BBQ', 'extra_price' => 0]]]],
+        ])->assertOk()->assertJsonPath('option_groups.0.id', $groupId);
+
+        $this->assertSame(1, ProductOptionGroup::count());
+        $this->assertSame(2, ProductOptionGroup::find($groupId)->products()->count());
+
+        $this->actingAs($user, 'sanctum')->putJson("/api/v1/products/{$wings12->id}", [
+            'option_groups' => [['id' => $groupId, 'name' => 'Salsas de alitas', 'min_choices' => 1, 'max_choices' => 1,
+                'options' => [['id' => $bbq->id, 'name' => 'BBQ', 'extra_price' => 0]]]],
+        ])->assertOk();
+
+        $this->actingAs($user, 'sanctum')->getJson("/api/v1/products/{$wings6->id}")
+            ->assertJsonPath('option_groups.0.name', 'Salsas de alitas');
+    }
+
+    public function test_unlinking_a_shared_group_keeps_it_for_the_other_product_but_deletes_it_when_unused(): void
+    {
+        [$business, $user] = $this->adminAndBusiness();
+        [$wings6, $bbq] = $this->wingsWithSauces($business);
+        $wings12 = Product::factory()->create(['business_id' => $business->id, 'track_stock' => false]);
+        $wings12->optionGroups()->attach($bbq->product_option_group_id);
+
+        $this->actingAs($user, 'sanctum')->putJson("/api/v1/products/{$wings12->id}", ['option_groups' => []])->assertOk();
+        $this->assertDatabaseHas('product_option_groups', ['id' => $bbq->product_option_group_id]);
+
+        $this->actingAs($user, 'sanctum')->putJson("/api/v1/products/{$wings6->id}", ['option_groups' => []])->assertOk();
+        $this->assertDatabaseMissing('product_option_groups', ['id' => $bbq->product_option_group_id]);
+    }
+
+    public function test_a_group_of_another_business_is_never_linked(): void
+    {
+        [$business, $user] = $this->adminAndBusiness();
+        [, $foreignBbq] = $this->wingsWithSauces(Business::factory()->create(['feature_flags' => array_merge(BusinessFeaturePresets::full(), ['product_options' => true])]));
+        $product = Product::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')->putJson("/api/v1/products/{$product->id}", [
+            'option_groups' => [['id' => $foreignBbq->product_option_group_id, 'name' => 'Mia', 'min_choices' => 0, 'max_choices' => 1,
+                'options' => [['name' => 'X', 'extra_price' => 0]]]],
+        ])->assertOk();
+
+        $this->assertSame(0, $product->optionGroups()->where('product_option_groups.id', $foreignBbq->product_option_group_id)->count());
+        $this->assertSame('Salsa', ProductOptionGroup::withoutGlobalScopes()->find($foreignBbq->product_option_group_id)->name);
+    }
+
+    public function test_duplicating_a_product_links_the_same_option_groups(): void
+    {
+        [$business, $user] = $this->adminAndBusiness();
+        [$wings, $bbq] = $this->wingsWithSauces($business);
+
+        $copyId = $this->actingAs($user, 'sanctum')->postJson("/api/v1/products/{$wings->id}/duplicate")
+            ->assertSuccessful()
+            ->assertJsonPath('option_groups.0.id', $bbq->product_option_group_id)
+            ->json('id');
+
+        $this->assertSame(1, ProductOptionGroup::count());
+        $this->assertSame(2, ProductOptionGroup::find($bbq->product_option_group_id)->products()->count());
+        $this->assertNotSame($wings->id, $copyId);
+    }
+
+    public function test_the_library_lists_groups_with_the_products_that_use_them(): void
+    {
+        [$business, $user] = $this->adminAndBusiness();
+        [$wings] = $this->wingsWithSauces($business);
+
+        $this->actingAs($user, 'sanctum')->getJson('/api/v1/product-option-groups')
+            ->assertOk()
+            ->assertJsonPath('0.name', 'Salsa')
+            ->assertJsonPath('0.products.0.id', $wings->id)
+            ->assertJsonCount(2, '0.options');
+    }
+
+    public function test_without_the_feature_option_groups_are_ignored_and_the_library_is_closed(): void
+    {
+        $business = Business::factory()->create(['feature_flags' => ['product_options' => false]]);
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $category = ProductCategory::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/products', [
+            'name' => 'Alitas', 'category_id' => $category->id, 'price' => 1000,
+            'option_groups' => [['name' => 'Salsa', 'min_choices' => 0, 'max_choices' => 1, 'options' => [['name' => 'BBQ', 'extra_price' => 0]]]],
+        ])->assertCreated();
+
+        $this->assertSame(0, ProductOptionGroup::count());
+        $this->actingAs($user, 'sanctum')->getJson('/api/v1/product-option-groups')->assertForbidden();
+    }
+
+    public function test_the_feature_is_opt_in_even_for_businesses_without_flags(): void
+    {
+        $this->assertFalse(Business::factory()->create(['feature_flags' => null])->hasFeature('product_options'));
     }
 }

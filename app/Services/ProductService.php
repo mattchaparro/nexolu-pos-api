@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Business;
 use App\Models\Product;
 use App\Models\ProductAttributeValue;
+use App\Models\ProductOptionGroup;
 use App\Models\User;
 use Illuminate\Validation\ValidationException;
 
@@ -27,7 +28,7 @@ class ProductService
     {
         $ingredients = $this->extractIngredients($business, $data);
         $variants = $this->extractVariants($business, $data, $ingredients);
-        $optionGroups = $this->extractOptionGroups($data);
+        $optionGroups = $this->extractOptionGroups($business, $data);
         $data = $this->normalizeTypeFlags($data);
 
         $product = Product::create([
@@ -99,7 +100,15 @@ class ProductService
             ])->all());
         }
 
-        return $copy->refresh()->load('category', 'ingredients');
+        // Los grupos de opciones se enlazan (no se copian): editar «Salsas»
+        // en un producto lo cambia en todos los que la comparten.
+        if ($business->hasFeature('product_options')) {
+            $copy->optionGroups()->sync(
+                $product->optionGroups->mapWithKeys(fn ($g) => [$g->id => ['sort_order' => $g->pivot->sort_order]])->all()
+            );
+        }
+
+        return $copy->refresh()->load('category', 'ingredients', 'optionGroups.options');
     }
 
     /** @param  array<string, mixed>  $data */
@@ -112,7 +121,7 @@ class ProductService
     {
         $ingredients = $this->extractIngredients($business, $data, $product);
         $variants = $this->extractVariants($business, $data, $ingredients, $product);
-        $optionGroups = $this->extractOptionGroups($data);
+        $optionGroups = $this->extractOptionGroups($business, $data);
         $data = $this->normalizeTypeFlags($data, $product);
 
         $product->update($data);
@@ -290,7 +299,7 @@ class ProductService
      * @param  array<string, mixed>  $data
      * @return list<array<string, mixed>>|null
      */
-    private function extractOptionGroups(array &$data): ?array
+    private function extractOptionGroups(Business $business, array &$data): ?array
     {
         if (! array_key_exists('option_groups', $data)) {
             return null;
@@ -299,34 +308,37 @@ class ProductService
         $groups = $data['option_groups'];
         unset($data['option_groups']);
 
-        return $groups;
+        // Sin la función activa el campo se ignora (no se tocan los grupos).
+        return $business->hasFeature('product_options') ? $groups : null;
     }
 
     /**
-     * Upsert por id dentro del producto; grupos y opciones que no vengan se
-     * borran (las ventas ya hechas conservan su foto en sale_item_options).
+     * Enlaza al producto los grupos que vengan: con id = grupo de la
+     * biblioteca del negocio (se actualiza su contenido, y el cambio lo ven
+     * todos los productos que lo usan); sin id = grupo nuevo. Los grupos que
+     * ya no vengan se desenlazan, y si ningún producto los usa se borran
+     * (las ventas ya hechas conservan su foto en sale_item_options).
      *
      * @param  list<array<string, mixed>>  $groups
      */
     private function syncOptionGroups(Product $product, array $groups): void
     {
-        $keepGroupIds = [];
+        $links = [];
 
         foreach (array_values($groups) as $groupIndex => $row) {
-            $group = ! empty($row['id']) ? $product->optionGroups()->find($row['id']) : null;
+            $group = ! empty($row['id']) ? ProductOptionGroup::where('business_id', $product->business_id)->find($row['id']) : null;
             $attributes = [
                 'name' => $row['name'],
                 'min_choices' => (int) $row['min_choices'],
                 'max_choices' => (int) $row['max_choices'],
-                'sort_order' => $groupIndex,
             ];
 
             if ($group) {
                 $group->update($attributes);
             } else {
-                $group = $product->optionGroups()->create([...$attributes, 'business_id' => $product->business_id]);
+                $group = ProductOptionGroup::create([...$attributes, 'business_id' => $product->business_id]);
             }
-            $keepGroupIds[] = $group->id;
+            $links[$group->id] = ['sort_order' => $groupIndex];
 
             $keepOptionIds = [];
             foreach (array_values($row['options']) as $optionIndex => $optionRow) {
@@ -352,7 +364,9 @@ class ProductService
             $group->options()->whereNotIn('id', $keepOptionIds)->delete();
         }
 
-        $product->optionGroups()->whereNotIn('id', $keepGroupIds)->delete();
+        $changes = $product->optionGroups()->sync($links);
+
+        ProductOptionGroup::whereIn('id', $changes['detached'])->whereDoesntHave('products')->delete();
     }
 
     /**

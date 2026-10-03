@@ -17,6 +17,7 @@ class ProductOptionGroupResource extends JsonResource
             'name' => $this->name,
             'min_choices' => $this->min_choices,
             'max_choices' => $this->max_choices,
+            'products' => $this->whenLoaded('products', fn () => $this->products->map(fn ($p) => ['id' => $p->id, 'name' => $p->name])->values()),
             'options' => $this->options->map(fn ($option) => [
                 'id' => $option->id,
                 'name' => $option->name,

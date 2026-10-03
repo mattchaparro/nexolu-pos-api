@@ -5,11 +5,11 @@ namespace App\Models;
 use App\Traits\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** Grupo de opciones de elección de un producto (ej. «Salsa», mínimo 1, máximo 2). */
-#[Fillable(['business_id', 'product_id', 'name', 'min_choices', 'max_choices', 'sort_order'])]
+/** Grupo de opciones de la biblioteca del negocio (ej. «Salsa», mínimo 1, máximo 2), enlazable a varios productos. */
+#[Fillable(['business_id', 'name', 'min_choices', 'max_choices', 'sort_order'])]
 class ProductOptionGroup extends Model
 {
     use BelongsToBusiness;
@@ -23,9 +23,9 @@ class ProductOptionGroup extends Model
         ];
     }
 
-    public function product(): BelongsTo
+    public function products(): BelongsToMany
     {
-        return $this->belongsTo(Product::class);
+        return $this->belongsToMany(Product::class, 'product_option_group_product');
     }
 
     public function options(): HasMany

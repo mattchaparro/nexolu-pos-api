@@ -29,6 +29,11 @@ class SaleItemOptionService
      */
     public function resolve(Product $product, array $optionIds): Collection
     {
+        // Sin la función activa no hay opciones que validar ni cobrar.
+        if (! $product->business->hasFeature('product_options')) {
+            return collect();
+        }
+
         $optionIds = collect($optionIds)->map(fn ($id) => (int) $id)->unique()->values();
         $product->loadMissing('optionGroups.options');
 

@@ -40,7 +40,7 @@ class BusinessFeaturePresets
      *
      * @var list<string>
      */
-    public const OPT_IN_ONLY = ['online_store', 'multi_branch'];
+    public const OPT_IN_ONLY = ['online_store', 'multi_branch', 'product_options'];
 
     /** @return list<string> */
     public static function setupModes(): array
@@ -165,6 +165,7 @@ class BusinessFeaturePresets
             'reminders' => true,
             'online_store' => false,
             'multi_branch' => false,
+            'product_options' => false,
         ];
     }
 
@@ -205,6 +206,9 @@ class BusinessFeaturePresets
             // abre una segunda sede es una conversacion comercial. Se
             // enciende negocio por negocio desde SuperAdmin.
             'multi_branch' => false,
+            // Opciones de elección (salsas, toppings) y combos: se enciende
+            // negocio por negocio para restaurantes que los usan.
+            'product_options' => false,
         ];
     }
 
@@ -252,6 +256,7 @@ class BusinessFeaturePresets
             ['key' => 'open_tabs', 'label' => 'Cuentas abiertas (mesas)', 'description' => 'Permite abrir una cuenta y agregar items antes de cobrar, pensado para mesas o clientes que consumen antes de pagar.', 'group' => 'POS y ventas'],
             ['key' => 'receivables', 'label' => 'Fiados / crédito', 'description' => 'Permite vender a crédito y llevar el saldo pendiente de cada cliente.', 'group' => 'POS y ventas'],
             ['key' => 'kitchen_board', 'label' => 'Comandera (cocina)', 'description' => 'Tablero de comandas para que cocina vea y actualice el estado de cada pedido.', 'group' => 'POS y ventas'],
+            ['key' => 'product_options', 'label' => 'Opciones de elección y combos', 'description' => 'Permite configurar en cada producto grupos de opciones (salsas, toppings, tamaños) con recargo e insumo, reutilizables entre productos, que se eligen al vender y salen en la comanda y el recibo. Pensado para restaurantes; apagado por defecto.', 'group' => 'POS y ventas'],
             ['key' => 'cash_receipts_pdf', 'label' => 'Recibos de caja en PDF', 'description' => 'Genera y envía el comprobante de venta, apartado u orden de servicio como PDF descargable o por WhatsApp/correo.', 'group' => 'POS y ventas'],
 
             ['key' => 'inventory', 'label' => 'Inventario básico', 'description' => 'Lleva el stock de cada producto y lo descuenta automáticamente con cada venta.', 'group' => 'Inventario'],

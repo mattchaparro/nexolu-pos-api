@@ -53,6 +53,7 @@ use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
 use App\Http\Controllers\Api\V1\ProductCrossSellController;
 use App\Http\Controllers\Api\V1\ProductImageController;
+use App\Http\Controllers\Api\V1\ProductOptionGroupController;
 use App\Http\Controllers\Api\V1\ProductReviewModerationController;
 use App\Http\Controllers\Api\V1\ProductVariantController;
 use App\Http\Controllers\Api\V1\PurchaseController;
@@ -383,6 +384,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
                 Route::get('/products/services-summary', [ProductController::class, 'servicesSummary'])->name('products.services-summary');
             });
             Route::apiResource('products', ProductController::class)->only(['index', 'show']);
+            Route::get('/product-option-groups', [ProductOptionGroupController::class, 'index'])
+                ->middleware('feature:product_options')
+                ->name('product-option-groups.index');
             // Motivos de movimiento de stock (entrada/salida/ajuste) - lectura
             // compartida por el formulario de "Ajustar stock" de productos e
             // insumos, no atada a la feature "ingredients" (los productos
