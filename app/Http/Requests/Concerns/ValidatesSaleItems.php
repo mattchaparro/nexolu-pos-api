@@ -34,6 +34,8 @@ trait ValidatesSaleItems
                 BusinessScopedExists::for('product_variants', $businessId),
             ],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.options' => ['sometimes', 'nullable', 'array', 'max:60'],
+            'items.*.options.*' => ['integer'],
             'items.*.unit_price' => ['nullable', 'numeric', 'min:0'],
             'items.*.discount_id' => [
                 'nullable',

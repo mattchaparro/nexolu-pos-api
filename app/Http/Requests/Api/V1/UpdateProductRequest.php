@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Http\Requests\Concerns\ValidatesProductOptionGroups;
 use App\Http\Requests\Concerns\ValidatesProductVariants;
 use App\Models\Product;
 use App\Support\Validation\BusinessScopedExists;
@@ -12,7 +13,7 @@ use Illuminate\Validation\Validator;
 
 class UpdateProductRequest extends FormRequest
 {
-    use ValidatesProductVariants;
+    use ValidatesProductOptionGroups, ValidatesProductVariants;
 
     /**
      * Determine if the user is authorized to make this request.
@@ -68,6 +69,7 @@ class UpdateProductRequest extends FormRequest
                 BusinessScopedExists::for('ingredients', $businessId),
             ],
             'ingredients.*.quantity' => ['required_with:ingredients', 'numeric', 'min:0.001'],
+            ...$this->optionGroupRules(),
             ...$this->variantRules(),
         ];
     }
@@ -77,6 +79,7 @@ class UpdateProductRequest extends FormRequest
         $validator->after(function (Validator $v) {
             $this->validateIngredientsRules($v);
             $this->validateVariantsRules($v);
+            $this->validateOptionGroupsRules($v);
         });
     }
 

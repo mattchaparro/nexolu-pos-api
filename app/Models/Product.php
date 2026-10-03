@@ -162,6 +162,11 @@ class Product extends Model
         return $this->belongsToMany(Ingredient::class)->withPivot('quantity')->withTimestamps();
     }
 
+    public function optionGroups(): HasMany
+    {
+        return $this->hasMany(ProductOptionGroup::class)->orderBy('sort_order')->orderBy('id');
+    }
+
     public function variants(): HasMany
     {
         return $this->hasMany(ProductVariant::class);

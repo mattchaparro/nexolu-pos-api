@@ -34,6 +34,6 @@ class KitchenBoardController extends Controller
             'sale_item_ids' => $saleItemIds,
         ]);
 
-        return new KitchenTicketResource($sale->fresh(['items.product', 'user', 'table']));
+        return new KitchenTicketResource($sale->fresh(['items.product', 'items.options', 'user', 'table']));
     }
 }

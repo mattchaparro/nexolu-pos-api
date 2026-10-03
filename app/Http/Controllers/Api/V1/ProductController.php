@@ -188,7 +188,7 @@ class ProductController extends Controller
 
         $branchId = BranchContext::branchId();
 
-        $query = Product::with('category')
+        $query = Product::with(['category', 'optionGroups.options'])
             ->withBranchStock($branchId)
             ->withBranchPrice($branchId)
             ->when($ingredientsEnabled, fn ($q) => $q->with(['ingredients' => fn ($r) => $r->withBranchStock($branchId)]))
@@ -338,6 +338,7 @@ class ProductController extends Controller
             // La galeria solo en el detalle: los listados se conforman con la
             // foto principal desnormalizada en products.image.
             'images',
+            'optionGroups.options',
             ...($ingredientsEnabled ? ['ingredients'] : []),
             ...($variantsEnabled ? ['variants.attributeValues.productAttribute'] : []),
         ]));

@@ -25,7 +25,7 @@ use Illuminate\Validation\ValidationException;
  */
 class OpenTabService
 {
-    public function __construct(private SaleService $saleService, private StockService $stockService) {}
+    public function __construct(private SaleService $saleService, private StockService $stockService, private SaleItemOptionService $optionService) {}
 
     public function openTab(User $user, array $data): Sale
     {
@@ -67,7 +67,7 @@ class OpenTabService
             // pierde wasRecentlyCreated, con lo que el controller devolveria
             // 200 en vez de 201 al crear (JsonResource infiere el status del
             // modelo). Mismo cuidado que ya tuvimos en SaleService::createSale.
-            return $sale->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'table');
+            return $sale->load('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'table');
         });
     }
 
@@ -88,7 +88,7 @@ class OpenTabService
             // asigna esta venta a su estado local (activeSale) y de ahi
             // calcula el saldo pendiente (balance_due) - sin la relacion, un
             // "confirmar cambios" borraba la seña de abonos de la pantalla.
-            return $sale->fresh()->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'partialPayments');
+            return $sale->fresh()->load('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'partialPayments');
         });
     }
 
@@ -189,6 +189,13 @@ class OpenTabService
                 }
             }
 
+            // El insumo de las opciones se devuelve completo y se vuelve a
+            // descontar al recrear cada linea (no se calcula delta: las
+            // opciones cambian por linea, no por producto).
+            foreach ($sale->items as $currentItem) {
+                $this->optionService->restore($user, $sale, $currentItem, 'Reduccion de cantidad al sincronizar cuenta abierta');
+            }
+
             $sale->items()->delete();
 
             $discountsEnabled = $business->hasFeature('discounts');
@@ -205,14 +212,15 @@ class OpenTabService
                 $variantId = ! empty($item['product_variant_id']) ? (int) $item['product_variant_id'] : null;
                 $variant = $variantId ? $variants->get($variantId) : null;
 
-                $unitPrice = SaleLineUnitPrice::resolve($product, $item, $variant);
+                $options = $this->optionService->resolve($product, $item['options'] ?? []);
+                $unitPrice = SaleLineUnitPrice::resolve($product, $item, $variant) + $this->optionService->extraTotal($options);
                 $subtotal = $unitPrice * $quantity;
 
                 [$discountId, $discountAmount] = $discountsEnabled
                     ? Discount::resolveActive($business->id, 'item', $item['discount_id'] ?? null, $subtotal)
                     : [null, 0.0];
 
-                SaleItem::create([
+                $createdLine = SaleItem::create([
                     'sale_id' => $sale->id,
                     'product_id' => $productId,
                     'product_variant_id' => $variant?->id,
@@ -225,6 +233,8 @@ class OpenTabService
                     'kitchen_status' => 'pending',
                     'kitchen_updated_at' => now(),
                 ]);
+
+                $this->optionService->attach($user, $sale, $createdLine, $options);
 
                 $recalculatedTotal += $subtotal - $discountAmount;
             }
@@ -239,7 +249,7 @@ class OpenTabService
             // asigna esta venta a su estado local (activeSale) y de ahi
             // calcula el saldo pendiente (balance_due) - sin la relacion, un
             // "confirmar cambios" borraba la seña de abonos de la pantalla.
-            return $sale->fresh()->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'partialPayments');
+            return $sale->fresh()->load('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'partialPayments');
         });
     }
 
@@ -395,7 +405,7 @@ class OpenTabService
             $this->saleService->ensureInvoiceNumber($fresh);
             $this->saleService->syncReceivable($fresh->fresh());
 
-            return $fresh->fresh()->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'paymentSplits');
+            return $fresh->fresh()->load('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'paymentSplits');
         });
     }
 
@@ -425,6 +435,8 @@ class OpenTabService
                 if ($item->quantity <= 0) {
                     continue;
                 }
+
+                $this->optionService->restore($user, $sale, $item, 'Cancelacion de cuenta abierta');
 
                 if ($item->productVariant) {
                     $this->stockService->registerVariantSaleReversal(

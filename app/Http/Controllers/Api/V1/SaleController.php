@@ -25,7 +25,7 @@ class SaleController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Sale::with('items.product', 'items.productVariant.attributeValues.productAttribute')->orderByDesc('id');
+        $query = Sale::with('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute')->orderByDesc('id');
 
         if ($request->filled('date')) {
             $query->whereDate('closed_at', $request->input('date'));
@@ -65,7 +65,7 @@ class SaleController extends Controller
 
     public function show(Sale $sale): SaleResource
     {
-        return new SaleResource($sale->load('items.product', 'items.productVariant.attributeValues.productAttribute'));
+        return new SaleResource($sale->load('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute'));
     }
 
     public function reverse(Request $request, Sale $sale): Response

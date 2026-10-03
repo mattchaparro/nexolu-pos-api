@@ -30,6 +30,11 @@
             <tr>
                 <td colspan="2" class="item-name">{{ $item->product?->name ?: 'Producto eliminado' }}</td>
             </tr>
+            @foreach ($item->options as $option)
+                <tr>
+                    <td colspan="2" class="item-detail">+ {{ $option->name }}@if ((float) $option->extra_price > 0) ({{ \App\Support\ReceiptFormatter::money((float) $option->extra_price) }})@endif</td>
+                </tr>
+            @endforeach
             <tr>
                 <td class="item-detail">{{ \App\Support\ReceiptFormatter::quantity((float) $item->quantity) }} x {{ \App\Support\ReceiptFormatter::money((float) $item->unit_price) }}</td>
                 <td class="item-detail right">{{ \App\Support\ReceiptFormatter::money((float) $item->subtotal) }}</td>

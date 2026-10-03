@@ -53,6 +53,7 @@ class ProductResource extends JsonResource
             'online_description' => $this->online_description,
             'ingredients' => IngredientResource::collection($this->whenLoaded('ingredients')),
             'has_recipe' => $this->hasRecipe(),
+            'option_groups' => ProductOptionGroupResource::collection($this->whenLoaded('optionGroups')),
             'variants' => ProductVariantResource::collection($this->whenLoaded('variants')),
             'has_variants' => $this->hasVariants(),
             // Puerto de Admin\InventoryController::buildIndexProps() del legacy

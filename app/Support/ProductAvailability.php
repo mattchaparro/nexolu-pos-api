@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Business;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\ProductOptionGroup;
 use App\Models\ProductVariant;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -134,7 +135,11 @@ class ProductAvailability
 
         // El stock de una variante cambia con cada venta, igual que el de
         // receta - cachear aca dejaria cifras viejas hasta 10 min.
-        if (! $ingredientsEnabled && ! $variantsEnabled) {
+        // Con opciones de eleccion configuradas tampoco se cachea: el cache
+        // solo guarda atributos del producto y su categoria, no relaciones.
+        $hasOptionGroups = ProductOptionGroup::where('business_id', $business->id)->exists();
+
+        if (! $ingredientsEnabled && ! $variantsEnabled && ! $hasOptionGroups) {
             // Cache::remember() no puede guardar modelos Eloquent directamente:
             // config/cache.php fija serializable_classes=false (todo el resto
             // del codigo ya cachea solo escalares/arrays, ver StockMovementReason
@@ -166,7 +171,7 @@ class ProductAvailability
 
         return Product::where('business_id', $business->id)
             ->where('is_active', true)
-            ->with('category')
+            ->with(['category', 'optionGroups.options'])
             ->withBranchStock($branchId)
             ->withBranchPrice($branchId)
             // El saldo por sede de insumos y variantes se precarga junto con

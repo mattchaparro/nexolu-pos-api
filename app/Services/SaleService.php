@@ -25,7 +25,7 @@ use Illuminate\Validation\ValidationException;
  */
 class SaleService
 {
-    public function __construct(private StockService $stockService) {}
+    public function __construct(private StockService $stockService, private SaleItemOptionService $optionService) {}
 
     public function createSale(User $user, array $data): Sale
     {
@@ -83,7 +83,7 @@ class SaleService
             $this->ensureInvoiceNumber($sale);
             $this->syncReceivable($sale->fresh());
 
-            return $sale->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'cartDiscount', 'paymentSplits');
+            return $sale->load('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'cartDiscount', 'paymentSplits');
         });
     }
 
@@ -223,6 +223,8 @@ class SaleService
                 if ($item->quantity <= 0) {
                     continue;
                 }
+
+                $this->optionService->restore($user, $sale, $item, 'Reverso de venta');
 
                 if ($item->productVariant) {
                     $this->stockService->registerVariantSaleReversal(
@@ -451,7 +453,11 @@ class SaleService
                 ]);
             }
 
-            $unitPrice = SaleLineUnitPrice::resolve($product, $item, $variant);
+            // Las opciones elegidas (salsas, toppings) suman su recargo al
+            // precio unitario de la linea; el detalle queda en sale_item_options.
+            $options = $this->optionService->resolve($product, $item['options'] ?? []);
+
+            $unitPrice = SaleLineUnitPrice::resolve($product, $item, $variant) + $this->optionService->extraTotal($options);
             $lineSubtotal = $unitPrice * $quantity;
 
             [$discountId, $discountAmount] = $discountsEnabled
@@ -466,11 +472,14 @@ class SaleService
             // literalmente el mismo producto. product_variant_id entra al
             // where: dos variantes distintas del mismo producto (ej. Talla
             // S y Talla M) nunca deben fusionarse en una sola linea.
-            $existingLine = $sale->items()
+            // Una linea con opciones elegidas nunca se fusiona: dos platos con
+            // salsas distintas son dos lineas en la comanda.
+            $existingLine = $options->isNotEmpty() ? null : $sale->items()
                 ->where('product_id', $product->id)
                 ->where('product_variant_id', $variant?->id)
                 ->where('unit_price', $unitPrice)
                 ->where('discount_id', $discountId)
+                ->whereDoesntHave('options')
                 ->first();
 
             if ($existingLine) {
@@ -481,7 +490,7 @@ class SaleService
                     $existingLine->update(['kitchen_status' => 'pending', 'kitchen_updated_at' => now()]);
                 }
             } else {
-                SaleItem::create([
+                $createdLine = SaleItem::create([
                     'sale_id' => $sale->id,
                     'product_id' => $product->id,
                     'product_variant_id' => $variant?->id,
@@ -494,6 +503,8 @@ class SaleService
                     'kitchen_status' => $sale->isOpen() ? 'pending' : null,
                     'kitchen_updated_at' => $sale->isOpen() ? now() : null,
                 ]);
+
+                $this->optionService->attach($user, $sale, $createdLine, $options);
             }
 
             if ($variant) {

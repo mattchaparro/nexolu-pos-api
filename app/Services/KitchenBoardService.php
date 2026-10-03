@@ -28,7 +28,7 @@ class KitchenBoardService
             ->where('business_id', $businessId)
             ->where('status', 'open')
             ->whereHas('items')
-            ->with(['items.product:id,name', 'user:id,name', 'table:id,name'])
+            ->with(['items.product:id,name', 'items.options', 'user:id,name', 'table:id,name'])
             ->orderBy('created_at')
             ->orderBy('id')
             ->get();

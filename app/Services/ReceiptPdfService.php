@@ -150,7 +150,7 @@ class ReceiptPdfService
     /** @return array{business: ?Business, sale: Sale, invoiceNumber: string, issuedAt: string, paperWidthMm: int} */
     private function saleData(Sale $sale): array
     {
-        $sale->loadMissing('items.product', 'business');
+        $sale->loadMissing('items.product', 'items.options', 'business');
         $business = $sale->business;
 
         return [

@@ -23,6 +23,13 @@ class SaleItemResource extends JsonResource
             'subtotal' => $this->subtotal,
             'discount_id' => $this->discount_id,
             'discount_amount' => $this->discount_amount,
+            'options' => $this->whenLoaded('options', fn () => $this->options->map(fn ($option) => [
+                'id' => $option->id,
+                'product_option_id' => $option->product_option_id,
+                'group' => $option->group_name,
+                'name' => $option->name,
+                'extra_price' => number_format((float) $option->extra_price, 2, '.', ''),
+            ])->values()),
         ];
     }
 }

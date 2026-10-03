@@ -23,7 +23,7 @@ class OpenTabController extends Controller
     {
         return SaleResource::collection(
             Sale::where('status', 'open')
-                ->with(['items.product', 'items.productVariant.attributeValues.productAttribute', 'partialPayments', 'table'])
+                ->with(['items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'partialPayments', 'table'])
                 ->latest()
                 ->get()
         );
@@ -44,7 +44,7 @@ class OpenTabController extends Controller
 
     public function show(Sale $sale): SaleResource
     {
-        return new SaleResource($sale->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'partialPayments', 'paymentSplits', 'table'));
+        return new SaleResource($sale->load('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'partialPayments', 'paymentSplits', 'table'));
     }
 
     public function addItems(OpenTabItemsRequest $request, Sale $sale): SaleResource
@@ -81,7 +81,7 @@ class OpenTabController extends Controller
             'payment_method' => $request->validated('payment_method'),
         ]);
 
-        return new SaleResource($sale->load('items.product', 'items.productVariant.attributeValues.productAttribute', 'partialPayments', 'paymentSplits'));
+        return new SaleResource($sale->load('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'partialPayments', 'paymentSplits'));
     }
 
     public function close(CloseOpenTabRequest $request, Sale $sale): SaleResource

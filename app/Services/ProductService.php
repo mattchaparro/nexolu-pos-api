@@ -27,6 +27,7 @@ class ProductService
     {
         $ingredients = $this->extractIngredients($business, $data);
         $variants = $this->extractVariants($business, $data, $ingredients);
+        $optionGroups = $this->extractOptionGroups($data);
         $data = $this->normalizeTypeFlags($data);
 
         $product = Product::create([
@@ -43,10 +44,14 @@ class ProductService
             $this->syncVariants($product, $variants);
         }
 
+        if ($optionGroups !== null) {
+            $this->syncOptionGroups($product, $optionGroups);
+        }
+
         // refresh(): columnas con DEFAULT a nivel de BD que el request no mando
         // (is_active, track_stock, is_single_sale, ...) quedan null en la
         // instancia en memoria hasta releerla - create() no las repuebla solo.
-        return $product->refresh()->load('category', 'ingredients', 'variants.attributeValues.productAttribute');
+        return $product->refresh()->load('category', 'ingredients', 'optionGroups.options', 'variants.attributeValues.productAttribute');
     }
 
     /**
@@ -107,6 +112,7 @@ class ProductService
     {
         $ingredients = $this->extractIngredients($business, $data, $product);
         $variants = $this->extractVariants($business, $data, $ingredients, $product);
+        $optionGroups = $this->extractOptionGroups($data);
         $data = $this->normalizeTypeFlags($data, $product);
 
         $product->update($data);
@@ -119,7 +125,11 @@ class ProductService
             $this->syncVariants($product, $variants, $actor);
         }
 
-        return $product->fresh()->load('category', 'ingredients', 'variants.attributeValues.productAttribute');
+        if ($optionGroups !== null) {
+            $this->syncOptionGroups($product, $optionGroups);
+        }
+
+        return $product->fresh()->load('category', 'ingredients', 'optionGroups.options', 'variants.attributeValues.productAttribute');
     }
 
     /**
@@ -271,6 +281,78 @@ class ProductService
         }
 
         return $data;
+    }
+
+    /**
+     * Saca 'option_groups' de $data (por referencia). null = la clave no vino
+     * y no se toca nada; una lista (aunque vacia) reemplaza el conjunto.
+     *
+     * @param  array<string, mixed>  $data
+     * @return list<array<string, mixed>>|null
+     */
+    private function extractOptionGroups(array &$data): ?array
+    {
+        if (! array_key_exists('option_groups', $data)) {
+            return null;
+        }
+
+        $groups = $data['option_groups'];
+        unset($data['option_groups']);
+
+        return $groups;
+    }
+
+    /**
+     * Upsert por id dentro del producto; grupos y opciones que no vengan se
+     * borran (las ventas ya hechas conservan su foto en sale_item_options).
+     *
+     * @param  list<array<string, mixed>>  $groups
+     */
+    private function syncOptionGroups(Product $product, array $groups): void
+    {
+        $keepGroupIds = [];
+
+        foreach (array_values($groups) as $groupIndex => $row) {
+            $group = ! empty($row['id']) ? $product->optionGroups()->find($row['id']) : null;
+            $attributes = [
+                'name' => $row['name'],
+                'min_choices' => (int) $row['min_choices'],
+                'max_choices' => (int) $row['max_choices'],
+                'sort_order' => $groupIndex,
+            ];
+
+            if ($group) {
+                $group->update($attributes);
+            } else {
+                $group = $product->optionGroups()->create([...$attributes, 'business_id' => $product->business_id]);
+            }
+            $keepGroupIds[] = $group->id;
+
+            $keepOptionIds = [];
+            foreach (array_values($row['options']) as $optionIndex => $optionRow) {
+                $option = ! empty($optionRow['id']) ? $group->options()->find($optionRow['id']) : null;
+                $ingredientId = $optionRow['ingredient_id'] ?? null;
+                $optionAttributes = [
+                    'name' => $optionRow['name'],
+                    'extra_price' => $optionRow['extra_price'] ?? 0,
+                    'ingredient_id' => $ingredientId,
+                    'ingredient_quantity' => $ingredientId ? $optionRow['ingredient_quantity'] : null,
+                    'is_active' => $optionRow['is_active'] ?? true,
+                    'sort_order' => $optionIndex,
+                ];
+
+                if ($option) {
+                    $option->update($optionAttributes);
+                } else {
+                    $option = $group->options()->create([...$optionAttributes, 'business_id' => $product->business_id]);
+                }
+                $keepOptionIds[] = $option->id;
+            }
+
+            $group->options()->whereNotIn('id', $keepOptionIds)->delete();
+        }
+
+        $product->optionGroups()->whereNotIn('id', $keepGroupIds)->delete();
     }
 
     /**

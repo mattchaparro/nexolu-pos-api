@@ -27,6 +27,10 @@ class KitchenTicketResource extends JsonResource
                 'name' => $item->product?->name ?? 'Producto eliminado',
                 'is_deleted' => ! $item->product,
                 'quantity' => $item->quantity,
+                'options' => $item->options->map(fn ($option) => [
+                    'group' => $option->group_name,
+                    'name' => $option->name,
+                ])->values(),
                 'kitchen_status' => KitchenBoardService::normalizeStatus($item->kitchen_status),
             ]),
         ];
