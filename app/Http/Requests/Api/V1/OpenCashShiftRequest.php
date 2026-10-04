@@ -50,7 +50,7 @@ class OpenCashShiftRequest extends FormRequest
             }
 
             $service = app(CashShiftService::class);
-            $expected = $service->expectedOpeningCash($businessId, $service->drawerBranchId($businessId));
+            $expected = $service->expectedOpeningCash($businessId, $service->drawerBranchId($businessId), includeSameDay: true);
 
             if ($expected === null) {
                 return;
