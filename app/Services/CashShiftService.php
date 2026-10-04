@@ -59,9 +59,12 @@ class CashShiftService
      * Filtra la sede de forma explicita (sin el scope global) porque en el
      * modo "todas las sedes" el scope no filtra, y en un job no hay contexto.
      *
+     * $includeSameDay: contar tambien el cierre del dia de $at (lo que ve quien
+     * mira el formulario de apertura el mismo dia que el dueño cerro caja).
+     *
      * @return array{amount: float, closing_date: Carbon, source: 'closing'|'shift'}|null
      */
-    public function expectedOpeningCash(int $businessId, ?int $branchId, ?CarbonInterface $at = null): ?array
+    public function expectedOpeningCash(int $businessId, ?int $branchId, ?CarbonInterface $at = null, bool $includeSameDay = false): ?array
     {
         if ($branchId === null) {
             return null;
@@ -72,7 +75,7 @@ class CashShiftService
         $lastClosing = CashClosing::withoutGlobalScope('branch')
             ->where('business_id', $businessId)
             ->where('branch_id', $branchId)
-            ->whereDate('date', '<', $at->toDateString())
+            ->whereDate('date', $includeSameDay ? '<=' : '<', $at->toDateString())
             ->orderByDesc('date')
             ->orderByDesc('id')
             ->first();

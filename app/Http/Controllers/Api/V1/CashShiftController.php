@@ -49,6 +49,7 @@ class CashShiftController extends Controller
             $expected = $this->cashShiftService->expectedOpeningCash(
                 $businessId,
                 $this->cashShiftService->drawerBranchId($businessId),
+                includeSameDay: true,
             );
 
             return [

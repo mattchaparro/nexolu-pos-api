@@ -165,6 +165,20 @@ class CashShiftOpeningBaseTest extends TestCase
             ->assertJsonPath('expected_opening.source', 'shift');
     }
 
+    /** El dueño cerro caja hoy: su base manda, no lo que conto el turno que se auto-cerro. */
+    public function test_the_owner_base_wins_on_the_day_of_the_closing(): void
+    {
+        [$business, $main, $user] = $this->scenario();
+        $this->closingFor($business, $main, now(), 244000);
+        $this->shiftFor($business, $main, User::factory()->create(['business_id' => $business->id]), now()->startOfDay()->addHours(8), 100000)
+            ->update(['counted_cash' => 999000]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/cash-shifts/current')
+            ->assertJsonPath('expected_opening.amount', 244000)
+            ->assertJsonPath('expected_opening.source', 'closing');
+    }
+
     public function test_no_suggestion_while_another_shift_is_still_open(): void
     {
         [$business, $main, $user] = $this->scenario();
