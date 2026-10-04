@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Business;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\ProductComponent;
 use App\Models\ProductOptionGroup;
 use App\Models\ProductVariant;
 use Illuminate\Database\Eloquent\Collection;
@@ -68,6 +69,32 @@ class ProductAvailability
         }
 
         return $effectiveStock;
+    }
+
+    /**
+     * Combos vendibles ahora mismo: el cuello de botella entre sus piezas.
+     * null si el producto no es un combo (o sus piezas no vinieron cargadas).
+     * Pide la relacion `components.componentProduct` y `components.ingredient`
+     * ya cargadas para no consultar fila por fila en el catalogo.
+     */
+    public static function comboUnits(Product $product): ?float
+    {
+        if (! $product->relationLoaded('components') || $product->components->isEmpty()) {
+            return null;
+        }
+
+        return (float) $product->components->map(function (ProductComponent $component) {
+            $needed = (float) $component->quantity;
+            $piece = $component->component_product_id ? $component->componentProduct : $component->ingredient;
+            if (! $piece || $needed <= 0) {
+                return 0.0;
+            }
+            if ($piece instanceof Product && ! $piece->track_stock) {
+                return INF;
+            }
+
+            return floor($piece->stockAt() / $needed);
+        })->min();
     }
 
     /**
@@ -139,7 +166,9 @@ class ProductAvailability
         // solo guarda atributos del producto y su categoria, no relaciones.
         $hasOptionGroups = ProductOptionGroup::where('business_id', $business->id)->exists();
 
-        if (! $ingredientsEnabled && ! $variantsEnabled && ! $hasOptionGroups) {
+        $hasCombos = ProductComponent::where('business_id', $business->id)->exists();
+
+        if (! $ingredientsEnabled && ! $variantsEnabled && ! $hasOptionGroups && ! $hasCombos) {
             // Cache::remember() no puede guardar modelos Eloquent directamente:
             // config/cache.php fija serializable_classes=false (todo el resto
             // del codigo ya cachea solo escalares/arrays, ver StockMovementReason
@@ -171,7 +200,7 @@ class ProductAvailability
 
         return Product::where('business_id', $business->id)
             ->where('is_active', true)
-            ->with(['category', 'optionGroups.options'])
+            ->with(['category', 'optionGroups.options', 'components.componentProduct', 'components.ingredient'])
             ->withBranchStock($branchId)
             ->withBranchPrice($branchId)
             // El saldo por sede de insumos y variantes se precarga junto con

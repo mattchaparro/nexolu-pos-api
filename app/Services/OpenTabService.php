@@ -25,7 +25,7 @@ use Illuminate\Validation\ValidationException;
  */
 class OpenTabService
 {
-    public function __construct(private SaleService $saleService, private StockService $stockService, private SaleItemOptionService $optionService) {}
+    public function __construct(private SaleService $saleService, private StockService $stockService, private SaleItemOptionService $optionService, private SaleItemComboService $comboService) {}
 
     public function openTab(User $user, array $data): Sale
     {
@@ -194,6 +194,7 @@ class OpenTabService
             // opciones cambian por linea, no por producto).
             foreach ($sale->items as $currentItem) {
                 $this->optionService->restore($user, $sale, $currentItem, 'Reduccion de cantidad al sincronizar cuenta abierta');
+                $this->comboService->restore($user, $sale, $currentItem, 'Reduccion de cantidad al sincronizar cuenta abierta');
             }
 
             $sale->items()->delete();
@@ -213,6 +214,10 @@ class OpenTabService
                 $variant = $variantId ? $variants->get($variantId) : null;
 
                 $options = $this->optionService->resolve($product, $item['options'] ?? []);
+                $isCombo = $this->comboService->isCombo($product);
+                if ($isCombo) {
+                    $this->comboService->assertAvailable($product, $quantity);
+                }
                 $unitPrice = SaleLineUnitPrice::resolve($product, $item, $variant) + $this->optionService->extraTotal($options);
                 $subtotal = $unitPrice * $quantity;
 
@@ -235,6 +240,9 @@ class OpenTabService
                 ]);
 
                 $this->optionService->attach($user, $sale, $createdLine, $options);
+                if ($isCombo) {
+                    $this->comboService->attach($user, $sale, $createdLine, $product);
+                }
 
                 $recalculatedTotal += $subtotal - $discountAmount;
             }
@@ -449,6 +457,7 @@ class OpenTabService
                 }
 
                 $this->optionService->restore($user, $sale, $item, 'Cancelacion de cuenta abierta');
+                $this->comboService->restore($user, $sale, $item, 'Cancelacion de cuenta abierta');
 
                 if ($item->productVariant) {
                     $this->stockService->registerVariantSaleReversal(

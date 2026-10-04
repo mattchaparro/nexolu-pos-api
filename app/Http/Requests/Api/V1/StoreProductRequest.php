@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Http\Requests\Concerns\ValidatesProductComponents;
 use App\Http\Requests\Concerns\ValidatesProductOptionGroups;
 use App\Http\Requests\Concerns\ValidatesProductVariants;
 use App\Support\Validation\BusinessScopedExists;
@@ -12,7 +13,7 @@ use Illuminate\Validation\Validator;
 
 class StoreProductRequest extends FormRequest
 {
-    use ValidatesProductOptionGroups, ValidatesProductVariants;
+    use ValidatesProductComponents, ValidatesProductOptionGroups, ValidatesProductVariants;
 
     /**
      * Determine if the user is authorized to make this request.
@@ -68,6 +69,7 @@ class StoreProductRequest extends FormRequest
             ],
             'ingredients.*.quantity' => ['required_with:ingredients', 'numeric', 'min:0.001'],
             ...$this->optionGroupRules(),
+            ...$this->componentRules(),
             ...$this->variantRules(),
         ];
     }
@@ -78,6 +80,7 @@ class StoreProductRequest extends FormRequest
             $this->validateIngredientsRules($v);
             $this->validateVariantsRules($v);
             $this->validateOptionGroupsRules($v);
+            $this->validateComponentsRules($v);
         });
     }
 

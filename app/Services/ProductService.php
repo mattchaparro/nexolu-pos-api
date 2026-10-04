@@ -29,6 +29,7 @@ class ProductService
         $ingredients = $this->extractIngredients($business, $data);
         $variants = $this->extractVariants($business, $data, $ingredients);
         $optionGroups = $this->extractOptionGroups($business, $data);
+        $components = $this->extractComponents($business, $data);
         $data = $this->normalizeTypeFlags($data);
 
         $product = Product::create([
@@ -49,10 +50,14 @@ class ProductService
             $this->syncOptionGroups($product, $optionGroups);
         }
 
+        if ($components !== null) {
+            $this->syncComponents($product, $components);
+        }
+
         // refresh(): columnas con DEFAULT a nivel de BD que el request no mando
         // (is_active, track_stock, is_single_sale, ...) quedan null en la
         // instancia en memoria hasta releerla - create() no las repuebla solo.
-        return $product->refresh()->load('category', 'ingredients', 'optionGroups.options', 'variants.attributeValues.productAttribute');
+        return $product->refresh()->load('category', 'ingredients', 'optionGroups.options', 'components.componentProduct', 'components.ingredient', 'variants.attributeValues.productAttribute');
     }
 
     /**
@@ -122,6 +127,7 @@ class ProductService
         $ingredients = $this->extractIngredients($business, $data, $product);
         $variants = $this->extractVariants($business, $data, $ingredients, $product);
         $optionGroups = $this->extractOptionGroups($business, $data);
+        $components = $this->extractComponents($business, $data);
         $data = $this->normalizeTypeFlags($data, $product);
 
         $product->update($data);
@@ -138,7 +144,11 @@ class ProductService
             $this->syncOptionGroups($product, $optionGroups);
         }
 
-        return $product->fresh()->load('category', 'ingredients', 'optionGroups.options', 'variants.attributeValues.productAttribute');
+        if ($components !== null) {
+            $this->syncComponents($product, $components);
+        }
+
+        return $product->fresh()->load('category', 'ingredients', 'optionGroups.options', 'components.componentProduct', 'components.ingredient', 'variants.attributeValues.productAttribute');
     }
 
     /**
@@ -282,6 +292,7 @@ class ProductService
      */
     private function normalizeTypeFlags(array $data, ?Product $product = null): array
     {
+
         $isService = (bool) ($data['is_service'] ?? $product?->is_service ?? false);
         if ($isService) {
             $data['track_stock'] = false;
@@ -290,6 +301,50 @@ class ProductService
         }
 
         return $data;
+    }
+
+    /**
+     * Saca 'components' de $data (por referencia). null = la clave no vino y
+     * no se toca nada; una lista (aunque vacia) reemplaza el conjunto.
+     *
+     * @param  array<string, mixed>  $data
+     * @return list<array<string, mixed>>|null
+     */
+    private function extractComponents(Business $business, array &$data): ?array
+    {
+        if (! array_key_exists('components', $data)) {
+            return null;
+        }
+
+        $components = $data['components'];
+        unset($data['components']);
+
+        if (! $business->hasFeature('product_options')) {
+            return null;
+        }
+
+        // Un combo no tiene stock propio: sus piezas son las que se descuentan.
+        if ($components !== []) {
+            $data['track_stock'] = false;
+        }
+
+        return $components;
+    }
+
+    /** @param  list<array<string, mixed>>  $components */
+    private function syncComponents(Product $product, array $components): void
+    {
+        $product->components()->delete();
+
+        foreach (array_values($components) as $index => $row) {
+            $product->components()->create([
+                'business_id' => $product->business_id,
+                'component_product_id' => $row['component_product_id'] ?? null,
+                'ingredient_id' => $row['ingredient_id'] ?? null,
+                'quantity' => $row['quantity'],
+                'sort_order' => $index,
+            ]);
+        }
     }
 
     /**

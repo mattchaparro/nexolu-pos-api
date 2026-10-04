@@ -25,7 +25,7 @@ use Illuminate\Validation\ValidationException;
  */
 class SaleService
 {
-    public function __construct(private StockService $stockService, private SaleItemOptionService $optionService) {}
+    public function __construct(private StockService $stockService, private SaleItemOptionService $optionService, private SaleItemComboService $comboService) {}
 
     public function createSale(User $user, array $data): Sale
     {
@@ -225,6 +225,7 @@ class SaleService
                 }
 
                 $this->optionService->restore($user, $sale, $item, 'Reverso de venta');
+                $this->comboService->restore($user, $sale, $item, 'Reverso de venta');
 
                 if ($item->productVariant) {
                     $this->stockService->registerVariantSaleReversal(
@@ -457,6 +458,13 @@ class SaleService
             // precio unitario de la linea; el detalle queda en sale_item_options.
             $options = $this->optionService->resolve($product, $item['options'] ?? []);
 
+            // Un combo descuenta sus piezas (no tiene stock propio): se valida
+            // aquí, bajo el lock, y nunca se fusiona con otra línea igual.
+            $isCombo = $this->comboService->isCombo($product);
+            if ($isCombo) {
+                $this->comboService->assertAvailable($product, $quantity);
+            }
+
             $unitPrice = SaleLineUnitPrice::resolve($product, $item, $variant) + $this->optionService->extraTotal($options);
             $lineSubtotal = $unitPrice * $quantity;
 
@@ -474,7 +482,7 @@ class SaleService
             // S y Talla M) nunca deben fusionarse en una sola linea.
             // Una linea con opciones elegidas nunca se fusiona: dos platos con
             // salsas distintas son dos lineas en la comanda.
-            $existingLine = $options->isNotEmpty() ? null : $sale->items()
+            $existingLine = $options->isNotEmpty() || $isCombo ? null : $sale->items()
                 ->where('product_id', $product->id)
                 ->where('product_variant_id', $variant?->id)
                 ->where('unit_price', $unitPrice)
@@ -505,6 +513,10 @@ class SaleService
                 ]);
 
                 $this->optionService->attach($user, $sale, $createdLine, $options);
+
+                if ($isCombo) {
+                    $this->comboService->attach($user, $sale, $createdLine, $product);
+                }
             }
 
             if ($variant) {

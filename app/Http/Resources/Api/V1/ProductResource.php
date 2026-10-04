@@ -54,6 +54,15 @@ class ProductResource extends JsonResource
             'ingredients' => IngredientResource::collection($this->whenLoaded('ingredients')),
             'has_recipe' => $this->hasRecipe(),
             'option_groups' => ProductOptionGroupResource::collection($this->whenLoaded('optionGroups')),
+            'components' => $this->whenLoaded('components', fn () => $this->components->map(fn ($c) => [
+                'id' => $c->id,
+                'component_product_id' => $c->component_product_id,
+                'ingredient_id' => $c->ingredient_id,
+                'name' => $c->componentProduct?->name ?? $c->ingredient?->name,
+                'unit' => $c->ingredient?->unit,
+                'quantity' => (float) $c->quantity,
+            ])->values()),
+            'combo_stock' => ($units = ProductAvailability::comboUnits($this->resource)) === null ? null : (is_finite($units) ? (int) $units : null),
             'variants' => ProductVariantResource::collection($this->whenLoaded('variants')),
             'has_variants' => $this->hasVariants(),
             // Puerto de Admin\InventoryController::buildIndexProps() del legacy

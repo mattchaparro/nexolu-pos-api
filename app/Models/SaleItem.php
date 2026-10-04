@@ -60,4 +60,9 @@ class SaleItem extends Model
     {
         return $this->hasMany(SaleItemOption::class);
     }
+
+    public function components(): HasMany
+    {
+        return $this->hasMany(SaleItemComponent::class);
+    }
 }
