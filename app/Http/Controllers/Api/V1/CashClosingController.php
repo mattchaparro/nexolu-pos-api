@@ -56,7 +56,22 @@ class CashClosingController extends Controller
             ->where('date', '<', $date)
             ->latest('date')
             ->first();
-        $suggestedOpeningCash = (float) ($previousClosing?->base_for_next_day ?? 0);
+        // La base acumulada hasta el primer turno de ese dia (ver
+        // CashShiftService::expectedOpeningCash); sin turnos, la del cierre.
+        $branchId = $this->cashShiftService->drawerBranchId((int) $user->business_id);
+        $firstShiftOpenedAt = CashShift::withoutGlobalScope('branch')
+            ->where('business_id', $user->business_id)
+            ->where('branch_id', $branchId)
+            ->whereDate('opened_at', $date)
+            ->min('opened_at');
+        $carried = BranchContext::isAllBranches()
+            ? null
+            : $this->cashShiftService->expectedOpeningCash(
+                (int) $user->business_id,
+                $branchId,
+                $firstShiftOpenedAt ? Carbon::parse($firstShiftOpenedAt) : Carbon::parse($date)->startOfDay(),
+            );
+        $suggestedOpeningCash = (float) ($carried['amount'] ?? $previousClosing?->base_for_next_day ?? 0);
         $openingCash = (float) $request->input('opening_cash', $suggestedOpeningCash);
 
         $totals = $this->cashClosingService->calculateTotals($date, (int) $user->business_id, $openingCash);

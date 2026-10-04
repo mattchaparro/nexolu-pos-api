@@ -59,6 +59,7 @@ class CashShiftController extends Controller
                 'expected_opening' => $expected ? [
                     'amount' => $expected['amount'],
                     'closing_date' => $expected['closing_date']->toDateString(),
+                    'source' => $expected['source'],
                 ] : null,
             ];
         }

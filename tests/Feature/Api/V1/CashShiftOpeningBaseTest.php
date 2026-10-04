@@ -134,33 +134,61 @@ class CashShiftOpeningBaseTest extends TestCase
             ->assertCreated();
     }
 
-    /** Segundo turno del dia: la caja ya se movio sin registro de cuanto. */
-    public function test_no_suggestion_once_another_shift_opened_after_the_closing(): void
+    /** Segundo turno del dia: la base es lo que conto el cajero anterior, no la del cierre. */
+    public function test_the_base_is_what_the_previous_shift_counted(): void
     {
         [$business, $main, $user] = $this->scenario();
         $other = User::factory()->create(['business_id' => $business->id]);
         $this->closingFor($business, $main, now()->subDay(), 200000);
-        $this->shiftFor($business, $main, $other, now()->startOfDay()->addHours(8), 200000);
+        $shift = $this->shiftFor($business, $main, $other, now()->startOfDay()->addHours(8), 200000);
+        $shift->update(['counted_cash' => 350000]);
 
         $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/cash-shifts/current')
-            ->assertJsonPath('expected_opening', null);
-
-        $this->actingAs($user, 'sanctum')
-            ->postJson('/api/v1/cash-shifts', ['opening_cash' => 50000])
-            ->assertCreated();
+            ->assertJsonPath('expected_opening.amount', 350000)
+            ->assertJsonPath('expected_opening.source', 'shift');
     }
 
-    /** El ultimo cierre es de antier y ayer hubo turnos: esa base ya no dice nada. */
-    public function test_no_suggestion_when_a_closing_is_missing_in_between(): void
+    /** Sin cierres de por medio la base se acumula de dia en dia, turno tras turno. */
+    public function test_the_base_accumulates_across_days_without_a_closing(): void
     {
         [$business, $main, $user] = $this->scenario();
-        $this->closingFor($business, $main, now()->subDays(2), 200000);
-        $this->shiftFor($business, $main, $user, now()->subDay()->startOfDay()->addHours(9), 200000);
+        $this->closingFor($business, $main, now()->subDays(3), 100000);
+        $first = $this->shiftFor($business, $main, $user, now()->subDays(2)->startOfDay()->addHours(9), 100000);
+        $first->update(['counted_cash' => 250000]);
+        $second = $this->shiftFor($business, $main, $user, now()->subDay()->startOfDay()->addHours(9), 250000);
+        $second->update(['counted_cash' => 420000]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/cash-shifts/current')
+            ->assertJsonPath('expected_opening.amount', 420000)
+            ->assertJsonPath('expected_opening.source', 'shift');
+    }
+
+    public function test_no_suggestion_while_another_shift_is_still_open(): void
+    {
+        [$business, $main, $user] = $this->scenario();
+        $other = User::factory()->create(['business_id' => $business->id]);
+        $this->closingFor($business, $main, now()->subDay(), 200000);
+        $this->shiftFor($business, $main, $other, now()->startOfDay()->addHours(8), 200000)
+            ->update(['closed_at' => null, 'counted_cash' => null]);
 
         $this->actingAs($user, 'sanctum')
             ->getJson('/api/v1/cash-shifts/current')
             ->assertJsonPath('expected_opening', null);
+    }
+
+    public function test_the_closing_preview_starts_from_the_accumulated_base(): void
+    {
+        [$business, $main, $user] = $this->scenario();
+        $this->closingFor($business, $main, now()->subDays(3), 100000);
+        $this->shiftFor($business, $main, $user, now()->subDays(2)->startOfDay()->addHours(9), 100000)
+            ->update(['counted_cash' => 250000]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/cash-closings/preview?date='.now()->toDateString())
+            ->assertJsonPath('suggested_opening_cash', 250000)
+            ->assertJsonPath('totals.opening_cash', 250000);
     }
 
     public function test_no_suggestion_without_any_previous_closing(): void

@@ -41,11 +41,11 @@ class CashShiftService
      * Cuanto efectivo DEBERIA haber en la caja de $branchId al abrir un turno
      * en $at, o null si no hay forma de saberlo.
      *
-     * Solo se sabe para el PRIMER turno despues de un cierre de caja: ese
-     * cierre dejo `base_for_next_day` para el dia siguiente, y nadie ha tocado
-     * la caja desde entonces. En cuanto otro turno se abrio despues (el mismo
-     * dia, o un dia sin cierre de por medio), la caja ya se movio sin registro
-     * de cuanto se retiro, y sugerir la base vieja seria una falsa alarma.
+     * Es lo que dejo el ultimo turno cerrado (el efectivo que conto el cajero)
+     * o, si no hubo turnos desde el ultimo cierre de caja, la
+     * `base_for_next_day` de ese cierre. Asi la base se acumula dia tras dia
+     * sin que el dueño tenga que cerrar caja a diario. Si hay un turno
+     * abierto en esa caja, null: el efectivo se esta moviendo.
      *
      * Origen: un descuadre real en el POS legacy (Central Cell, 17-sep-2026).
      * El cierre del 16 dejo $200.000 de base, el turno del 17 abrio declarando
@@ -59,7 +59,7 @@ class CashShiftService
      * Filtra la sede de forma explicita (sin el scope global) porque en el
      * modo "todas las sedes" el scope no filtra, y en un job no hay contexto.
      *
-     * @return array{amount: float, closing_date: Carbon}|null
+     * @return array{amount: float, closing_date: Carbon, source: 'closing'|'shift'}|null
      */
     public function expectedOpeningCash(int $businessId, ?int $branchId, ?CarbonInterface $at = null): ?array
     {
@@ -77,29 +77,42 @@ class CashShiftService
             ->orderByDesc('id')
             ->first();
 
-        if (! $lastClosing) {
-            return null;
-        }
+        $closingDate = $lastClosing ? Carbon::parse($lastClosing->date) : null;
 
-        $closingDate = Carbon::parse($lastClosing->date);
-
-        // Por el dia que cubre el cierre, no por su created_at: un cierre
-        // atrasado (el del 17 hecho el 18 por la tarde) no debe volver
-        // "primero" a un turno del 18 que ya estaba corriendo.
-        $someoneOpenedSince = CashShift::withoutGlobalScope('branch')
+        // El turno mas reciente DESPUES de lo que cubre el ultimo cierre (por
+        // el dia que cubre, no por su created_at: un cierre atrasado no debe
+        // volver "primero" a un turno que ya estaba corriendo).
+        $lastShift = CashShift::withoutGlobalScope('branch')
             ->where('business_id', $businessId)
             ->where('branch_id', $branchId)
-            ->where('opened_at', '>=', $closingDate->copy()->addDay()->startOfDay())
+            ->when($closingDate, fn ($query) => $query->where('opened_at', '>=', $closingDate->copy()->addDay()->startOfDay()))
             ->where('opened_at', '<', $at)
-            ->exists();
+            ->orderByDesc('opened_at')
+            ->first();
 
-        if ($someoneOpenedSince) {
+        if ($lastShift) {
+            // La base se va acumulando de turno en turno hasta que el dueño
+            // cierre caja: lo que conto el ultimo cajero es lo que queda.
+            // Si ese turno sigue abierto, la caja se esta moviendo ahora.
+            if ($lastShift->closed_at === null || $lastShift->counted_cash === null) {
+                return null;
+            }
+
+            return [
+                'amount' => (float) $lastShift->counted_cash,
+                'closing_date' => Carbon::parse($lastShift->closed_at),
+                'source' => 'shift',
+            ];
+        }
+
+        if (! $lastClosing) {
             return null;
         }
 
         return [
             'amount' => (float) $lastClosing->base_for_next_day,
             'closing_date' => $closingDate,
+            'source' => 'closing',
         ];
     }
 

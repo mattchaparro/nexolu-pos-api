@@ -63,8 +63,9 @@ class OpenCashShiftRequest extends FormRequest
             }
 
             $validator->errors()->add('opening_note', sprintf(
-                'El efectivo inicial (%s) no coincide con la base que dejó el cierre del %s (%s). Anota qué pasó con la diferencia.',
+                'El efectivo inicial (%s) no coincide con %s del %s (%s). Anota qué pasó con la diferencia.',
                 $this->formatCop($declared),
+                $expected['source'] === 'shift' ? 'el efectivo con que cerró el último turno' : 'la base que dejó el cierre',
                 $expected['closing_date']->format('d/m/Y'),
                 $this->formatCop($expected['amount']),
             ));
