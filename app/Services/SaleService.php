@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Discount;
+use App\Models\FinancingCredit;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Receivable;
@@ -25,7 +26,7 @@ use Illuminate\Validation\ValidationException;
  */
 class SaleService
 {
-    public function __construct(private StockService $stockService, private SaleItemOptionService $optionService, private SaleItemComboService $comboService) {}
+    public function __construct(private StockService $stockService, private SaleItemOptionService $optionService, private SaleItemComboService $comboService, private FinancingService $financingService) {}
 
     public function createSale(User $user, array $data): Sale
     {
@@ -66,9 +67,14 @@ class SaleService
 
             $grandTotal = round($total + $flags['delivery_fee'] + $serviceChargeAmount + $ipoconsumoAmount, 2);
 
-            [$resolvedPaymentMethod, $isCredit] = $flags['is_non_revenue']
-                ? [null, false]
-                : $this->resolvePaymentMethodOrSplits($business, $sale, $data, $grandTotal);
+            [$resolvedPaymentMethod, $isCredit] = match (true) {
+                $flags['is_non_revenue'] => [null, false],
+                ! empty($data['financing']) => [
+                    $this->financingService->applyToSale($business, $sale, $data['financing'], $data['payment_method'] ?? null, $grandTotal),
+                    false,
+                ],
+                default => $this->resolvePaymentMethodOrSplits($business, $sale, $data, $grandTotal),
+            };
 
             $sale->update([
                 'total' => $grandTotal,
@@ -219,6 +225,16 @@ class SaleService
                 ]);
             }
 
+            $financingCredit = FinancingCredit::where('business_id', $sale->business_id)
+                ->where('sale_id', $sale->id)
+                ->first();
+
+            if ($financingCredit && $financingCredit->status === FinancingCredit::STATUS_PAID) {
+                throw ValidationException::withMessages([
+                    'sale' => 'No se puede reversar: la financiadora ya giró el crédito de esta venta. Desmarca ese pago primero.',
+                ]);
+            }
+
             foreach ($sale->items as $item) {
                 if ($item->quantity <= 0) {
                     continue;
@@ -247,6 +263,7 @@ class SaleService
             }
 
             $receivable?->delete();
+            $financingCredit?->delete();
             $sale->delete();
         });
     }

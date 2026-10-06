@@ -36,6 +36,7 @@ use App\Http\Controllers\Api\V1\DiscountController;
 use App\Http\Controllers\Api\V1\EmployeeController;
 use App\Http\Controllers\Api\V1\ExpenseController;
 use App\Http\Controllers\Api\V1\ExpenseTypeController;
+use App\Http\Controllers\Api\V1\FinancingController;
 use App\Http\Controllers\Api\V1\FixedExpenseTemplateController;
 use App\Http\Controllers\Api\V1\IngredientBulkStockUpdateController;
 use App\Http\Controllers\Api\V1\IngredientController;
@@ -691,6 +692,21 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::middleware('feature:kitchen_board')->prefix('kitchen')->name('kitchen.')->group(function () {
             Route::get('/tickets', [KitchenBoardController::class, 'index'])->name('tickets.index');
             Route::post('/tickets/{sale}/status', [KitchenBoardController::class, 'updateStatus'])->name('tickets.status.update');
+        });
+
+        // Venta financiada por terceros. El cajero solo lista las activas para
+        // cobrar; registrar giros y administrar financiadoras es del dueño.
+        Route::middleware('feature:financing')->prefix('financing')->name('financing.')->group(function () {
+            Route::get('/providers', [FinancingController::class, 'providers'])->name('providers.index');
+
+            Route::middleware('business-admin')->group(function () {
+                Route::post('/providers', [FinancingController::class, 'storeProvider'])->name('providers.store');
+                Route::put('/providers/{provider}', [FinancingController::class, 'updateProvider'])->name('providers.update');
+                Route::get('/credits', [FinancingController::class, 'credits'])->name('credits.index');
+                Route::get('/summary', [FinancingController::class, 'summary'])->name('summary');
+                Route::post('/credits/{credit}/payout', [FinancingController::class, 'registerPayout'])->name('credits.payout');
+                Route::post('/credits/{credit}/undo-payout', [FinancingController::class, 'undoPayout'])->name('credits.undo-payout');
+            });
         });
 
         Route::middleware(['feature:receivables', 'permission:receivables.manage'])->group(function () {

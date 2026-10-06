@@ -402,6 +402,7 @@ class Business extends Model
             ->mapWithKeys(fn (array $method) => [
                 (string) $method['id'] => (string) ($method['label'] ?? ucfirst(str_replace('_', ' ', (string) $method['id']))),
             ])
+            ->put(FinancingCredit::PAYMENT_METHOD, 'Financiado')
             ->all();
     }
 

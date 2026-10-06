@@ -41,6 +41,11 @@ class StoreSaleRequest extends FormRequest
             'payment_splits.*.method' => ['required_with:payment_splits', 'string', 'max:50'],
             'payment_splits.*.amount' => ['nullable', 'numeric', 'min:0'],
             'payment_splits.*.label' => ['nullable', 'string', 'max:120'],
+            // Venta financiada por un tercero: inicial en payment_method, el resto aca.
+            'financing' => ['sometimes', 'nullable', 'array'],
+            'financing.financing_provider_id' => ['required_with:financing', 'integer', BusinessScopedExists::for('financing_providers', $businessId)],
+            'financing.amount' => ['required_with:financing', 'numeric', 'min:1'],
+            'financing.approval_number' => ['nullable', 'string', 'max:80'],
             'customer_name' => ['sometimes', 'nullable', 'string', 'max:100'],
             'customer_phone' => ['sometimes', 'nullable', 'string', 'max:30'],
             'customer_identification' => ['sometimes', 'nullable', 'string', 'max:50'],
@@ -77,7 +82,21 @@ class StoreSaleRequest extends FormRequest
             $isNonRevenue = $this->boolean('is_non_revenue');
             $hasSplits = is_array($this->input('payment_splits')) && count($this->input('payment_splits')) >= 2;
 
-            if (! $isNonRevenue && ! $hasSplits && ! $this->filled('payment_method')) {
+            $isFinanced = ! $isNonRevenue && is_array($this->input('financing')) && $this->input('financing') !== [];
+
+            if ($isFinanced) {
+                if (! $this->user()?->business?->hasFeature('financing')) {
+                    $validator->errors()->add('financing', 'La venta financiada no está habilitada para este negocio.');
+                }
+                if ($hasSplits) {
+                    $validator->errors()->add('financing', 'Una venta financiada se paga con una sola inicial, sin dividir el pago.');
+                }
+                if (! $this->filled('customer_name') && ! $this->filled('customer_phone') && ! $this->filled('customer_identification')) {
+                    $validator->errors()->add('customer_name', 'Una venta financiada necesita al menos un dato del cliente (nombre, teléfono o cédula).');
+                }
+            }
+
+            if (! $isNonRevenue && ! $hasSplits && ! $isFinanced && ! $this->filled('payment_method')) {
                 $validator->errors()->add('payment_method', 'Selecciona un metodo de pago.');
             }
 
