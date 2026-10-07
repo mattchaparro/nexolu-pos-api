@@ -210,7 +210,10 @@ class ProductController extends Controller
         if ($request->filled('search')) {
             $term = '%'.trim((string) $request->input('search')).'%';
             $query->where(function ($sub) use ($term) {
-                $sub->where('name', 'like', $term)->orWhere('sku', 'like', $term);
+                // Como en Vender: el texto tambien encuentra los productos de una categoria.
+                $sub->where('name', 'like', $term)
+                    ->orWhere('sku', 'like', $term)
+                    ->orWhereHas('category', fn ($category) => $category->where('name', 'like', $term));
             });
         }
 

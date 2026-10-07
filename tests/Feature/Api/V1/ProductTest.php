@@ -158,6 +158,24 @@ class ProductTest extends TestCase
             ->assertJsonPath('data.0.name', 'Papas fritas');
     }
 
+    public function test_products_can_be_searched_by_category_name(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $phones = ProductCategory::factory()->create(['business_id' => $business->id, 'name' => 'Celulares']);
+        $cases = ProductCategory::factory()->create(['business_id' => $business->id, 'name' => 'Forros']);
+
+        Product::factory()->create(['business_id' => $business->id, 'category_id' => $phones->id, 'name' => 'Galaxy A15']);
+        Product::factory()->create(['business_id' => $business->id, 'category_id' => $cases->id, 'name' => 'Forro silicona']);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/products?search=celular')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Galaxy A15');
+    }
+
     public function test_products_can_be_filtered_by_category_including_subcategories(): void
     {
         $business = Business::factory()->create();
