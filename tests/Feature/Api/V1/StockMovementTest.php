@@ -230,7 +230,8 @@ class StockMovementTest extends TestCase
         $this->assertSame(10, (int) $product->fresh()->stock);
     }
 
-    public function test_entry_with_quantity_and_cost_does_not_overwrite_the_product_cost(): void
+    /** Igual que una compra: 10 a $1.000 + 5 a $1.800 = 15 a $1.266,67. */
+    public function test_entry_with_quantity_and_cost_averages_the_product_cost(): void
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
@@ -242,6 +243,42 @@ class StockMovementTest extends TestCase
             'type' => 'entry',
             'quantity' => 5,
             'unit_cost_cop' => 1800,
+        ])->assertCreated();
+
+        $this->assertEqualsWithDelta(1266.67, (float) $product->fresh()->cost_price, 0.01);
+        $this->assertSame(15, (int) $product->fresh()->stock);
+    }
+
+    /** Central Cell: cargadores creados sin costo; la primera entrada con costo lo fija. */
+    public function test_entry_with_cost_sets_the_cost_of_a_product_that_had_none(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 2, 'cost_price' => 0]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/stock-movements', [
+            'product_id' => $product->id,
+            'type' => 'entry',
+            'quantity' => 5,
+            'unit_cost_cop' => 18000,
+        ])->assertCreated();
+
+        $this->assertSame('18000.00', (string) $product->fresh()->cost_price);
+        $this->assertSame(7, (int) $product->fresh()->stock);
+    }
+
+    public function test_entry_without_cost_keeps_the_product_cost(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 10, 'cost_price' => 1000]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/stock-movements', [
+            'product_id' => $product->id,
+            'type' => 'entry',
+            'quantity' => 5,
         ])->assertCreated();
 
         $this->assertSame('1000.00', (string) $product->fresh()->cost_price);

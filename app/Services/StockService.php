@@ -58,7 +58,9 @@ class StockService
             $notes ??= self::COST_CORRECTION_NOTE;
         }
 
-        return StockMovement::create([
+        $newCost = $this->costAfterEntry((float) $product->stock, (float) $product->cost_price, $quantity, $unitCostCop);
+
+        $movement = StockMovement::create([
             'product_id' => $product->id,
             'business_id' => $product->business_id,
             'type' => StockMovement::TYPE_ENTRY,
@@ -68,6 +70,31 @@ class StockService
             'notes' => $notes,
             'user_id' => $user->id,
         ]);
+
+        if ($newCost !== null) {
+            $product->update(['cost_price' => $newCost]);
+        }
+
+        return $movement;
+    }
+
+    /**
+     * Costo del articulo tras una entrada manual con costo: promedio ponderado
+     * igual que una compra. Si el articulo no tenia costo, el de la entrada
+     * es el unico dato real (promediar contra 0 lo hundiria). Null si la
+     * entrada no trae costo o es una correccion (esa ya fijo el valor).
+     */
+    private function costAfterEntry(float $previousStock, float $previousCost, float $quantity, ?float $unitCostCop): ?float
+    {
+        if ($unitCostCop === null || $unitCostCop <= 0 || abs($quantity) <= 0) {
+            return null;
+        }
+
+        if ($previousCost <= 0) {
+            return round($unitCostCop, 4);
+        }
+
+        return WeightedAverageCost::calculate($previousStock, $previousCost, abs($quantity), $unitCostCop);
     }
 
     private const COST_CORRECTION_NOTE = 'Ajuste de costo';
@@ -143,7 +170,9 @@ class StockService
             $notes ??= self::COST_CORRECTION_NOTE;
         }
 
-        return StockMovement::create([
+        $newCost = $this->costAfterEntry((float) $variant->stock, (float) $variant->cost_price, $quantity, $unitCostCop);
+
+        $movement = StockMovement::create([
             'product_id' => $variant->product_id,
             'product_variant_id' => $variant->id,
             'business_id' => $variant->business_id,
@@ -154,6 +183,12 @@ class StockService
             'notes' => $notes,
             'user_id' => $user->id,
         ]);
+
+        if ($newCost !== null) {
+            $variant->update(['cost_price' => $newCost]);
+        }
+
+        return $movement;
     }
 
     public function variantExit(User $user, ProductVariant $variant, float $quantity, ?string $notes = null, ?int $reasonId = null, ?float $unitCostCop = null): StockMovement
