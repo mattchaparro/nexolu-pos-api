@@ -8,6 +8,7 @@ use App\Models\Layaway;
 use App\Models\Product;
 use App\Models\StockMovement;
 use App\Models\User;
+use App\Support\PermissionCatalog;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
@@ -313,5 +314,53 @@ class LayawayTest extends TestCase
             ->getJson('/api/v1/layaways')
             ->assertOk()
             ->assertJsonCount(2, 'data');
+    }
+
+    /** @return array{0: User, 1: int, 2: Product} empleado con el permiso base y un apartado recien creado */
+    private function employeeWithLayaway(array $extraPermissions = []): array
+    {
+        PermissionCatalog::sync();
+        $business = Business::factory()->create();
+        $employee = User::factory()->create(['business_id' => $business->id]);
+        $employee->assignRole('employee');
+        $employee->syncPermissions(['layaways.manage', ...$extraPermissions]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+
+        $layawayId = $this->actingAs($employee, 'sanctum')->postJson('/api/v1/layaways', [
+            'customer_name' => 'Maria Perez',
+            'items' => [['product_id' => $product->id, 'quantity' => 2]],
+        ])->assertCreated()->json('id');
+
+        return [$employee, $layawayId, $product];
+    }
+
+    public function test_the_base_permission_does_not_change_items_or_cancel(): void
+    {
+        [$employee, $layawayId, $product] = $this->employeeWithLayaway();
+
+        $this->actingAs($employee, 'sanctum')
+            ->putJson("/api/v1/layaways/{$layawayId}/items", ['items' => [['product_id' => $product->id, 'quantity' => 1]]])
+            ->assertForbidden();
+        $this->actingAs($employee, 'sanctum')->postJson("/api/v1/layaways/{$layawayId}/cancel")->assertForbidden();
+
+        $this->actingAs($employee, 'sanctum')
+            ->postJson("/api/v1/layaways/{$layawayId}/payments", ['amount' => 5000, 'payment_method' => 'cash'])
+            ->assertSuccessful();
+        $this->assertSame(8, $product->fresh()->stock);
+    }
+
+    public function test_the_edit_items_permission_unlocks_changing_products(): void
+    {
+        [$editor, $layawayId, $product] = $this->employeeWithLayaway(['layaways.edit_items']);
+        $this->actingAs($editor, 'sanctum')
+            ->putJson("/api/v1/layaways/{$layawayId}/items", ['items' => [['product_id' => $product->id, 'quantity' => 1]]])
+            ->assertOk();
+        $this->actingAs($editor, 'sanctum')->postJson("/api/v1/layaways/{$layawayId}/cancel")->assertForbidden();
+    }
+
+    public function test_the_cancel_permission_unlocks_cancelling(): void
+    {
+        [$canceller, $layawayId] = $this->employeeWithLayaway(['layaways.cancel']);
+        $this->actingAs($canceller, 'sanctum')->postJson("/api/v1/layaways/{$layawayId}/cancel")->assertSuccessful();
     }
 }

@@ -142,7 +142,20 @@ class PermissionCatalog
             'name' => 'layaways.manage',
             'category' => 'clientes',
             'label' => 'Gestionar apartados',
-            'description' => 'Permite crear, editar y abonar los apartados (compras a plazos) de clientes.',
+            'description' => 'Permite crear y ver apartados (compras a plazos) de clientes, registrar abonos, entregarlos e imprimir su recibo.',
+        ],
+        [
+            'name' => 'layaways.edit_items',
+            'category' => 'clientes',
+            'label' => 'Cambiar productos de un apartado',
+            'description' => 'Permite quitar, agregar o cambiar los productos de un apartado ya creado.',
+        ],
+        [
+            'name' => 'layaways.cancel',
+            'category' => 'clientes',
+            'label' => 'Cancelar apartados',
+            'description' => 'Permite cancelar un apartado: libera el stock reservado y reembolsa los abonos. Otorgar con cuidado.',
+            'warning' => true,
         ],
         [
             'name' => 'receivables.manage',

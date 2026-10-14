@@ -724,9 +724,15 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::middleware(['feature:layaway', 'permission:layaways.manage'])->group(function () {
             Route::post('/layaways/{layaway}/payments', [LayawayController::class, 'storePayment'])->name('layaways.payments.store');
-            Route::put('/layaways/{layaway}/items', [LayawayController::class, 'updateItems'])->name('layaways.items.update');
+            // Cambiar productos y cancelar tienen permiso propio: quien abona
+            // un apartado no necesariamente puede deshacerlo.
+            Route::put('/layaways/{layaway}/items', [LayawayController::class, 'updateItems'])
+                ->middleware('permission:layaways.edit_items')
+                ->name('layaways.items.update');
             Route::post('/layaways/{layaway}/complete', [LayawayController::class, 'complete'])->name('layaways.complete');
-            Route::post('/layaways/{layaway}/cancel', [LayawayController::class, 'cancel'])->name('layaways.cancel');
+            Route::post('/layaways/{layaway}/cancel', [LayawayController::class, 'cancel'])
+                ->middleware('permission:layaways.cancel')
+                ->name('layaways.cancel');
             Route::get('/layaways/{layaway}/receipt/print', [LayawayController::class, 'printReceipt'])->name('layaways.receipt.print');
             Route::middleware('feature:cash_receipts_pdf')->group(function () {
                 Route::get('/layaways/{layaway}/receipt', [LayawayController::class, 'receipt'])->name('layaways.receipt');
