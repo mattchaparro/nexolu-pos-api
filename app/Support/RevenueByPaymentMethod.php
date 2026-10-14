@@ -3,6 +3,8 @@
 namespace App\Support;
 
 use App\Models\Business;
+use App\Models\FinancingCredit;
+use App\Models\Sale;
 use Illuminate\Support\Collection;
 
 /**
@@ -17,6 +19,8 @@ use Illuminate\Support\Collection;
  * BUG CRITICO 2 que el legacy dejo sin corregir en su DashboardController).
  * El fiado (credit) nunca aparece aqui: no es ingreso hasta que se cobra,
  * momento en que ya entra como un Receivable pagado con su propio metodo real.
+ * Lo mismo la parte financiada de una venta (Addi, Banti...): entra el dia
+ * en que la financiadora la gira, como quinta fuente ($financingPayouts).
  */
 class RevenueByPaymentMethod
 {
@@ -31,12 +35,14 @@ class RevenueByPaymentMethod
         Collection $paidReceivables,
         Collection $servicePayments,
         Collection $layawayPayments,
+        ?Collection $financingPayouts = null,
     ): Collection {
         $totals = self::mergeTotals(
             self::salesTotalsByMethod($revenueSales, $business),
             self::flatTotalsByMethod($paidReceivables, $business),
             self::flatTotalsByMethod($servicePayments, $business),
             self::flatTotalsByMethod($layawayPayments, $business),
+            self::flatTotalsByMethod(self::payoutEntries($financingPayouts, $business), $business),
         );
 
         return self::labelled($business, $totals);
@@ -55,12 +61,15 @@ class RevenueByPaymentMethod
         Collection $paidReceivables,
         Collection $servicePayments,
         Collection $layawayPayments,
+        ?Collection $financingPayouts = null,
     ): array {
+        $payoutEntries = self::payoutEntries($financingPayouts, $business);
+
         return [
             [
                 'key' => 'sales',
                 'label' => 'Ventas',
-                'total' => round((float) $revenueSales->sum('total'), 2),
+                'total' => self::salesIncome($revenueSales),
                 'count' => $revenueSales->count(),
                 'by_payment_method' => self::labelled($business, self::salesTotalsByMethod($revenueSales, $business))->values()->all(),
             ],
@@ -85,7 +94,36 @@ class RevenueByPaymentMethod
                 'count' => $paidReceivables->count(),
                 'by_payment_method' => self::labelled($business, self::flatTotalsByMethod($paidReceivables, $business))->values()->all(),
             ],
+            [
+                'key' => 'financing',
+                'label' => 'Financiadoras',
+                'total' => round((float) $payoutEntries->sum('amount'), 2),
+                'count' => $payoutEntries->count(),
+                'by_payment_method' => self::labelled($business, self::flatTotalsByMethod($payoutEntries, $business))->values()->all(),
+            ],
         ];
+    }
+
+    /** Lo que entro por ventas: sin la parte que gira despues una financiadora. */
+    public static function salesIncome(Collection $revenueSales): float
+    {
+        return round((float) $revenueSales->sum(fn (Sale $sale) => $sale->receivedRevenue()), 2);
+    }
+
+    /**
+     * Giros de financiadoras como entradas {payment_method, amount}. Un giro
+     * sin medio registrado se cuenta como transferencia: asi pagan todas.
+     *
+     * @return Collection<int, object{payment_method: string, amount: float}>
+     */
+    private static function payoutEntries(?Collection $financingPayouts, ?Business $business): Collection
+    {
+        $fallback = $business?->resolveTransferPaymentMethodId() ?? 'transfer';
+
+        return ($financingPayouts ?? collect())->map(fn (FinancingCredit $credit) => (object) [
+            'payment_method' => $credit->payout_method ?: $fallback,
+            'amount' => (float) $credit->amount,
+        ])->values();
     }
 
     /**
@@ -96,6 +134,9 @@ class RevenueByPaymentMethod
         $totals = [];
         foreach ($revenueSales as $sale) {
             foreach ($sale->allocatedRevenueByPaymentMethod() as $methodId => $amount) {
+                if ($methodId === FinancingCredit::PAYMENT_METHOD) {
+                    continue;
+                }
                 // Normalizar antes de acumular: sales/sale_payment_splits
                 // guardan a veces el vocabulario en espanol del legacy
                 // (`efectivo`) y a veces el normalizado (`cash`) segun que

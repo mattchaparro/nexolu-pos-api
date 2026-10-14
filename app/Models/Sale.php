@@ -140,6 +140,18 @@ class Sale extends Model
      *
      * @return Collection<string, float>
      */
+    /**
+     * Lo que de verdad entro por esta venta: el total menos la parte que una
+     * financiadora gira despues (esa entra el dia del giro, ver
+     * RevenueByPaymentMethod).
+     */
+    public function receivedRevenue(): float
+    {
+        $financed = (float) $this->allocatedRevenueByPaymentMethod()->get(FinancingCredit::PAYMENT_METHOD, 0);
+
+        return round((float) $this->total - $financed, 2);
+    }
+
     public function allocatedRevenueByPaymentMethod(): Collection
     {
         $this->loadMissing('paymentSplits');

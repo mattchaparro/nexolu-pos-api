@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Business;
 use App\Models\CashClosing;
 use App\Models\Expense;
+use App\Models\FinancingCredit;
 use App\Models\LayawayPayment;
 use App\Models\Receivable;
 use App\Models\Sale;
@@ -79,13 +80,22 @@ class SalesReportService
             ->with('layaway:id,customer_name,customer_phone,status')
             ->get();
 
+        $financingPayouts = FinancingCredit::where('business_id', $businessId)
+            ->where('status', FinancingCredit::STATUS_PAID)
+            ->whereBetween('paid_at', [$from, $to])
+            ->with('provider:id,name')
+            ->latest('paid_at')
+            ->get();
+
         $servicePaymentsTotal = (float) $servicePaymentsToday->sum('amount');
         $layawayPaymentsTotal = (float) $layawayPaymentsToday->sum('amount');
+        $financingPayoutsTotal = (float) $financingPayouts->sum('amount');
 
-        $totalSales = (float) $revenueSales->sum('total')
+        $totalSales = RevenueByPaymentMethod::salesIncome($revenueSales)
             + (float) $paidReceivables->sum('amount')
             + $servicePaymentsTotal
-            + $layawayPaymentsTotal;
+            + $layawayPaymentsTotal
+            + $financingPayoutsTotal;
 
         $paymentBreakdown = RevenueByPaymentMethod::combined(
             $business,
@@ -93,6 +103,7 @@ class SalesReportService
             $paidReceivables,
             $servicePaymentsToday,
             $layawayPaymentsToday,
+            $financingPayouts,
         );
 
         $channels = RevenueByPaymentMethod::perChannel(
@@ -101,6 +112,7 @@ class SalesReportService
             $paidReceivables,
             $servicePaymentsToday,
             $layawayPaymentsToday,
+            $financingPayouts,
         );
 
         $cashId = $business->resolveCashPaymentMethodId();
@@ -211,7 +223,8 @@ class SalesReportService
             'total_sales' => $totalSales,
             'total_expenses' => $totalExpenses,
             'net' => round($totalSales - $totalExpenses, 2),
-            'closed_sales_revenue' => (float) $revenueSales->sum('total'),
+            'closed_sales_revenue' => RevenueByPaymentMethod::salesIncome($revenueSales),
+            'financing_payouts_total' => $financingPayoutsTotal,
             'collected_receivables_total' => (float) $paidReceivables->sum('amount'),
             'service_payments_total' => $servicePaymentsTotal,
             'service_payments_count' => $servicePaymentsToday->count(),
@@ -226,6 +239,7 @@ class SalesReportService
                 'services' => $business->hasFeature('services'),
                 'layaways' => $business->hasFeature('layaway'),
                 'receivables' => $business->hasFeature('receivables'),
+                'financing' => $business->hasFeature('financing'),
             ],
             'sales_count' => $revenueSales->count(),
             'open_count' => $openSales->count(),
@@ -243,6 +257,15 @@ class SalesReportService
             'recent_service_orders' => $recentServiceOrders,
             'recent_layaways' => $recentLayaways,
             'recent_receivables' => $recentReceivables,
+            'recent_financing_payouts' => $financingPayouts->map(fn (FinancingCredit $credit) => [
+                'id' => $credit->id,
+                'provider_name' => $credit->provider?->name,
+                'customer_name' => $credit->customer_name,
+                'approval_number' => $credit->approval_number,
+                'amount' => (float) $credit->amount,
+                'payout_method' => $credit->payout_method ?: $business->resolveTransferPaymentMethodId(),
+                'paid_at' => $credit->paid_at?->format('H:i'),
+            ])->values(),
         ];
     }
 

@@ -62,8 +62,8 @@ class FinancingTest extends TestCase
         $this->assertSame(4, $phone->fresh()->stock);
     }
 
-    /** Solo la inicial es plata en caja: los $400.000 los gira Banti despues. */
-    public function test_only_the_down_payment_counts_as_cash(): void
+    /** El dia de la venta solo entro la inicial: los $400.000 no han llegado. */
+    public function test_the_sale_day_only_counts_the_down_payment(): void
     {
         [, $user, $provider, $phone] = $this->scenario();
         $this->financedSale($user, $provider, $phone)->assertCreated();
@@ -73,12 +73,50 @@ class FinancingTest extends TestCase
             ->assertOk()
             ->json('totals');
 
-        $this->assertEquals(500000, $totals['total_sales']);
+        $this->assertEquals(100000, $totals['total_sales']);
         $this->assertEquals(100000, $totals['total_cash']);
         $this->assertEquals(100000, $totals['expected_cash']);
-        $financed = collect($totals['payment_breakdown'])->firstWhere('id', 'financiado');
-        $this->assertEquals(400000, $financed['total']);
-        $this->assertSame('Financiado', $financed['label']);
+        $this->assertNull(collect($totals['payment_breakdown'])->firstWhere('id', 'financiado'));
+
+        $summary = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/reports/sales/daily?date_from='.now()->toDateString().'&date_to='.now()->toDateString())
+            ->assertOk();
+        $this->assertEquals(100000, $summary->json('total_sales'));
+        $this->assertEquals(100000, collect($summary->json('channels'))->firstWhere('key', 'sales')['total']);
+        $this->assertEquals(0, collect($summary->json('channels'))->firstWhere('key', 'financing')['total']);
+    }
+
+    /** Lo financiado entra el dia del giro, por el medio por el que llego. */
+    public function test_the_payout_counts_as_income_on_the_day_it_arrives(): void
+    {
+        [, $user, $provider, $phone] = $this->scenario();
+        $saleId = $this->financedSale($user, $provider, $phone)->json('id');
+        $credit = FinancingCredit::where('sale_id', $saleId)->first();
+
+        $this->travel(3)->days();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/financing/credits/{$credit->id}/payout")
+            ->assertOk()
+            ->assertJsonPath('payout_method', 'transfer');
+
+        $today = now()->toDateString();
+        $summary = $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/reports/sales/daily?date_from={$today}&date_to={$today}")
+            ->assertOk();
+
+        $this->assertEquals(400000, $summary->json('total_sales'));
+        $financing = collect($summary->json('channels'))->firstWhere('key', 'financing');
+        $this->assertEquals(400000, $financing['total']);
+        $this->assertEquals(400000, collect($financing['by_payment_method'])->firstWhere('id', 'transfer')['total']);
+        $this->assertSame('Banti', $summary->json('recent_financing_payouts.0.provider_name'));
+        $this->assertTrue($summary->json('channels_enabled.financing'));
+
+        $totals = $this->actingAs($user, 'sanctum')
+            ->getJson("/api/v1/cash-closings/preview?date={$today}&opening_cash=0")
+            ->json('totals');
+        $this->assertEquals(400000, $totals['total_sales']);
+        $this->assertEquals(0, $totals['total_cash']);
     }
 
     public function test_a_fully_financed_sale_needs_no_down_payment_method(): void

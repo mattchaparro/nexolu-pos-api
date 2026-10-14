@@ -80,7 +80,7 @@ class FinancingService
         $credit->update([
             'status' => FinancingCredit::STATUS_PAID,
             'paid_at' => $data['paid_at'] ?? now(),
-            'payout_method' => $data['payout_method'] ?? null,
+            'payout_method' => ($data['payout_method'] ?? null) ?: $credit->business?->resolveTransferPaymentMethodId(),
             'payout_reference' => $data['payout_reference'] ?? null,
             'notes' => $data['notes'] ?? $credit->notes,
             'received_by_user_id' => $user->id,

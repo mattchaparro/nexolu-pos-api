@@ -6,6 +6,7 @@ use App\Models\Business;
 use App\Models\CashClosing;
 use App\Models\CashShift;
 use App\Models\Expense;
+use App\Models\FinancingCredit;
 use App\Models\LayawayPayment;
 use App\Models\Receivable;
 use App\Models\Sale;
@@ -53,12 +54,17 @@ class CashClosingService
             ->whereDate('created_at', $date)
             ->get();
 
+        $financingPayouts = FinancingCredit::where('business_id', $businessId)
+            ->where('status', FinancingCredit::STATUS_PAID)
+            ->whereDate('paid_at', $date)
+            ->get();
+
         $totalExpenses = (float) Expense::where('business_id', $businessId)
             ->where('scope', 'operacional')
             ->whereDate('date', $date)
             ->sum('value');
 
-        return $this->buildTotals($businessId, $sales, $paidReceivables, $servicePayments, $layawayPayments, $totalExpenses, $openingCash);
+        return $this->buildTotals($businessId, $sales, $paidReceivables, $servicePayments, $layawayPayments, $totalExpenses, $openingCash, $financingPayouts);
     }
 
     /**
@@ -99,12 +105,18 @@ class CashClosingService
             ->when($userId, fn ($q) => $q->where('recorded_by_user_id', $userId))
             ->get();
 
+        $financingPayouts = FinancingCredit::where('business_id', $businessId)
+            ->where('status', FinancingCredit::STATUS_PAID)
+            ->whereBetween('paid_at', [$from, $to])
+            ->when($userId, fn ($q) => $q->where('received_by_user_id', $userId))
+            ->get();
+
         $totalExpenses = (float) Expense::where('business_id', $businessId)
             ->where('scope', 'operacional')
             ->whereBetween('date', [$from->toDateString(), $to->toDateString()])
             ->sum('value');
 
-        return $this->buildTotals($businessId, $sales, $paidReceivables, $servicePayments, $layawayPayments, $totalExpenses, $openingCash);
+        return $this->buildTotals($businessId, $sales, $paidReceivables, $servicePayments, $layawayPayments, $totalExpenses, $openingCash, $financingPayouts);
     }
 
     /**
@@ -118,7 +130,7 @@ class CashClosingService
      *   payment_breakdown: array<int, array{id: string, label: string, total: float}>,
      * }
      */
-    private function buildTotals(int $businessId, Collection $sales, Collection $paidReceivables, Collection $servicePayments, Collection $layawayPayments, float $totalExpenses, float $openingCash): array
+    private function buildTotals(int $businessId, Collection $sales, Collection $paidReceivables, Collection $servicePayments, Collection $layawayPayments, float $totalExpenses, float $openingCash, ?Collection $financingPayouts = null): array
     {
         $business = Business::find($businessId);
 
@@ -129,12 +141,13 @@ class CashClosingService
 
         $servicePaymentsTotal = (float) $servicePayments->sum('amount');
         $layawayPaymentsTotal = (float) $layawayPayments->sum('amount');
-        $totalSales = (float) $revenueSales->sum('total')
+        $totalSales = RevenueByPaymentMethod::salesIncome($revenueSales)
             + (float) $paidReceivables->sum('amount')
             + $servicePaymentsTotal
-            + $layawayPaymentsTotal;
+            + $layawayPaymentsTotal
+            + (float) ($financingPayouts?->sum('amount') ?? 0);
 
-        $breakdown = RevenueByPaymentMethod::combined($business, $revenueSales, $paidReceivables, $servicePayments, $layawayPayments);
+        $breakdown = RevenueByPaymentMethod::combined($business, $revenueSales, $paidReceivables, $servicePayments, $layawayPayments, $financingPayouts);
 
         $cashId = $business ? $business->resolveCashPaymentMethodId() : 'cash';
         $totalCash = (float) ($breakdown->firstWhere('id', $cashId)['total'] ?? 0);

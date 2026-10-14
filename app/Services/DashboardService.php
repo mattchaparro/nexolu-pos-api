@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AiChannelIdentity;
 use App\Models\Business;
 use App\Models\Expense;
+use App\Models\FinancingCredit;
 use App\Models\LayawayPayment;
 use App\Models\Receivable;
 use App\Models\Sale;
@@ -82,7 +83,13 @@ class DashboardService
             ->get();
         $layawayPaymentsTotal = (float) $layawayPaymentsToday->sum('amount');
 
-        $breakdown = RevenueByPaymentMethod::combined($business, $revenueSales, $paidReceivablesToday, $servicePaymentsToday, $layawayPaymentsToday);
+        $financingPayoutsToday = FinancingCredit::query()
+            ->where('business_id', $business->id)
+            ->where('status', FinancingCredit::STATUS_PAID)
+            ->whereDate('paid_at', $today)
+            ->get();
+
+        $breakdown = RevenueByPaymentMethod::combined($business, $revenueSales, $paidReceivablesToday, $servicePaymentsToday, $layawayPaymentsToday, $financingPayoutsToday);
         $cashId = $business->resolveCashPaymentMethodId();
         $transferId = $business->resolveTransferPaymentMethodId();
         $todayCash = (float) ($breakdown->get($cashId)['total'] ?? 0);
@@ -109,7 +116,7 @@ class DashboardService
             : 0;
 
         return [
-            'today_sales' => (float) $revenueSales->sum('total') + (float) $paidReceivablesToday->sum('amount') + $servicePaymentsTotal + $layawayPaymentsTotal,
+            'today_sales' => RevenueByPaymentMethod::salesIncome($revenueSales) + (float) $paidReceivablesToday->sum('amount') + $servicePaymentsTotal + $layawayPaymentsTotal + (float) $financingPayoutsToday->sum('amount'),
             'today_count' => $revenueSales->count(),
             'today_cash' => $todayCash,
             'today_transfer' => $todayTransfer,
