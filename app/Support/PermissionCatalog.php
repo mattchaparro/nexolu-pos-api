@@ -116,7 +116,27 @@ class PermissionCatalog
             'name' => 'service_orders.manage',
             'category' => 'clientes',
             'label' => 'Gestionar órdenes de servicio',
-            'description' => 'Permite crear, editar, abonar y cancelar órdenes de servicio (reparaciones, trabajos por encargo).',
+            'description' => 'Permite crear y ver órdenes de servicio (reparaciones, trabajos por encargo), registrar abonos, cambiarlas de etapa e imprimir su recibo.',
+        ],
+        [
+            'name' => 'service_orders.edit',
+            'category' => 'clientes',
+            'label' => 'Editar órdenes de servicio',
+            'description' => 'Permite cambiar el cliente, el precio y los ítems de una orden ya creada.',
+        ],
+        [
+            'name' => 'service_orders.cancel',
+            'category' => 'clientes',
+            'label' => 'Cancelar órdenes de servicio',
+            'description' => 'Permite cancelar una orden de servicio, aunque ya tenga abonos. Otorgar con cuidado.',
+            'warning' => true,
+        ],
+        [
+            'name' => 'service_orders.delete',
+            'category' => 'clientes',
+            'label' => 'Eliminar órdenes de servicio',
+            'description' => 'Permite borrar una orden de servicio del sistema. Otorgar con cuidado.',
+            'warning' => true,
         ],
         [
             'name' => 'layaways.manage',

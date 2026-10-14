@@ -751,7 +751,17 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             // Antes del apiResource, mismo motivo que /products/summary.
             Route::get('/service-orders/summary', [ServiceOrderController::class, 'summary'])->name('service-orders.summary');
             Route::post('/service-orders/{serviceOrder}/pay', [ServiceOrderController::class, 'pay'])->name('service-orders.pay');
-            Route::post('/service-orders/{serviceOrder}/cancel', [ServiceOrderController::class, 'cancel'])->name('service-orders.cancel');
+            // Editar, cancelar y eliminar tienen permiso propio: el empleado
+            // que registra y abona una orden no necesariamente puede deshacerla.
+            Route::post('/service-orders/{serviceOrder}/cancel', [ServiceOrderController::class, 'cancel'])
+                ->middleware('permission:service_orders.cancel')
+                ->name('service-orders.cancel');
+            Route::match(['put', 'patch'], '/service-orders/{serviceOrder}', [ServiceOrderController::class, 'update'])
+                ->middleware('permission:service_orders.edit')
+                ->name('service-orders.update');
+            Route::delete('/service-orders/{serviceOrder}', [ServiceOrderController::class, 'destroy'])
+                ->middleware('permission:service_orders.delete')
+                ->name('service-orders.destroy');
             Route::patch('/service-orders/{serviceOrder}/stage', [ServiceOrderController::class, 'setStage'])->name('service-orders.stage.update');
             Route::get('/service-orders/{serviceOrder}/receipt/print', [ServiceOrderController::class, 'printReceipt'])->name('service-orders.receipt.print');
             Route::middleware('feature:cash_receipts_pdf')->group(function () {
@@ -763,7 +773,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             // metodos del controller - mismo bug ya encontrado en
             // BusinessTableController/OpenTabController.
             Route::apiResource('service-orders', ServiceOrderController::class)
-                ->only(['index', 'show', 'store', 'update', 'destroy'])
+                ->only(['index', 'show', 'store'])
                 ->parameters(['service-orders' => 'serviceOrder']);
         });
 

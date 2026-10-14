@@ -170,6 +170,54 @@ class ServiceOrderTest extends TestCase
         ])->assertStatus($expectedStatus);
     }
 
+    /** @return array{0: User, 1: int} empleado con el permiso base y una orden recien creada */
+    private function employeeWithOrder(array $extraPermissions = []): array
+    {
+        PermissionCatalog::sync();
+        $business = Business::factory()->create();
+        $employee = User::factory()->create(['business_id' => $business->id]);
+        $employee->assignRole('employee');
+        $employee->syncPermissions(['service_orders.manage', ...$extraPermissions]);
+
+        $orderId = $this->actingAs($employee, 'sanctum')->postJson('/api/v1/service-orders', [
+            'client_name' => 'Cliente de mostrador',
+            'service_name' => 'Cambio de pantalla',
+            'total' => 180000,
+        ])->assertCreated()->json('id');
+
+        return [$employee, $orderId];
+    }
+
+    public function test_the_base_permission_does_not_edit_cancel_or_delete(): void
+    {
+        [$employee, $orderId] = $this->employeeWithOrder();
+
+        $this->actingAs($employee, 'sanctum')
+            ->putJson("/api/v1/service-orders/{$orderId}", ['service_name' => 'Otro', 'total' => 1000])
+            ->assertForbidden();
+        $this->actingAs($employee, 'sanctum')->postJson("/api/v1/service-orders/{$orderId}/cancel")->assertForbidden();
+        $this->actingAs($employee, 'sanctum')->deleteJson("/api/v1/service-orders/{$orderId}")->assertForbidden();
+
+        $this->assertDatabaseHas('service_orders', ['id' => $orderId, 'service_name' => 'Cambio de pantalla']);
+        $this->actingAs($employee, 'sanctum')->getJson("/api/v1/service-orders/{$orderId}")->assertOk();
+    }
+
+    public function test_each_granular_permission_unlocks_its_own_action(): void
+    {
+        [$editor, $orderId] = $this->employeeWithOrder(['service_orders.edit']);
+        $this->actingAs($editor, 'sanctum')
+            ->putJson("/api/v1/service-orders/{$orderId}", ['service_name' => 'Cambio de batería', 'total' => 90000])
+            ->assertOk();
+        $this->actingAs($editor, 'sanctum')->postJson("/api/v1/service-orders/{$orderId}/cancel")->assertForbidden();
+
+        [$canceller, $orderId] = $this->employeeWithOrder(['service_orders.cancel']);
+        $this->actingAs($canceller, 'sanctum')->postJson("/api/v1/service-orders/{$orderId}/cancel")->assertNoContent();
+        $this->actingAs($canceller, 'sanctum')->deleteJson("/api/v1/service-orders/{$orderId}")->assertForbidden();
+
+        [$deleter, $orderId] = $this->employeeWithOrder(['service_orders.delete']);
+        $this->actingAs($deleter, 'sanctum')->deleteJson("/api/v1/service-orders/{$orderId}")->assertNoContent();
+    }
+
     public function test_creating_without_a_total_or_items_is_rejected(): void
     {
         $business = Business::factory()->create();
