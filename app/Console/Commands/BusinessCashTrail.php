@@ -46,14 +46,22 @@ class BusinessCashTrail extends Command
             return self::FAILURE;
         }
 
-        $lastClosing = CashClosing::withoutGlobalScopes()
+        $latestClosing = CashClosing::withoutGlobalScopes()
             ->where('business_id', $business->id)
             ->orderByDesc('date')
             ->first();
 
         $from = $this->option('from')
             ? Carbon::parse($this->option('from'))->startOfDay()
-            : ($lastClosing ? Carbon::parse($lastClosing->date)->addDay()->startOfDay() : now()->subDays(14)->startOfDay());
+            : ($latestClosing ? Carbon::parse($latestClosing->date)->addDay()->startOfDay() : now()->subDays(14)->startOfDay());
+
+        // El cierre que deja la caja lista justo antes del rango: con --from
+        // manual no es el mas reciente de todos, sino el anterior a esa fecha.
+        $lastClosing = CashClosing::withoutGlobalScopes()
+            ->where('business_id', $business->id)
+            ->where('date', '<', $from->toDateString())
+            ->orderByDesc('date')
+            ->first();
         $to = Carbon::parse($this->option('to') ?: now()->toDateString())->endOfDay();
 
         $this->line("<fg=cyan>=== Rastro de efectivo — {$business->name} (#{$business->id}) ===</>");
