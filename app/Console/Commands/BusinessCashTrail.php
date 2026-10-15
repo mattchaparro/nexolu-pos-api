@@ -77,6 +77,12 @@ class BusinessCashTrail extends Command
         $totalEfectivo = 0.0;
         $totalGastos = 0.0;
 
+        $closings = CashClosing::withoutGlobalScopes()
+            ->where('business_id', $business->id)
+            ->whereBetween('date', [$from->toDateString(), $to->toDateString()])
+            ->get()
+            ->keyBy(fn ($c) => $c->date->toDateString());
+
         foreach ($from->toPeriod($to, '1 day') as $day) {
             $date = $day->toDateString();
 
@@ -163,6 +169,20 @@ class BusinessCashTrail extends Command
             if ($shifts->isEmpty()) {
                 $this->line('    <fg=yellow>sin turnos abiertos este dia</>');
             }
+
+            // Un cierre de caja cuadra la caja y deja una base: lo que el dueño
+            // se llevo esa noche queda explicado, no es un salto.
+            if ($closing = $closings->get($date)) {
+                $this->line(sprintf(
+                    '    <fg=green>CIERRE</> esperaba %s · conto %s · dif %s · dejo de base %s',
+                    $this->money($closing->expected_cash),
+                    $this->money($closing->actual_cash),
+                    $this->money($closing->difference),
+                    $this->money($closing->base_for_next_day),
+                ));
+                $ultimoContado = (float) $closing->base_for_next_day;
+                $esperadoEnCaja = (float) $closing->base_for_next_day;
+            }
         }
 
         $this->newLine();
@@ -184,7 +204,7 @@ class BusinessCashTrail extends Command
             foreach ($saltos as $s) {
                 $this->line(sprintf('    %s · %s · %s → %s (%s)', $s['date'], $s['user'], $this->money($s['de']), $this->money($s['a']), $this->money($s['diff'])));
             }
-            $this->line('  <fg=gray>Cada salto es plata que entro o salio de la caja entre dos turnos sin quedar registrada (retiros del dueño, cambio, prestamos).</>');
+            $this->line('  <fg=gray>Cada salto es plata que entro o salio de la caja entre dos turnos SIN que un cierre de caja lo explique (retiros no registrados, cambio, prestamos).</>');
         }
 
         if ($sinContar > 0) {
