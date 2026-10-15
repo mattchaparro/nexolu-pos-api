@@ -8,6 +8,7 @@ use App\Models\FinancingProvider;
 use App\Models\Product;
 use App\Models\User;
 use App\Support\BusinessFeaturePresets;
+use App\Support\PermissionCatalog;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -202,18 +203,66 @@ class FinancingTest extends TestCase
         $this->actingAs($user, 'sanctum')->postJson("/api/v1/sales/{$paidSaleId}/reverse")->assertNoContent();
     }
 
-    public function test_cashiers_see_active_providers_but_cannot_register_payouts(): void
+    /** @param  list<string>  $permissions */
+    private function employee(Business $business, array $permissions): User
     {
-        [$business, , $provider] = $this->scenario();
+        PermissionCatalog::sync();
+        $employee = User::factory()->create(['business_id' => $business->id]);
+        $employee->assignRole('employee');
+        $employee->syncPermissions($permissions);
+
+        return $employee;
+    }
+
+    public function test_a_cashier_who_sells_financed_sees_active_providers_but_not_the_credits(): void
+    {
+        [$business, , $provider, $phone] = $this->scenario();
         FinancingProvider::create(['business_id' => $business->id, 'name' => 'Addi', 'is_active' => false]);
-        $cashier = User::factory()->create(['business_id' => $business->id]);
-        $cashier->assignRole('employee');
-        $credit = FinancingCredit::create(['business_id' => $business->id, 'financing_provider_id' => $provider->id, 'amount' => 1000, 'status' => 'pending']);
+        $cashier = $this->employee($business, ['financing.sell']);
 
         $this->actingAs($cashier, 'sanctum')->getJson('/api/v1/financing/providers?active_only=1')
             ->assertOk()->assertJsonCount(1)->assertJsonPath('0.name', 'Banti');
+        $this->financedSale($cashier, $provider, $phone)->assertCreated();
 
-        $this->actingAs($cashier, 'sanctum')->postJson("/api/v1/financing/credits/{$credit->id}/payout")->assertForbidden();
+        $this->actingAs($cashier, 'sanctum')->getJson('/api/v1/financing/credits')->assertForbidden();
+        $this->actingAs($cashier, 'sanctum')->getJson('/api/v1/financing/summary')->assertForbidden();
+    }
+
+    public function test_a_cashier_without_the_permission_cannot_sell_financed(): void
+    {
+        [$business, , $provider, $phone] = $this->scenario();
+        $cashier = $this->employee($business, ['clients.manage']);
+
+        $this->financedSale($cashier, $provider, $phone)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('financing');
+        $this->actingAs($cashier, 'sanctum')->getJson('/api/v1/financing/providers')->assertForbidden();
+        $this->assertDatabaseCount('financing_credits', 0);
+    }
+
+    public function test_view_only_sees_the_credits_but_cannot_register_payouts(): void
+    {
+        [$business, , $provider] = $this->scenario();
+        $credit = FinancingCredit::create(['business_id' => $business->id, 'financing_provider_id' => $provider->id, 'amount' => 1000, 'status' => 'pending']);
+        $viewer = $this->employee($business, ['financing.view']);
+
+        $this->actingAs($viewer, 'sanctum')->getJson('/api/v1/financing/credits')->assertOk()->assertJsonCount(1, 'data');
+        $this->actingAs($viewer, 'sanctum')->getJson('/api/v1/financing/summary')->assertOk();
+        $this->actingAs($viewer, 'sanctum')->postJson("/api/v1/financing/credits/{$credit->id}/payout")->assertForbidden();
+        $this->actingAs($viewer, 'sanctum')->postJson('/api/v1/financing/providers', ['name' => 'Addi'])->assertForbidden();
+    }
+
+    public function test_the_payouts_permission_registers_and_undoes_payouts(): void
+    {
+        [$business, , $provider] = $this->scenario();
+        $credit = FinancingCredit::create(['business_id' => $business->id, 'financing_provider_id' => $provider->id, 'amount' => 1000, 'status' => 'pending']);
+        $treasurer = $this->employee($business, ['financing.payouts']);
+
+        $this->actingAs($treasurer, 'sanctum')->getJson('/api/v1/financing/credits')->assertOk();
+        $this->actingAs($treasurer, 'sanctum')->postJson("/api/v1/financing/credits/{$credit->id}/payout")
+            ->assertOk()->assertJsonPath('status', 'paid');
+        $this->actingAs($treasurer, 'sanctum')->postJson("/api/v1/financing/credits/{$credit->id}/undo-payout")
+            ->assertOk()->assertJsonPath('status', 'pending');
     }
 
     public function test_the_admin_manages_providers(): void

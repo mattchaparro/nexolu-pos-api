@@ -65,6 +65,12 @@ class PermissionCatalog
             'description' => 'Permite gestionar los descuentos disponibles en el sistema.',
         ],
         [
+            'name' => 'financing.sell',
+            'category' => 'ventas',
+            'label' => 'Vender financiado',
+            'description' => 'Permite cobrar una venta con inicial y el resto financiado por Addi, Banti u otra financiadora.',
+        ],
+        [
             'name' => 'sales.reverse',
             'category' => 'ventas',
             'label' => 'Anular ventas y cuentas abiertas',
@@ -174,6 +180,19 @@ class PermissionCatalog
             'category' => 'finanzas',
             'label' => 'Gestionar todos los gastos',
             'description' => 'Permite editar y eliminar cualquier gasto, no solo los propios.',
+        ],
+        [
+            'name' => 'financing.view',
+            'category' => 'finanzas',
+            'label' => 'Ver financiados',
+            'description' => 'Permite consultar en Financiación cuánto debe cada financiadora y qué créditos están pendientes, atrasados o pagados.',
+        ],
+        [
+            'name' => 'financing.payouts',
+            'category' => 'finanzas',
+            'label' => 'Registrar pagos de financiadoras',
+            'description' => 'Permite marcar como pagado (o deshacer) el giro de una financiadora. Incluye ver los financiados.',
+            'warning' => true,
         ],
         [
             'name' => 'accounting.manage',

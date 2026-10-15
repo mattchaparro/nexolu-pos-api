@@ -697,15 +697,24 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // Venta financiada por terceros. El cajero solo lista las activas para
         // cobrar; registrar giros y administrar financiadoras es del dueño.
         Route::middleware('feature:financing')->prefix('financing')->name('financing.')->group(function () {
-            Route::get('/providers', [FinancingController::class, 'providers'])->name('providers.index');
+            Route::get('/providers', [FinancingController::class, 'providers'])
+                ->middleware('permission:financing.sell,financing.view,financing.payouts')
+                ->name('providers.index');
 
+            Route::middleware('permission:financing.view,financing.payouts')->group(function () {
+                Route::get('/credits', [FinancingController::class, 'credits'])->name('credits.index');
+                Route::get('/summary', [FinancingController::class, 'summary'])->name('summary');
+            });
+
+            Route::middleware('permission:financing.payouts')->group(function () {
+                Route::post('/credits/{credit}/payout', [FinancingController::class, 'registerPayout'])->name('credits.payout');
+                Route::post('/credits/{credit}/undo-payout', [FinancingController::class, 'undoPayout'])->name('credits.undo-payout');
+            });
+
+            // Las financiadoras en si (nombres, plazos) son configuracion del dueño.
             Route::middleware('business-admin')->group(function () {
                 Route::post('/providers', [FinancingController::class, 'storeProvider'])->name('providers.store');
                 Route::put('/providers/{provider}', [FinancingController::class, 'updateProvider'])->name('providers.update');
-                Route::get('/credits', [FinancingController::class, 'credits'])->name('credits.index');
-                Route::get('/summary', [FinancingController::class, 'summary'])->name('summary');
-                Route::post('/credits/{credit}/payout', [FinancingController::class, 'registerPayout'])->name('credits.payout');
-                Route::post('/credits/{credit}/undo-payout', [FinancingController::class, 'undoPayout'])->name('credits.undo-payout');
             });
         });
 

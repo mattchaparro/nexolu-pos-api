@@ -87,6 +87,8 @@ class StoreSaleRequest extends FormRequest
             if ($isFinanced) {
                 if (! $this->user()?->business?->hasFeature('financing')) {
                     $validator->errors()->add('financing', 'La venta financiada no está habilitada para este negocio.');
+                } elseif (! $this->user()?->hasBusinessPermission('financing.sell')) {
+                    $validator->errors()->add('financing', 'No tienes permiso para vender financiado.');
                 }
                 if ($hasSplits) {
                     $validator->errors()->add('financing', 'Una venta financiada se paga con una sola inicial, sin dividir el pago.');
