@@ -32,7 +32,8 @@ class SubscriptionPricingService
      *     is_promo_eligible: bool,
      *     promo_discount_cop: int,
      *     plan_after_promo_cop: int,
-     *     total_cop: int
+     *     total_cop: int,
+     *     annual: array{discount_percent: int, total_cop: int, monthly_equivalent_cop: int, savings_cop: int}
      * }
      */
     public function breakdown(Business $business): array
@@ -61,6 +62,42 @@ class SubscriptionPricingService
             'promo_discount_cop' => max(0, $planBase - $planAfterPromo),
             'plan_after_promo_cop' => $planAfterPromo,
             'total_cop' => $planAfterPromo,
+            'annual' => $this->annualFor($planBase),
+        ];
+    }
+
+    /**
+     * Descuento del pago anual sobre 12 mensualidades. Configurable por
+     * superadmin (`plans.annual_discount_percent`), igual que en el legacy.
+     */
+    public function annualDiscountPercent(): int
+    {
+        return (int) SystemConfigStore::get('plans.annual_discount_percent', '15');
+    }
+
+    /** Monto a cobrar por un año. Atajo sobre breakdown(). */
+    public function annualTotalCop(Business $business): int
+    {
+        return $this->breakdown($business)['annual']['total_cop'];
+    }
+
+    /**
+     * El anual se calcula sobre la mensualidad base (con precio
+     * personalizado si lo hay), no sobre la promo: la promo es para el
+     * primer mes de quien paga mes a mes y no se suma al descuento anual.
+     *
+     * @return array{discount_percent: int, total_cop: int, monthly_equivalent_cop: int, savings_cop: int}
+     */
+    private function annualFor(int $planBase): array
+    {
+        $discount = max(0, min(100, $this->annualDiscountPercent()));
+        $total = (int) round($planBase * 12 * (100 - $discount) / 100);
+
+        return [
+            'discount_percent' => $discount,
+            'total_cop' => $total,
+            'monthly_equivalent_cop' => (int) round($total / 12),
+            'savings_cop' => $planBase * 12 - $total,
         ];
     }
 

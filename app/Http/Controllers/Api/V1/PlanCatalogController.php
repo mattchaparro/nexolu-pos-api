@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Services\SubscriptionPricingService;
 use App\Support\BusinessFeaturePresets;
-use App\Support\SystemConfigStore;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -32,7 +31,7 @@ class PlanCatalogController extends Controller
                 'full' => ['price_cop' => BusinessFeaturePresets::planPriceCop('full')],
             ],
             'trial_days' => Business::TRIAL_DAYS,
-            'annual_discount_percent' => (int) SystemConfigStore::get('plans.annual_discount_percent', '15'),
+            'annual_discount_percent' => $pricing->annualDiscountPercent(),
             'promo' => $pricing->currentPromo(),
         ]);
     }

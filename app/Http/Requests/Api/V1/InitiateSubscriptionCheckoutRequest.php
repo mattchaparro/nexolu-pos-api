@@ -22,6 +22,8 @@ class InitiateSubscriptionCheckoutRequest extends FormRequest
             // 'widget' (default, legado) o 'api' (tokenizacion/Nequi/PSE/
             // Boton Bancolombia embebidos - ver docs/PLAN_METODOS_PAGO_ALTERNOS.md).
             'flow' => ['sometimes', 'string', 'in:widget,api'],
+            // Mensual (default) o anual con descuento.
+            'cycle' => ['sometimes', 'string', 'in:monthly,annual'],
         ];
     }
 }

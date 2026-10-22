@@ -49,6 +49,7 @@ class SubscriptionController extends Controller
                 $request->user(),
                 $request->validated('redirect_url'),
                 $request->validated('flow') ?? 'widget',
+                $request->validated('cycle') ?? SubscriptionService::CYCLE_MONTHLY,
             );
         } catch (RuntimeException $e) {
             return response()->json(['error' => $e->getMessage()], 502);

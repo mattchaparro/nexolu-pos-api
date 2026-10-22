@@ -236,7 +236,8 @@ class PaymentsCoreWebhookController extends Controller
                 'period_label' => now()->format('Y-m'),
                 'paid_at' => now()->toDateString(),
                 'payment_method' => $order->provider,
-                'notes' => 'Pago automatico via Payments Core - Transaccion: '.($payload['provider_transaction_id'] ?? $payload['transaction_id'] ?? ''),
+                'notes' => ($order->subscription_days >= 365 ? 'Plan anual. ' : '')
+                    .'Pago automatico via Payments Core - Transaccion: '.($payload['provider_transaction_id'] ?? $payload['transaction_id'] ?? ''),
                 'days_granted' => $order->subscription_days,
                 'recorded_by_user_id' => null,
             ]);

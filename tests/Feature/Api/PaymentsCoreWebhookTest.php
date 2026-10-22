@@ -225,6 +225,37 @@ class PaymentsCoreWebhookTest extends TestCase
         ]);
     }
 
+    public function test_approved_annual_order_grants_a_year(): void
+    {
+        $business = Business::factory()->create(['paid_until' => null]);
+        $order = SubscriptionCheckoutOrder::factory()->for($business)->create([
+            'status' => 'pending',
+            'amount_cop' => 663000,
+            'subscription_days' => 365,
+            'provider' => 'wompi',
+        ]);
+
+        $this->postSigned([
+            'event' => 'payment.approved',
+            'integration' => 'pos-nexolu',
+            'transaction_id' => 'core-tx-anual',
+            'reference' => $order->order_key,
+            'provider' => 'wompi',
+            'provider_transaction_id' => 'wompi-tx-anual',
+            'amount_cop' => 663000,
+            'currency' => 'COP',
+            'status' => 'approved',
+            'occurred_at' => now()->toIso8601String(),
+            'metadata' => ['business_id' => (string) $business->id],
+        ])->assertOk();
+
+        $this->assertEqualsWithDelta(365, now()->diffInDays($business->fresh()->paid_until), 1);
+
+        $payment = SaasSubscriptionPayment::where('business_id', $business->id)->sole();
+        $this->assertSame(365, (int) $payment->days_granted);
+        $this->assertStringStartsWith('Plan anual.', $payment->notes);
+    }
+
     public function test_approved_event_is_idempotent_against_retries(): void
     {
         $business = Business::factory()->create(['paid_until' => null]);

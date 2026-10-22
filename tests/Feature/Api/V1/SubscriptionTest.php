@@ -6,6 +6,7 @@ use App\Models\Business;
 use App\Models\SaasSubscriptionPayment;
 use App\Models\SubscriptionCheckoutOrder;
 use App\Models\User;
+use App\Support\SystemConfigStore;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -42,7 +43,7 @@ class SubscriptionTest extends TestCase
 
         $response = $this->actingAs($user, 'sanctum')->getJson('/api/v1/subscription/status');
 
-        // Sin pagos registrados y ya vencida la promo (2 meses) por tiempo
+        // Sin pagos registrados y ya vencida la promo (1 mes) por tiempo
         // transcurrido desde el fin del trial: precio pleno, sin descuento.
         $response->assertOk()
             ->assertJsonPath('status', 'paid')
@@ -140,6 +141,78 @@ class SubscriptionTest extends TestCase
                 && $request['customer']['email'] === 'admin@nexolu.co'
                 && $request['metadata']['business_id'] === $business->id;
         });
+    }
+
+    public function test_annual_checkout_charges_twelve_months_with_the_discount_and_grants_a_year(): void
+    {
+        Http::fake([
+            'payments-core.test/*' => Http::response([
+                'transaction_id' => 'core-tx-anual',
+                'reference' => 'pay_core_anual',
+                'provider' => 'wompi',
+                'status' => 'pending',
+                'checkout' => ['public_key' => 'pub_test', 'amount_in_cents' => 66300000, 'reference' => 'pay_core_anual', 'integrity_signature' => 'sig'],
+            ], 201),
+        ]);
+
+        // Negocio nuevo, con la promo del primer mes vigente: el anual NO la
+        // suma, se calcula sobre la mensualidad plena. 65000 x 12 - 15% = 663000.
+        $business = Business::factory()->create(['subscription_plan' => 'basic', 'custom_price_cop' => null]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/subscription/checkout', [
+            'redirect_url' => 'https://pos.nexolu.co/suscripcion',
+            'cycle' => 'annual',
+        ])->assertCreated()
+            ->assertJsonPath('amount_cop', 663000)
+            ->assertJsonPath('cycle', 'annual');
+
+        $this->assertDatabaseHas('subscription_checkout_orders', [
+            'business_id' => $business->id,
+            'order_key' => 'pay_core_anual',
+            'amount_cop' => 663000,
+            'subscription_days' => 365,
+        ]);
+
+        Http::assertSent(fn ($request) => $request['amount_cop'] === 663000
+            && $request['metadata']['subscription_days'] === 365
+            && $request['metadata']['cycle'] === 'annual');
+    }
+
+    public function test_status_includes_the_annual_price(): void
+    {
+        $business = Business::factory()->create(['subscription_plan' => 'full', 'custom_price_cop' => null]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+
+        // 85000 x 12 = 1.020.000; con 15% = 867.000, o sea 72.250 al mes.
+        $this->actingAs($user, 'sanctum')->getJson('/api/v1/subscription/status')
+            ->assertOk()
+            ->assertJsonPath('pricing.annual.discount_percent', 15)
+            ->assertJsonPath('pricing.annual.total_cop', 867000)
+            ->assertJsonPath('pricing.annual.monthly_equivalent_cop', 72250)
+            ->assertJsonPath('pricing.annual.savings_cop', 153000);
+    }
+
+    public function test_annual_price_uses_the_custom_price_and_the_superadmin_discount(): void
+    {
+        SystemConfigStore::putMany(['plans.annual_discount_percent' => 20]);
+        $business = Business::factory()->create(['subscription_plan' => 'basic', 'custom_price_cop' => 50000]);
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+
+        $this->actingAs($user, 'sanctum')->getJson('/api/v1/subscription/status')
+            ->assertJsonPath('pricing.annual.discount_percent', 20)
+            ->assertJsonPath('pricing.annual.total_cop', 480000);
+    }
+
+    public function test_initiate_rejects_an_unknown_cycle(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id, 'is_business_owner' => true]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/subscription/checkout', [
+            'redirect_url' => 'https://pos.nexolu.co/suscripcion',
+            'cycle' => 'weekly',
+        ])->assertUnprocessable()->assertJsonValidationErrors('cycle');
     }
 
     public function test_initiating_checkout_deletes_the_order_when_payments_core_is_unreachable(): void

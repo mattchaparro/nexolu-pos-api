@@ -18,8 +18,15 @@ use RuntimeException;
  */
 class SubscriptionService
 {
-    /** Dias que otorga un ciclo de pago. Igual al default de Business::activate(). */
-    private const SUBSCRIPTION_DAYS = 30;
+    public const CYCLE_MONTHLY = 'monthly';
+
+    public const CYCLE_ANNUAL = 'annual';
+
+    /** Dias que otorga un pago mensual. Igual al default de Business::activate(). */
+    private const MONTHLY_DAYS = 30;
+
+    /** Dias que otorga un pago anual. */
+    private const ANNUAL_DAYS = 365;
 
     public function __construct(
         private PaymentsCoreService $paymentsCore,
@@ -36,11 +43,19 @@ class SubscriptionService
      * responde el Core, antes de que el webhook de confirmacion pueda
      * llegar.
      *
-     * @return array{order_key: string, amount_cop: int, checkout: array<string, mixed>, payment_init: array<string, mixed>|null}
+     * `$cycle` decide monto y dias: mensual (con la promo si aplica) o
+     * anual (12 mensualidades con el descuento anual, 365 dias). El webhook
+     * activa con los dias que quedan guardados en la orden.
+     *
+     * @return array{order_key: string, amount_cop: int, cycle: string, checkout: array<string, mixed>, payment_init: array<string, mixed>|null}
      */
-    public function initiateCheckout(Business $business, User $user, string $redirectUrl, string $flow = 'widget'): array
+    public function initiateCheckout(Business $business, User $user, string $redirectUrl, string $flow = 'widget', string $cycle = self::CYCLE_MONTHLY): array
     {
-        $amount = $this->pricing->totalCop($business);
+        $isAnnual = $cycle === self::CYCLE_ANNUAL;
+        $amount = $isAnnual
+            ? $this->pricing->annualTotalCop($business)
+            : $this->pricing->totalCop($business);
+        $days = $isAnnual ? self::ANNUAL_DAYS : self::MONTHLY_DAYS;
 
         if ($amount <= 0) {
             throw ValidationException::withMessages([
@@ -52,7 +67,7 @@ class SubscriptionService
             'business_id' => $business->id,
             'order_key' => 'pending-'.(string) Str::ulid(),
             'amount_cop' => $amount,
-            'subscription_days' => self::SUBSCRIPTION_DAYS,
+            'subscription_days' => $days,
             'status' => 'pending',
             'provider' => 'wompi',
         ]);
@@ -62,7 +77,7 @@ class SubscriptionService
                 amountCop: $amount,
                 customer: ['email' => $user->email, 'full_name' => $user->name],
                 redirectUrl: $redirectUrl,
-                metadata: ['business_id' => $business->id, 'subscription_days' => self::SUBSCRIPTION_DAYS],
+                metadata: ['business_id' => $business->id, 'subscription_days' => $days, 'cycle' => $cycle],
                 flow: $flow,
             );
         } catch (\Throwable $e) {
@@ -82,6 +97,7 @@ class SubscriptionService
         return [
             'order_key' => $order->order_key,
             'amount_cop' => $amount,
+            'cycle' => $cycle,
             'checkout' => $intent['checkout'] ?? [],
             // Solo viene poblado si se pidio flow="api" - lo necesita el
             // frontend para tokenizar tarjeta directo con Wompi (nunca con
