@@ -10,6 +10,8 @@ return [
     'pricing' => [
         'monthly_cop' => 65000,
         'promo_discount_percent' => 40,
-        'promo_months' => 2,
+        // 1 mes, como el legacy en produccion (system_configs alla decia 1;
+        // este default decia 2 y el POS nuevo, sin esa fila, cobraba 2).
+        'promo_months' => 1,
     ],
 ];
