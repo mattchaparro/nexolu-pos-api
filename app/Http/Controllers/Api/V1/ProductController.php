@@ -15,6 +15,7 @@ use App\Support\AuditLogger;
 use App\Support\BranchContext;
 use App\Support\BranchFilter;
 use App\Support\ProductAvailability;
+use App\Support\SellableProductPayload;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -119,11 +120,21 @@ class ProductController extends Controller
      * porqué (bug real: con más de 200 productos, los que empiezan por
      * "Z" nunca llegaban a Vender) y el cache de 10 min.
      */
-    public function sellable(Request $request): AnonymousResourceCollection
+    /**
+     * El catalogo de Vender. No usa ProductResource: con mil productos su
+     * maquinaria tardaba 4,2 s por peticion (medido en Central Cell,
+     * 21-oct-2026) y esto se pide cada vez que alguien entra a Vender. El
+     * contrato es identico, ver SellableProductPayload.
+     */
+    public function sellable(Request $request): JsonResponse
     {
-        return ProductResource::collection(
-            ProductAvailability::forBusiness($request->user()->business)
-        );
+        $business = $request->user()->business;
+
+        return response()->json(SellableProductPayload::forCatalog(
+            ProductAvailability::forBusiness($business),
+            $business,
+            $request->user(),
+        ));
     }
 
     /** Dias hacia atras que definen "lo que se vende seguido" hoy. */

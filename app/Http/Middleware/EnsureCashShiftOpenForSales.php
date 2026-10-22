@@ -15,6 +15,12 @@ use Symfony\Component\HttpFoundation\Response;
  * de roles no maneja turno) y solo si el negocio tiene el modulo cash_closing
  * habilitado. El dueño/admin queda exento: el legacy asume que el turno es un
  * control sobre el cajero, no sobre quien ya es responsable del negocio.
+ *
+ * Esa exencion se puede quitar por negocio con la funcion
+ * `admin_shift_required`. Nace de un caso real (Central Cell, 18-oct-2026):
+ * el dueño cerro la caja a media mañana, eso bloqueo abrir turnos el resto
+ * del dia, y termino vendiendo $2.278.000 desde su propio perfil - efectivo
+ * que entro a la caja sin quedar en ningun turno ni en el cierre ya hecho.
  */
 class EnsureCashShiftOpenForSales
 {
