@@ -41,14 +41,7 @@ class SubscriptionPricingService
         $hasCustomPrice = (int) $business->custom_price_cop > 0;
         $planBase = $hasCustomPrice ? (int) $business->custom_price_cop : $planStandard;
 
-        $promoDiscountPercent = (int) SystemConfigStore::get(
-            'marketing.promo_discount_percent',
-            (string) (config('marketing.pricing.promo_discount_percent') ?? 0)
-        );
-        $promoMonths = (int) SystemConfigStore::get(
-            'marketing.promo_months',
-            (string) (config('marketing.pricing.promo_months') ?? 0)
-        );
+        ['discount_percent' => $promoDiscountPercent, 'months' => $promoMonths] = $this->currentPromo();
         $paidCycles = $business->subscriptionPromoCyclesConsumed();
         $isPromoEligible = $promoMonths > 0 && $promoDiscountPercent > 0 && $paidCycles < $promoMonths;
 
@@ -68,6 +61,27 @@ class SubscriptionPricingService
             'promo_discount_cop' => max(0, $planBase - $planAfterPromo),
             'plan_after_promo_cop' => $planAfterPromo,
             'total_cop' => $planAfterPromo,
+        ];
+    }
+
+    /**
+     * La promo vigente para suscripciones nuevas: porcentaje de descuento y
+     * cuantos meses dura. La lee el cobro y tambien el home publico, para que
+     * lo anunciado y lo cobrado salgan de la misma configuracion.
+     *
+     * @return array{discount_percent: int, months: int}
+     */
+    public function currentPromo(): array
+    {
+        return [
+            'discount_percent' => (int) SystemConfigStore::get(
+                'marketing.promo_discount_percent',
+                (string) (config('marketing.pricing.promo_discount_percent') ?? 0)
+            ),
+            'months' => (int) SystemConfigStore::get(
+                'marketing.promo_months',
+                (string) (config('marketing.pricing.promo_months') ?? 0)
+            ),
         ];
     }
 
