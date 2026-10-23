@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Product;
 use App\Models\Sale;
@@ -110,6 +111,38 @@ class FrequentProductsTest extends TestCase
 
         $response->assertOk();
         $this->assertSame([$normal->id], $response->json('product_ids'));
+    }
+
+    public function test_excludes_deleted_products(): void
+    {
+        $vigente = Product::factory()->create(['business_id' => $this->business->id]);
+        $borrado = Product::factory()->create(['business_id' => $this->business->id]);
+
+        $this->sell($vigente, 1);
+        $this->sell($borrado, 50);
+        $borrado->delete();
+
+        $this->actingAs($this->cashier, 'sanctum')
+            ->getJson('/api/v1/products/frequent')
+            ->assertOk()
+            ->assertExactJson(['product_ids' => [$vigente->id]]);
+    }
+
+    public function test_only_counts_sales_of_the_active_branch(): void
+    {
+        $centro = Branch::factory()->for($this->business)->main()->create();
+        $norte = Branch::factory()->for($this->business)->create();
+        $delCentro = Product::factory()->create(['business_id' => $this->business->id]);
+        $delNorte = Product::factory()->create(['business_id' => $this->business->id]);
+
+        $this->sell($delCentro, 2, ['branch_id' => $centro->id]);
+        $this->sell($delNorte, 9, ['branch_id' => $norte->id]);
+
+        $this->actingAs($this->cashier, 'sanctum')
+            ->withHeader('X-Branch-Id', (string) $centro->id)
+            ->getJson('/api/v1/products/frequent')
+            ->assertOk()
+            ->assertExactJson(['product_ids' => [$delCentro->id]]);
     }
 
     public function test_a_business_without_sales_gets_an_empty_list(): void

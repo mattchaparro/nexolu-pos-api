@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\Telemetry;
 use Closure;
 use Illuminate\Http\Request;
 use Sentry\State\Scope;
@@ -26,9 +27,13 @@ class SentryBusinessContext
         $user = $request->user();
 
         if ($user) {
-            configureScope(function (Scope $scope) use ($user) {
+            // $user->business es una consulta (la primera vez en la peticion);
+            // medida aparte para que no quede escondida en middleware.handle.
+            $business = Telemetry::span('middleware.business', 'Cargar el negocio del usuario', fn () => $user->business);
+
+            configureScope(function (Scope $scope) use ($user, $business) {
                 $scope->setTag('business_id', (string) ($user->business_id ?? 'none'));
-                $scope->setTag('business_name', $user->business?->name ?? 'none');
+                $scope->setTag('business_name', $business?->name ?? 'none');
                 $scope->setUser(['id' => $user->id]);
             });
         }

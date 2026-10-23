@@ -14,6 +14,7 @@ use App\Services\CashShiftService;
 use App\Services\GatewayReconciliationService;
 use App\Support\AuditLogger;
 use App\Support\BranchContext;
+use App\Support\Telemetry;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -155,6 +156,10 @@ class CashClosingController extends Controller
     public function store(StoreCashClosingRequest $request): CashClosingResource
     {
         $closing = $this->cashClosingService->closeCash($request->user(), $request->validated());
+        // La diferencia (contado - esperado) por negocio: un descuadre que se
+        // repite se ve en la grafica antes de que el dueño lo reporte.
+        Telemetry::count('cash.closing.created', 1, ['business_id' => (string) $closing->business_id]);
+        Telemetry::distribution('cash.closing.difference', (float) $closing->difference, ['business_id' => (string) $closing->business_id]);
 
         AuditLogger::log($request->user()->hasRole('admin') ? 'cash_closing.created' : 'cash_closing.created.employee', [
             'cash_closing_id' => $closing->id,

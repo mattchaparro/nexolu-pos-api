@@ -12,9 +12,12 @@ use App\Models\Sale;
 use App\Models\StockMovement;
 use App\Models\User;
 use App\Services\OnlineOrderPaymentService;
+use App\Services\OrderService;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -214,6 +217,26 @@ class StorefrontOrderPaymentSyncTest extends TestCase
      * cargo antes, con `status = pending`. Con la guarda leyendo ese estado
      * en memoria, los dos pasaban: dos ventas y el stock descontado doble.
      */
+    public function test_si_no_se_puede_facturar_lo_reporta_y_deja_el_pedido_pendiente(): void
+    {
+        Exceptions::fake();
+        $business = $this->businessConTienda();
+        $order = $this->pedidoPendiente($business);
+
+        // Cualquier fallo al facturar (stock, un medio de pago mal
+        // configurado...): la plata ya se cobro, asi que no se rechaza, pero
+        // tiene que llegar a Sentry - antes solo quedaba en un Log::error que
+        // no salia del servidor.
+        $this->mock(OrderService::class, fn ($mock) => $mock->shouldReceive('transition')
+            ->andThrow(new RuntimeException('Sin stock para facturar')));
+
+        $this->assertFalse(app(OnlineOrderPaymentService::class)->approve($order));
+
+        Exceptions::assertReported(fn (RuntimeException $e) => $e->getMessage() === 'Sin stock para facturar');
+        $this->assertSame(Order::STATUS_PENDING, $order->fresh()->status);
+        $this->assertSame(0, Sale::withoutGlobalScopes()->where('business_id', $business->id)->count());
+    }
+
     public function test_dos_aprobaciones_del_mismo_pedido_crean_una_sola_venta(): void
     {
         $business = $this->businessConTienda();

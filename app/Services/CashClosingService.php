@@ -13,6 +13,7 @@ use App\Models\Sale;
 use App\Models\ServicePayment;
 use App\Models\User;
 use App\Support\RevenueByPaymentMethod;
+use App\Support\Telemetry;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
@@ -77,6 +78,19 @@ class CashClosingService
      * individual). Sin $userId, se suma todo el negocio (uso: cierre diario).
      */
     public function calculateTotalsBetween(Carbon $from, Carbon $to, int $businessId, float $openingCash = 0, ?int $userId = null): array
+    {
+        // La usan el cierre de caja, el de turno y la vista previa de ambos:
+        // suma ventas, abonos, gastos y movimientos de la ventana.
+        return Telemetry::span(
+            'cash.totals',
+            'Totales de caja de una ventana',
+            fn () => $this->calculateTotalsBetweenUntraced($from, $to, $businessId, $openingCash, $userId),
+            ['cash.business_id' => $businessId, 'cash.per_user' => $userId !== null, 'cash.days' => (int) $from->diffInDays($to) + 1],
+        );
+    }
+
+    /** @return array<string, mixed> */
+    private function calculateTotalsBetweenUntraced(Carbon $from, Carbon $to, int $businessId, float $openingCash = 0, ?int $userId = null): array
     {
         // Por closed_at Y closed_by_user_id: el efectivo esperado de un turno
         // es lo que ese cajero COBRO en su ventana, no lo que abrio. Filtrar

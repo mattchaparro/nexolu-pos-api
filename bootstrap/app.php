@@ -8,6 +8,7 @@ use App\Http\Middleware\EnsureCashShiftOpenForSales;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\EnsureValidIaCoreKey;
 use App\Http\Middleware\EnsureValidLegacyAdminKey;
+use App\Http\Middleware\RecordApiMetrics;
 use App\Http\Middleware\ResolveBranch;
 use App\Http\Middleware\ResolveStorefrontTenant;
 use App\Http\Middleware\SentryBusinessContext;
@@ -29,6 +30,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // redirect guests to, so unauthenticated requests must always fall
         // through to a JSON 401 instead of Laravel's default HTML redirect.
         $middleware->redirectGuestsTo(fn () => null);
+
+        // Primero del grupo api: mide la peticion completa (ver RecordApiMetrics).
+        $middleware->api(prepend: [RecordApiMetrics::class]);
 
         $middleware->alias([
             'feature' => EnsureBusinessFeatureEnabled::class,

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Business;
 use App\Models\Order;
+use App\Support\Telemetry;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -97,6 +98,13 @@ class OnlineOrderPaymentService
                 'order_id' => $order->id,
                 'message' => $e->getMessage(),
             ]);
+
+            // Ademas de loguearlo, se reporta: es plata cobrada sin venta
+            // registrada. Solo con el log no llegaba a Sentry (los logs
+            // estaban apagados) y nadie se enteraba hasta que el comerciante
+            // lo notara en la bandeja.
+            report($e);
+            Telemetry::count('online_order.invoice_failed', 1, ['business_id' => (string) $order->business_id]);
 
             return false;
         }

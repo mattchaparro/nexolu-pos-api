@@ -11,6 +11,7 @@ use App\Models\CashShift;
 use App\Services\CashClosingService;
 use App\Services\CashShiftService;
 use App\Support\AuditLogger;
+use App\Support\Telemetry;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
@@ -116,6 +117,8 @@ class CashShiftController extends Controller
             (float) $request->validated('counted_cash'),
             $request->validated('closing_note')
         );
+        Telemetry::count('cash.shift.closed', 1, ['business_id' => (string) $shift->business_id]);
+        Telemetry::distribution('cash.shift.difference', (float) $shift->difference, ['business_id' => (string) $shift->business_id]);
 
         AuditLogger::log('cash_shift.closed', [
             'cash_shift_id' => $shift->id,

@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\Branch;
 use App\Support\BranchContext;
+use App\Support\Telemetry;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -45,50 +46,49 @@ class ResolveBranch
             return $next($request);
         }
 
-        $requested = trim((string) $request->header(self::HEADER, ''));
+        // Corre en cada peticion autenticada: su costo se paga en todas las
+        // pantallas, por eso va medido aparte (span middleware.branch).
+        Telemetry::span('middleware.branch', 'Resolver la sede de la peticion', function () use ($request, $user) {
+            $requested = trim((string) $request->header(self::HEADER, ''));
 
-        if ($requested !== '' && strcasecmp($requested, self::ALL) === 0) {
-            abort_unless(
-                $user->canManageAllBranches(),
-                403,
-                'Solo un administrador puede ver la informacion consolidada de todas las sedes.'
-            );
+            if ($requested !== '' && strcasecmp($requested, self::ALL) === 0) {
+                abort_unless(
+                    $user->canManageAllBranches(),
+                    403,
+                    'Solo un administrador puede ver la informacion consolidada de todas las sedes.'
+                );
 
-            BranchContext::setAllBranches();
+                BranchContext::setAllBranches();
 
-            return $next($request);
-        }
+                return;
+            }
 
-        if ($requested !== '') {
-            abort_unless(ctype_digit($requested), 400, 'El identificador de sede no es valido.');
+            if ($requested !== '') {
+                abort_unless(ctype_digit($requested), 400, 'El identificador de sede no es valido.');
 
-            $branch = Branch::withoutGlobalScope('business')
-                ->where('business_id', $user->business_id)
-                ->find((int) $requested);
+                $branch = Branch::withoutGlobalScope('business')
+                    ->where('business_id', $user->business_id)
+                    ->find((int) $requested);
 
-            abort_unless(
-                $branch && $branch->is_active && $user->canAccessBranch($branch),
-                403,
-                'No tienes acceso a esa sede.'
-            );
+                abort_unless(
+                    $branch && $branch->is_active && $user->canAccessBranch($branch),
+                    403,
+                    'No tienes acceso a esa sede.'
+                );
 
-            BranchContext::set($branch);
+                BranchContext::set($branch);
 
-            return $next($request);
-        }
+                return;
+            }
 
-        if ($branch = $this->fallbackBranch($user)) {
-            BranchContext::set($branch);
-        }
+            if ($branch = $this->fallbackBranch($user)) {
+                BranchContext::set($branch);
+            }
+        });
 
         return $next($request);
     }
 
-    /**
-     * Suelta la sede al terminar. Misma razon que ResolveStorefrontTenant:
-     * bajo Octane o en un worker el contenedor sobrevive al request, y una
-     * sede colgada haria que lo siguiente consultara como si fuera ese local.
-     */
     public function terminate(Request $request, Response $response): void
     {
         BranchContext::forget();

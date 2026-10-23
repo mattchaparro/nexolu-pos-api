@@ -181,14 +181,30 @@ class ProductAvailability
             // atributos crudos (array) y se rehidratan con newFromBuilder(),
             // igual que hace Eloquent internamente al leer de la BD - sin
             // volver a golpear la base en cada hit de cache.
+            $cacheHit = true;
             $rows = Cache::remember(
                 self::cacheKey($business->id),
                 now()->addMinutes(10),
-                fn () => self::toCacheableArray(self::fetchSellableProducts($business, $ingredientsEnabled, $variantsEnabled))
+                function () use ($business, $ingredientsEnabled, $variantsEnabled, &$cacheHit) {
+                    $cacheHit = false;
+
+                    return self::toCacheableArray(self::fetchSellableProducts($business, $ingredientsEnabled, $variantsEnabled));
+                }
             );
+            Telemetry::annotate(['catalog.cacheable' => true, 'catalog.cache_hit' => $cacheHit]);
 
             return self::fromCacheableArray($rows);
         }
+
+        // Por que no se cachea: es lo primero que hay que mirar si el
+        // catalogo de un negocio se pone lento.
+        Telemetry::annotate([
+            'catalog.cacheable' => false,
+            'catalog.ingredients' => $ingredientsEnabled,
+            'catalog.variants' => $variantsEnabled,
+            'catalog.option_groups' => $hasOptionGroups,
+            'catalog.combos' => $hasCombos,
+        ]);
 
         return self::fetchSellableProducts($business, $ingredientsEnabled, $variantsEnabled);
     }

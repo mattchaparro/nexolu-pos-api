@@ -16,6 +16,7 @@ use App\Support\BranchContext;
 use App\Support\BranchFilter;
 use App\Support\ProductAvailability;
 use App\Support\SellableProductPayload;
+use App\Support\Telemetry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -130,11 +131,25 @@ class ProductController extends Controller
     {
         $business = $request->user()->business;
 
-        return response()->json(SellableProductPayload::forCatalog(
-            ProductAvailability::forBusiness($business),
-            $business,
-            $request->user(),
-        ));
+        // Lo que pinta la pantalla de Vender: se pide al entrar y despues de
+        // cada venta o cambio en una cuenta abierta. Dos spans para separar
+        // "traer de la base o del cache" de "armar el JSON".
+        $products = Telemetry::span(
+            'catalog.load',
+            'Productos vendibles del negocio',
+            fn () => ProductAvailability::forBusiness($business),
+        );
+
+        $payload = Telemetry::span(
+            'catalog.serialize',
+            'Armar el JSON del catalogo',
+            fn () => SellableProductPayload::forCatalog($products, $business, $request->user()),
+            ['catalog.products' => $products->count()],
+        );
+
+        Telemetry::distribution('catalog.products', $products->count(), ['business_id' => (string) $business->id]);
+
+        return response()->json($payload);
     }
 
     /** Dias hacia atras que definen "lo que se vende seguido" hoy. */
@@ -161,29 +176,39 @@ class ProductController extends Controller
     {
         $business = $request->user()->business;
 
-        $ids = SaleItem::query()
-            ->whereHas('sale', function ($query) use ($business) {
-                $query->where('business_id', $business->id)
-                    ->where('status', 'closed')
-                    ->where('is_non_revenue', false)
-                    ->where('is_credit', false)
-                    ->where('closed_at', '>=', now()->subDays(self::FREQUENT_WINDOW_DAYS));
+        // Parte de las ventas del negocio y llega a sus lineas con un JOIN.
+        // Antes era SaleItem::whereHas('sale'): sale_items no tiene
+        // business_id, asi que MySQL recorria las lineas de TODOS los
+        // negocios (con la historia del legacy) y por cada una buscaba su
+        // venta - 1,4 a 2,6 s en produccion (oct-2026), y empeoraba con cada
+        // venta de cualquier negocio.
+        $ids = Telemetry::span('catalog.frequent', 'Productos mas vendidos (30 dias)', function () use ($business) {
+            $query = SaleItem::query()
+                ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+                ->join('products', 'products.id', '=', 'sale_items.product_id')
+                ->where('sales.business_id', $business->id)
+                ->where('sales.status', 'closed')
+                ->where('sales.is_non_revenue', false)
+                ->where('sales.is_credit', false)
+                ->where('sales.closed_at', '>=', now()->subDays(self::FREQUENT_WINDOW_DAYS))
+                ->where('products.is_single_sale', false)
+                ->whereNull('products.deleted_at');
 
-                // whereHas arma una subconsulta sobre `sales` que NO pasa por
-                // el global scope de sede, asi que la sede se aplica a mano -
-                // mismo cuidado que TopProductsCapability. Sin esto, un
-                // negocio multisede veria la rotacion de todas las sedes
-                // mezclada en el mostrador de una sola.
-                BranchFilter::apply($query, 'sales');
-            })
-            ->whereHas('product', fn ($query) => $query->where('is_single_sale', false))
-            ->selectRaw('product_id, SUM(quantity) as units')
-            ->groupBy('product_id')
-            ->orderByDesc('units')
-            ->limit(self::FREQUENT_LIMIT)
-            ->pluck('product_id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
+            // El JOIN no pasa por el global scope de sede de Sale: la sede se
+            // aplica a mano - mismo cuidado que TopProductsCapability. Sin
+            // esto, un negocio multisede veria la rotacion de todas las sedes
+            // mezclada en el mostrador de una sola.
+            BranchFilter::apply($query, 'sales');
+
+            return $query
+                ->selectRaw('sale_items.product_id, SUM(sale_items.quantity) as units')
+                ->groupBy('sale_items.product_id')
+                ->orderByDesc('units')
+                ->limit(self::FREQUENT_LIMIT)
+                ->pluck('product_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        });
 
         return response()->json(['product_ids' => $ids]);
     }

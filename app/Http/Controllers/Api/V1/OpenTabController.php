@@ -11,21 +11,35 @@ use App\Http\Resources\Api\V1\SaleResource;
 use App\Models\Sale;
 use App\Services\OpenTabService;
 use App\Support\AuditLogger;
+use App\Support\Telemetry;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 
 class OpenTabController extends Controller
 {
     public function __construct(private OpenTabService $openTabService) {}
 
-    public function index(): AnonymousResourceCollection
+    public function index(Request $request): JsonResponse
     {
-        return SaleResource::collection(
-            Sale::where('status', 'open')
+        // Se vuelve a pedir cada vez que cambia una cuenta, en cada tablet:
+        // es la lista que mas se repite en un restaurante con mesas abiertas.
+        $tabs = Telemetry::span(
+            'open_tabs.load',
+            'Cuentas abiertas con sus items',
+            fn () => Sale::where('status', 'open')
                 ->with([...self::itemRelations(), 'partialPayments', 'table'])
                 ->latest()
-                ->get()
+                ->get(),
+        );
+
+        $itemCount = $tabs->sum(fn (Sale $sale) => $sale->items->count());
+
+        return Telemetry::span(
+            'open_tabs.serialize',
+            'Armar el JSON de las cuentas abiertas',
+            fn () => SaleResource::collection($tabs)->response($request),
+            ['open_tabs.count' => $tabs->count(), 'open_tabs.items' => $itemCount],
         );
     }
 
@@ -50,6 +64,7 @@ class OpenTabController extends Controller
     public function store(StoreOpenTabRequest $request): SaleResource
     {
         $sale = $this->openTabService->openTab($request->user(), $request->validated());
+        Telemetry::count('open_tab.opened', 1, ['business_id' => (string) $sale->business_id]);
 
         // customer_name viaja en el detalle a proposito: si la cuenta se
         // cancela despues (borrado en duro), la auditoria es lo UNICO que
@@ -68,6 +83,7 @@ class OpenTabController extends Controller
     public function addItems(OpenTabItemsRequest $request, Sale $sale): SaleResource
     {
         $sale = $this->openTabService->addItems($request->user(), $sale, $request->validated('items'));
+        Telemetry::count('open_tab.items_added', count($request->validated('items')), ['business_id' => (string) $sale->business_id]);
 
         AuditLogger::log('tab.items_added', ['sale_id' => $sale->id, 'items' => $request->validated('items')]);
 
@@ -105,6 +121,8 @@ class OpenTabController extends Controller
     public function close(CloseOpenTabRequest $request, Sale $sale): SaleResource
     {
         $sale = $this->openTabService->close($request->user(), $sale, $request->validated());
+        Telemetry::count('open_tab.closed', 1, ['business_id' => (string) $sale->business_id]);
+        Telemetry::distribution('open_tab.items_per_tab', $sale->items->count(), ['business_id' => (string) $sale->business_id]);
 
         AuditLogger::log('tab.closed', ['sale_id' => $sale->id, 'payment_method' => $sale->payment_method]);
 

@@ -15,6 +15,7 @@ use App\Models\SalePaymentSplit;
 use App\Models\User;
 use App\Support\ProductAvailability;
 use App\Support\SaleLineUnitPrice;
+use App\Support\Telemetry;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -67,14 +68,19 @@ class SaleService
 
             $grandTotal = round($total + $flags['delivery_fee'] + $serviceChargeAmount + $ipoconsumoAmount, 2);
 
-            [$resolvedPaymentMethod, $isCredit] = match (true) {
-                $flags['is_non_revenue'] => [null, false],
-                ! empty($data['financing']) => [
-                    $this->financingService->applyToSale($business, $sale, $data['financing'], $data['payment_method'] ?? null, $grandTotal),
-                    false,
-                ],
-                default => $this->resolvePaymentMethodOrSplits($business, $sale, $data, $grandTotal),
-            };
+            [$resolvedPaymentMethod, $isCredit] = Telemetry::span(
+                'sale.payment',
+                'Medio de pago, pagos mixtos o financiacion',
+                fn () => match (true) {
+                    $flags['is_non_revenue'] => [null, false],
+                    ! empty($data['financing']) => [
+                        $this->financingService->applyToSale($business, $sale, $data['financing'], $data['payment_method'] ?? null, $grandTotal),
+                        false,
+                    ],
+                    default => $this->resolvePaymentMethodOrSplits($business, $sale, $data, $grandTotal),
+                },
+                ['sale.split' => ! empty($data['payment_splits']), 'sale.financing' => ! empty($data['financing'])],
+            );
 
             $sale->update([
                 'total' => $grandTotal,
@@ -86,10 +92,12 @@ class SaleService
                 'ipoconsumo_amount' => $ipoconsumoAmount,
             ]);
 
-            $this->ensureInvoiceNumber($sale);
-            $this->syncReceivable($sale->fresh());
+            return Telemetry::span('sale.finalize', 'Consecutivo, cuenta por cobrar y respuesta', function () use ($sale) {
+                $this->ensureInvoiceNumber($sale);
+                $this->syncReceivable($sale->fresh());
 
-            return $sale->load('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'cartDiscount', 'paymentSplits');
+                return $sale->load('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'cartDiscount', 'paymentSplits');
+            });
         });
     }
 
@@ -419,6 +427,22 @@ class SaleService
      * @return float Total de los items (con descuento de item ya restado, sin cargos ni descuento de carrito).
      */
     public function applyItems(User $user, Sale $sale, Business $business, array $items): float
+    {
+        // Lo comparten la venta rapida y las cuentas abiertas (abrir y
+        // agregar): es donde se valida stock, se descuenta inventario y se
+        // aplican descuentos por linea, linea por linea.
+        return Telemetry::span(
+            'sale.items',
+            'Lineas: stock, inventario y descuentos',
+            fn () => $this->applyItemsUntraced($user, $sale, $business, $items),
+            ['sale.items' => count($items), 'sale.id' => $sale->id],
+        );
+    }
+
+    /**
+     * @param  array<int, array{product_id: int, quantity: int, unit_price?: float|int|string|null, discount_id?: ?int}>  $items
+     */
+    private function applyItemsUntraced(User $user, Sale $sale, Business $business, array $items): float
     {
         $discountsEnabled = $business->hasFeature('discounts');
         $ingredientsEnabled = $business->hasFeature('ingredients');

@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\SentryTracesSampler;
+
 /**
  * Sentry Laravel SDK configuration file.
  *
@@ -40,6 +42,11 @@ return [
 
     // @see: https://docs.sentry.io/platforms/php/guides/laravel/configuration/options/#traces-sample-rate
     'traces_sample_rate' => env('SENTRY_TRACES_SAMPLE_RATE') === null ? null : (float) env('SENTRY_TRACES_SAMPLE_RATE'),
+
+    // Ajusta el porcentaje por tipo de transaccion (mostrador mas, tareas
+    // programadas menos, /up nada) usando traces_sample_rate como base. Ver
+    // App\Support\SentryTracesSampler. Solo si hay tracing configurado.
+    'traces_sampler' => env('SENTRY_TRACES_SAMPLE_RATE') === null ? null : [SentryTracesSampler::class, 'sample'],
 
     // @see: https://docs.sentry.io/platforms/php/guides/laravel/configuration/options/#profiles-sample-rate
     'profiles_sample_rate' => env('SENTRY_PROFILES_SAMPLE_RATE') === null ? null : (float) env('SENTRY_PROFILES_SAMPLE_RATE'),

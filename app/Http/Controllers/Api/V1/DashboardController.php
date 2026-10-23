@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Services\DashboardService;
+use App\Support\Telemetry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -21,8 +22,14 @@ class DashboardController extends Controller
         $business = $request->user()->business;
         abort_unless($business !== null, 403, 'Tu usuario no pertenece a un negocio. Impersona un negocio para ver su dashboard.');
 
+        $summary = Telemetry::span(
+            'dashboard.summary',
+            'Resumen del dia (ventas, caja, alertas)',
+            fn () => $this->dashboard->todaySummary($business),
+        );
+
         return response()->json([
-            ...$this->dashboard->todaySummary($business),
+            ...$summary,
             // dashboard_shortcuts, no la resolucion completa contra el menu:
             // el frontend ya resuelve {route_name, color} contra su propia
             // lista de nav items filtrada por permiso (useNavItems()), igual

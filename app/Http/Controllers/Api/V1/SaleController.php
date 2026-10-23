@@ -11,6 +11,7 @@ use App\Services\ReceiptPdfService;
 use App\Services\SaleService;
 use App\Services\TerminalChargeService;
 use App\Support\AuditLogger;
+use App\Support\Telemetry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -53,6 +54,13 @@ class SaleController extends Controller
 
             return $sale;
         });
+
+        $saleAttributes = [
+            'business_id' => (string) $sale->business_id,
+            'payment_method' => (string) ($sale->payment_method ?? ($sale->is_non_revenue ? 'cortesia' : 'none')),
+        ];
+        Telemetry::count('sale.created', 1, $saleAttributes);
+        Telemetry::distribution('sale.items_per_sale', $sale->items->count(), $saleAttributes);
 
         AuditLogger::log($request->user()->hasRole('admin') ? 'sale.created' : 'sale.created.employee', [
             'sale_id' => $sale->id,
