@@ -14,6 +14,7 @@ use App\Services\WhatsApp\NexoluCommsCostReporter;
 use App\Services\WhatsApp\WhatsAppCloudClient;
 use App\Services\WhatsApp\WhatsAppCostReporter;
 use App\Services\WhatsApp\WhatsAppOtpSender;
+use App\Support\Telemetry;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -23,6 +24,8 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+
+use function Sentry\traceMetrics;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -66,6 +69,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Las metricas de Sentry (App\Support\Telemetry) se acumulan en
+        // memoria y el paquete de Laravel solo las envia en consola, colas u
+        // Octane: en una peticion normal de php-fpm se perdian al terminar.
+        // terminating() corre despues de enviar la respuesta, asi que el
+        // usuario no espera este envio.
+        $this->app->terminating(static function (): void {
+            if (Telemetry::enabled()) {
+                traceMetrics()->flush();
+            }
+        });
+
         // El correo tambien sale por el Communications Core, no por SMTP:
         // un solo servicio con las credenciales y un solo lugar donde ver
         // que se envio. Va en boot() y no en register(): el MailManager
