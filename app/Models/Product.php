@@ -198,10 +198,24 @@ class Product extends Model
     /**
      * Mismo idioma que isStockManagedByIngredientsRecipe(): usa la relacion
      * si ya esta cargada (evita N+1 en listados), si no hace un exists().
+     *
+     * Tambien respeta `variants_exists` cuando la consulta lo trajo con
+     * withExists('variants'): es la forma barata de precargar la respuesta
+     * en listados que no necesitan las variantes en si (catalogo sin el
+     * modulo de variantes, items de cuentas abiertas). Sin esto, Sentry
+     * mostraba un exists() por fila en /open-tabs y /products/sellable.
      */
     public function hasVariants(): bool
     {
-        return $this->relationLoaded('variants') ? $this->variants->isNotEmpty() : $this->variants()->exists();
+        if ($this->relationLoaded('variants')) {
+            return $this->variants->isNotEmpty();
+        }
+
+        if (array_key_exists('variants_exists', $this->attributes)) {
+            return (bool) $this->attributes['variants_exists'];
+        }
+
+        return $this->variants()->exists();
     }
 
     /**

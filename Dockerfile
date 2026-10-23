@@ -73,6 +73,7 @@ RUN apk add --no-cache nginx supervisor libzip tzdata libpng libjpeg-turbo freet
 # en 1 (default) para no sorprender a un deploy futuro que no reinicie.
 COPY docker/opcache.ini /usr/local/etc/php/conf.d/opcache-custom.ini
 COPY docker/php-uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+COPY docker/php-fpm-pool.conf /usr/local/etc/php-fpm.d/zz-pool.conf
 
 # La imagen no sale si no puede procesar una foto.
 #

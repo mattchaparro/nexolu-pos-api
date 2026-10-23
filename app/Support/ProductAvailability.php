@@ -211,6 +211,12 @@ class ProductAvailability
                 'variants.attributeValues.productAttribute',
                 'variants' => fn ($r) => $r->withBranchStock($branchId)->withBranchPrice($branchId),
             ]))
+            // Sin el modulo las variantes no se cargan, pero el catalogo
+            // igual reporta has_variants: se resuelve en la misma consulta
+            // (variants_exists, ver Product::hasVariants()) en vez de un
+            // exists() por producto. Queda en los atributos, asi que tambien
+            // sobrevive al cache de forBusiness().
+            ->when(! $variantsEnabled, fn ($q) => $q->withExists('variants'))
             ->orderBy('name')
             ->get();
     }

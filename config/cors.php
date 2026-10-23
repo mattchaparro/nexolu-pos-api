@@ -27,7 +27,10 @@ return [
 
     'exposed_headers' => [],
 
-    'max_age' => 0,
+    // Sin esto el navegador manda un OPTIONS antes de CADA llamada al API
+    // (lleva Authorization, asi que siempre hay preflight): un viaje de ida
+    // y vuelta extra por peticion desde Colombia. 7200 s es el tope de Chrome.
+    'max_age' => 7200,
 
     'supports_credentials' => false,
 

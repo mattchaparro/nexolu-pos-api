@@ -23,10 +23,28 @@ class OpenTabController extends Controller
     {
         return SaleResource::collection(
             Sale::where('status', 'open')
-                ->with(['items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'partialPayments', 'table'])
+                ->with([...self::itemRelations(), 'partialPayments', 'table'])
                 ->latest()
                 ->get()
         );
+    }
+
+    /**
+     * Lo que SaleResource necesita de cada linea. El producto se carga con
+     * lo que ProductResource consulta por fila (si tiene variantes, precio y
+     * stock de la sede): esta lista se pide cada vez que cambia una cuenta,
+     * y con una consulta por item tardaba de 1,5 a 4 s en un restaurante con
+     * varias mesas abiertas (Sentry, oct-2026).
+     *
+     * @return array<int|string, mixed>
+     */
+    private static function itemRelations(): array
+    {
+        return [
+            'items.product' => fn ($query) => $query->withExists('variants')->withBranchStock()->withBranchPrice(),
+            'items.options',
+            'items.productVariant.attributeValues.productAttribute',
+        ];
     }
 
     public function store(StoreOpenTabRequest $request): SaleResource
@@ -44,7 +62,7 @@ class OpenTabController extends Controller
 
     public function show(Sale $sale): SaleResource
     {
-        return new SaleResource($sale->load('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'partialPayments', 'paymentSplits', 'table'));
+        return new SaleResource($sale->load([...self::itemRelations(), 'partialPayments', 'paymentSplits', 'table']));
     }
 
     public function addItems(OpenTabItemsRequest $request, Sale $sale): SaleResource
