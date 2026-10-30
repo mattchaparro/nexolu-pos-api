@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\V1;
 
+use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Product;
 use App\Models\ProductVariant;
@@ -53,6 +54,26 @@ class ListingQueryCountTest extends TestCase
         $many = $this->countQueries(fn () => $this->getJson('/api/v1/products/sellable')->assertOk());
 
         $this->assertSame($few, $many, "GET /products/sellable: {$few} consultas con 2 productos, {$many} con 7");
+    }
+
+    public function test_cached_catalog_with_a_branch_does_not_query_price_or_stock_per_product(): void
+    {
+        // Negocio sin modulos que impidan el cache (el caso de Las Banquitas),
+        // con sede: priceAt()/stockAt() consultaban una vez por producto al
+        // leer del cache (NEXOLU-POS-API-7).
+        [$business, $user] = $this->businessWithUser(['variants' => false, 'ingredients' => false]);
+        $user->assignRole('admin'); // ve la sede principal sin asignacion explicita
+        Branch::factory()->for($business)->main()->create();
+        Product::factory()->count(2)->create(['business_id' => $business->id, 'stock' => 50, 'is_active' => true]);
+        $this->getJson('/api/v1/products/sellable')->assertOk(); // llena el cache
+
+        $few = $this->countQueries(fn () => $this->getJson('/api/v1/products/sellable')->assertOk());
+        Product::factory()->count(5)->create(['business_id' => $business->id, 'stock' => 50, 'is_active' => true]);
+        Cache::flush();
+        $this->getJson('/api/v1/products/sellable')->assertOk(); // vuelve a llenar el cache
+        $many = $this->countQueries(fn () => $this->getJson('/api/v1/products/sellable')->assertOk());
+
+        $this->assertSame($few, $many, "catalogo cacheado con sede: {$few} consultas con 2 productos, {$many} con 7");
     }
 
     public function test_has_variants_is_still_reported_without_the_variants_module(): void

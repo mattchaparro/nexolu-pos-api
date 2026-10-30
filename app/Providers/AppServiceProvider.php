@@ -14,6 +14,7 @@ use App\Services\WhatsApp\NexoluCommsCostReporter;
 use App\Services\WhatsApp\WhatsAppCloudClient;
 use App\Services\WhatsApp\WhatsAppCostReporter;
 use App\Services\WhatsApp\WhatsAppOtpSender;
+use App\Support\Auth\TokenLifetime;
 use App\Support\Telemetry;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -24,6 +25,8 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Sanctum\PersonalAccessToken;
+use Laravel\Sanctum\Sanctum;
 
 use function Sentry\traceMetrics;
 
@@ -69,6 +72,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Vencimiento por inactividad del token (ver TokenLifetime).
+        Sanctum::authenticateAccessTokensUsing(
+            static fn (PersonalAccessToken $token, bool $isValid): bool => $isValid && TokenLifetime::isAlive($token),
+        );
+
         // Las metricas de Sentry (App\Support\Telemetry) se acumulan en
         // memoria y el paquete de Laravel solo las envia en consola, colas u
         // Octane: en una peticion normal de php-fpm se perdian al terminar.

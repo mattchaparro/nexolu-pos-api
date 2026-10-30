@@ -193,7 +193,21 @@ class ProductAvailability
             );
             Telemetry::annotate(['catalog.cacheable' => true, 'catalog.cache_hit' => $cacheHit]);
 
-            return self::fromCacheableArray($rows);
+            // El cache guarda solo atributos y categoria: el precio y el stock
+            // de la sede (que ademas cambian por sede, y el cache es del
+            // negocio) se cargan aca para toda la coleccion. Sin esto
+            // priceAt()/stockAt() consultaban una vez por producto (Sentry
+            // NEXOLU-POS-API-7, Las Banquitas).
+            $products = self::fromCacheableArray($rows);
+            $branchId = BranchContext::branchId();
+            if ($branchId !== null && $products->isNotEmpty()) {
+                $products->load([
+                    'branchPrices' => fn ($relation) => $relation->where('branch_id', $branchId),
+                    'branchStocks' => fn ($relation) => $relation->where('branch_id', $branchId),
+                ]);
+            }
+
+            return $products;
         }
 
         // Por que no se cachea: es lo primero que hay que mirar si el

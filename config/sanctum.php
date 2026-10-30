@@ -48,14 +48,30 @@ return [
     | considered expired. This will override any values set in the token's
     | "expires_at" attribute, but first-party sessions are not affected.
     |
-    | 240 (4h) por defecto: el legacy expira sesiones por seguridad (session
-    | lifetime, config/session.php), este API-first debe hacer lo mismo -
-    | ver AuthController::login(). El frontend (nexolu-pos-front) ya maneja
-    | el 401 resultante limpiando la sesion local y redirigiendo a /login.
+    | Sin vencimiento absoluto por defecto. Antes era 240 (4 h contadas desde
+    | el login, se usara o no) y sacaba al negocio a mitad de jornada, a veces
+    | en medio de una venta. Ahora el token vence por inactividad: ver
+    | idle_minutes y max_lifetime_days abajo, y App\Support\Auth\TokenLifetime.
     |
     */
 
-    'expiration' => env('SANCTUM_TOKEN_EXPIRATION', 240),
+    'expiration' => env('SANCTUM_TOKEN_EXPIRATION'),
+
+    /*
+    | Minutos sin ninguna peticion despues de los cuales el token vence. La
+    | app abierta consulta el turno cada 30 s, asi que mientras se use la
+    | sesion no se cae. 1440 = 24 h: una tablet que se apaga de noche sigue
+    | con sesion al dia siguiente.
+    */
+
+    'idle_minutes' => (int) env('SANCTUM_IDLE_MINUTES', 1440),
+
+    /*
+    | Tope absoluto: aunque se use todos los dias, un token vence a los N
+    | dias de creado y hay que volver a iniciar sesion.
+    */
+
+    'max_lifetime_days' => (int) env('SANCTUM_MAX_LIFETIME_DAYS', 30),
 
     /*
     |--------------------------------------------------------------------------
