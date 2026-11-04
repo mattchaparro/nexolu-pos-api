@@ -715,6 +715,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::middleware('business-admin')->group(function () {
                 Route::post('/providers', [FinancingController::class, 'storeProvider'])->name('providers.store');
                 Route::put('/providers/{provider}', [FinancingController::class, 'updateProvider'])->name('providers.update');
+                Route::put('/settings', [FinancingController::class, 'updateSettings'])->name('settings.update');
             });
         });
 

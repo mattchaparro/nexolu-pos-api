@@ -237,7 +237,10 @@ class SaleService
                 ->where('sale_id', $sale->id)
                 ->first();
 
-            if ($financingCredit && $financingCredit->status === FinancingCredit::STATUS_PAID) {
+            // Un giro registrado a mano ya entro como plata: hay que deshacerlo
+            // primero. Uno dado por recibido al vender es parte de la misma
+            // venta y se va con ella.
+            if ($financingCredit && $financingCredit->status === FinancingCredit::STATUS_PAID && ! $financingCredit->wasSettledOnSale()) {
                 throw ValidationException::withMessages([
                     'sale' => 'No se puede reversar: la financiadora ya giró el crédito de esta venta. Desmarca ese pago primero.',
                 ]);

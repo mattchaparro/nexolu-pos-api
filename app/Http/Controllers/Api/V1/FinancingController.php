@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\FinancingCreditResource;
 use App\Http\Resources\Api\V1\FinancingProviderResource;
+use App\Models\Business;
 use App\Models\FinancingCredit;
 use App\Models\FinancingProvider;
 use App\Services\FinancingService;
@@ -73,7 +74,7 @@ class FinancingController extends Controller
     }
 
     /** Cuanto debe cada financiadora, cuanto esta atrasado y cuanto giro este mes. */
-    public function summary(): JsonResponse
+    public function summary(Request $request): JsonResponse
     {
         $providers = FinancingProvider::orderBy('name')->get();
         $monthStart = now()->startOfMonth();
@@ -98,11 +99,27 @@ class FinancingController extends Controller
         });
 
         return response()->json([
+            'payout_mode' => $request->user()->business->financing_payout_mode ?? Business::FINANCING_PAYOUT_ON_SALE,
             'providers' => $rows->values(),
             'pending_amount' => (float) $rows->sum('pending_amount'),
             'overdue_amount' => (float) $rows->sum('overdue_amount'),
             'paid_this_month_amount' => (float) $rows->sum('paid_this_month_amount'),
         ]);
+    }
+
+    /** Como da el negocio por recibido lo financiado: al vender o a mano. */
+    public function updateSettings(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'payout_mode' => ['required', 'string', Rule::in([Business::FINANCING_PAYOUT_ON_SALE, Business::FINANCING_PAYOUT_MANUAL])],
+        ]);
+
+        $business = $request->user()->business;
+        $business->update(['financing_payout_mode' => $data['payout_mode']]);
+
+        AuditLogger::log('financing.settings_updated', ['payout_mode' => $data['payout_mode']]);
+
+        return response()->json(['payout_mode' => $business->financing_payout_mode]);
     }
 
     public function registerPayout(Request $request, FinancingCredit $credit): FinancingCreditResource

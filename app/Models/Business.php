@@ -17,6 +17,7 @@ use Illuminate\Validation\ValidationException;
 
 #[Fillable([
     'name',
+    'financing_payout_mode',
     'slug',
     'owner_name',
     'phone',
@@ -396,13 +397,27 @@ class Business extends Model
      *
      * @return array<string, string>
      */
+    /**
+     * Lo financiado por un tercero se da por recibido el mismo dia de la
+     * venta, como "Financiadoras" (ver FinancingService::applyToSale). En
+     * modo manual queda pendiente hasta que el dueño registra el giro.
+     */
+    public const FINANCING_PAYOUT_ON_SALE = 'on_sale';
+
+    public const FINANCING_PAYOUT_MANUAL = 'manual';
+
+    public function financingSettlesOnSale(): bool
+    {
+        return ($this->financing_payout_mode ?? self::FINANCING_PAYOUT_ON_SALE) === self::FINANCING_PAYOUT_ON_SALE;
+    }
+
     public function paymentMethodLabelsMap(): array
     {
         return collect($this->paymentMethods())
             ->mapWithKeys(fn (array $method) => [
                 (string) $method['id'] => (string) ($method['label'] ?? ucfirst(str_replace('_', ' ', (string) $method['id']))),
             ])
-            ->put(FinancingCredit::PAYMENT_METHOD, 'Financiado')
+            ->put(FinancingCredit::PAYMENT_METHOD, 'Financiadoras')
             ->all();
     }
 

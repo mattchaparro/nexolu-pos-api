@@ -21,10 +21,18 @@ class FinancingTest extends TestCase
 {
     use DatabaseTransactions;
 
-    /** @return array{0: Business, 1: User, 2: FinancingProvider, 3: Product} */
-    private function scenario(bool $enabled = true): array
+    /**
+     * Las pruebas de siempre corren en modo manual (el giro se registra a
+     * mano); las del modo "Financiadoras" piden on_sale explicitamente.
+     *
+     * @return array{0: Business, 1: User, 2: FinancingProvider, 3: Product}
+     */
+    private function scenario(bool $enabled = true, string $payoutMode = Business::FINANCING_PAYOUT_MANUAL): array
     {
-        $business = Business::factory()->create(['feature_flags' => array_merge(BusinessFeaturePresets::full(), ['financing' => $enabled])]);
+        $business = Business::factory()->create([
+            'feature_flags' => array_merge(BusinessFeaturePresets::full(), ['financing' => $enabled]),
+            'financing_payout_mode' => $payoutMode,
+        ]);
         $user = User::factory()->create(['business_id' => $business->id]);
         $user->assignRole('admin');
         $provider = FinancingProvider::create(['business_id' => $business->id, 'name' => 'Banti', 'expected_payout_days' => 3]);
@@ -201,6 +209,89 @@ class FinancingTest extends TestCase
         $this->actingAs($user, 'sanctum')->postJson("/api/v1/financing/credits/{$paidCredit->id}/undo-payout")
             ->assertOk()->assertJsonPath('status', 'pending');
         $this->actingAs($user, 'sanctum')->postJson("/api/v1/sales/{$paidSaleId}/reverse")->assertNoContent();
+    }
+
+    // -----------------------------------------------------------------
+    // Modo "Financiadoras" (on_sale): lo financiado se da por recibido el
+    // dia de la venta. Pedido de Central Cell: la plata llega si o si y
+    // registrar cada giro a mano era trabajo sin valor.
+    // -----------------------------------------------------------------
+
+    public function test_new_businesses_settle_financing_on_sale_by_default(): void
+    {
+        $business = Business::factory()->create();
+
+        $this->assertTrue($business->fresh()->financingSettlesOnSale());
+    }
+
+    public function test_on_sale_the_credit_is_paid_right_away_and_keeps_the_split_visible(): void
+    {
+        [, $user, $provider, $phone] = $this->scenario(payoutMode: Business::FINANCING_PAYOUT_ON_SALE);
+
+        $saleId = $this->financedSale($user, $provider, $phone)->assertCreated()->json('id');
+
+        // La venta sigue mostrando la inicial y lo que puso la financiadora.
+        $this->assertDatabaseHas('sale_payment_splits', ['sale_id' => $saleId, 'payment_method' => 'cash', 'amount' => 100000]);
+        $this->assertDatabaseHas('sale_payment_splits', ['sale_id' => $saleId, 'payment_method' => 'financiado', 'amount' => 400000, 'payer_label' => 'Banti']);
+
+        $credit = FinancingCredit::where('sale_id', $saleId)->sole();
+        $this->assertSame(FinancingCredit::STATUS_PAID, $credit->status);
+        $this->assertSame('financiado', $credit->payout_method);
+        $this->assertSame($user->id, (int) $credit->received_by_user_id);
+        $this->assertTrue($credit->paid_at->isToday());
+        $this->assertNull($credit->expected_payout_date);
+        $this->assertTrue($credit->wasSettledOnSale());
+    }
+
+    public function test_on_sale_the_closing_shows_financiadoras_without_touching_the_cash(): void
+    {
+        [, $user, $provider, $phone] = $this->scenario(payoutMode: Business::FINANCING_PAYOUT_ON_SALE);
+        $this->financedSale($user, $provider, $phone)->assertCreated();
+
+        $totals = $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/cash-closings/preview?date='.now()->toDateString().'&opening_cash=0')
+            ->assertOk()
+            ->json('totals');
+
+        $this->assertEquals(500000, $totals['total_sales']);
+        $this->assertEquals(100000, $totals['total_cash']);
+        $this->assertEquals(100000, $totals['expected_cash']);
+        $financiadoras = collect($totals['payment_breakdown'])->firstWhere('id', 'financiado');
+        $this->assertEquals(400000, $financiadoras['total']);
+        $this->assertSame('Financiadoras', $financiadoras['label']);
+
+        // Nada queda "por cobrar" en Financiacion.
+        $summary = $this->actingAs($user, 'sanctum')->getJson('/api/v1/financing/summary')->assertOk();
+        $this->assertSame('on_sale', $summary->json('payout_mode'));
+        $this->assertEquals(0, $summary->json('pending_amount'));
+        $this->assertEquals(400000, $summary->json('paid_this_month_amount'));
+    }
+
+    public function test_on_sale_a_financed_sale_can_still_be_reversed(): void
+    {
+        [, $user, $provider, $phone] = $this->scenario(payoutMode: Business::FINANCING_PAYOUT_ON_SALE);
+        $saleId = $this->financedSale($user, $provider, $phone)->json('id');
+
+        $this->actingAs($user, 'sanctum')->postJson("/api/v1/sales/{$saleId}/reverse")->assertNoContent();
+
+        $this->assertDatabaseMissing('financing_credits', ['sale_id' => $saleId]);
+        $this->assertSame(5, $phone->fresh()->stock);
+    }
+
+    public function test_the_admin_chooses_how_financing_is_settled(): void
+    {
+        [$business, $user] = $this->scenario(payoutMode: Business::FINANCING_PAYOUT_ON_SALE);
+
+        $this->actingAs($user, 'sanctum')->putJson('/api/v1/financing/settings', ['payout_mode' => 'manual'])
+            ->assertOk()->assertJsonPath('payout_mode', 'manual');
+        $this->assertFalse($business->fresh()->financingSettlesOnSale());
+
+        $this->actingAs($user, 'sanctum')->putJson('/api/v1/financing/settings', ['payout_mode' => 'cuotas'])
+            ->assertUnprocessable()->assertJsonValidationErrors('payout_mode');
+
+        $cashier = $this->employee($business, ['financing.sell', 'financing.view', 'financing.payouts']);
+        $this->actingAs($cashier, 'sanctum')->putJson('/api/v1/financing/settings', ['payout_mode' => 'on_sale'])
+            ->assertForbidden();
     }
 
     /** @param  list<string>  $permissions */

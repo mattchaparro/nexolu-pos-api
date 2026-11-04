@@ -210,13 +210,19 @@ class RevenueByPaymentMethod
             ];
         }
 
+        // Medios con plata pero fuera de la lista habilitada (uno desactivado,
+        // o el reservado de las financiadoras): su nombre sale del mapa de
+        // etiquetas del negocio, no del id crudo ("financiado" se muestra
+        // como "Financiadoras").
+        $labels = $business?->paymentMethodLabelsMap() ?? [];
+
         foreach ($totals as $id => $total) {
             if ($id === null || $id === '' || $result->has($id) || $business?->isCreditPaymentMethod($id)) {
                 continue;
             }
             $result[$id] = [
                 'id' => (string) $id,
-                'label' => ucfirst(str_replace('_', ' ', (string) $id)),
+                'label' => $labels[(string) $id] ?? ucfirst(str_replace('_', ' ', (string) $id)),
                 'total' => round((float) $total, 2),
             ];
         }

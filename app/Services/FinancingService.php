@@ -52,6 +52,12 @@ class FinancingService
             $method = 'mixed';
         }
 
+        // Modo on_sale: la plata de la financiadora llega si o si, asi que se
+        // da por recibida hoy, con el medio "Financiadoras". Entra en el
+        // cierre de hoy (sin tocar el efectivo) y no queda nada por registrar
+        // despues. En modo manual queda pendiente hasta el giro.
+        $settlesOnSale = $business->financingSettlesOnSale();
+
         FinancingCredit::create([
             'business_id' => $business->id,
             'sale_id' => $sale->id,
@@ -61,8 +67,11 @@ class FinancingService
             'customer_name' => $sale->customer_name,
             'customer_phone' => $sale->customer_phone,
             'customer_identification' => $sale->customer_identification,
-            'status' => FinancingCredit::STATUS_PENDING,
-            'expected_payout_date' => $provider->expected_payout_days !== null
+            'status' => $settlesOnSale ? FinancingCredit::STATUS_PAID : FinancingCredit::STATUS_PENDING,
+            'paid_at' => $settlesOnSale ? now() : null,
+            'payout_method' => $settlesOnSale ? FinancingCredit::PAYMENT_METHOD : null,
+            'received_by_user_id' => $settlesOnSale ? $sale->user_id : null,
+            'expected_payout_date' => ! $settlesOnSale && $provider->expected_payout_days !== null
                 ? now()->addDays($provider->expected_payout_days)->toDateString()
                 : null,
         ]);

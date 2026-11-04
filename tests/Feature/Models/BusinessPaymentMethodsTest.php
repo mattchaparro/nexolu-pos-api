@@ -104,6 +104,6 @@ class BusinessPaymentMethodsTest extends TestCase
         $labels = $business->fresh()->paymentMethodLabelsMap();
 
         // 'financiado' siempre: es la linea de las ventas financiadas por terceros.
-        $this->assertSame(['cash' => 'Efectivo', 'nequi' => 'Nequi', 'financiado' => 'Financiado'], $labels);
+        $this->assertSame(['cash' => 'Efectivo', 'nequi' => 'Nequi', 'financiado' => 'Financiadoras'], $labels);
     }
 }

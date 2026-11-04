@@ -57,6 +57,15 @@ class FinancingCredit extends Model
         ];
     }
 
+    /**
+     * Se dio por recibido al vender (modo on_sale), no por un giro registrado
+     * a mano: su medio es el reservado de la financiacion.
+     */
+    public function wasSettledOnSale(): bool
+    {
+        return $this->status === self::STATUS_PAID && $this->payout_method === self::PAYMENT_METHOD;
+    }
+
     public function provider(): BelongsTo
     {
         return $this->belongsTo(FinancingProvider::class, 'financing_provider_id');
