@@ -169,6 +169,62 @@ class SupplierReportTest extends TestCase
             ->assertJsonPath('totals.total_cop', 6000);
     }
 
+    public function test_supplier_report_groups_by_month_and_by_supplier(): void
+    {
+        [$business, $admin] = $this->adminWithPurchases();
+        $acme = Supplier::factory()->create(['business_id' => $business->id, 'name' => 'Acme']);
+        $beta = Supplier::factory()->create(['business_id' => $business->id, 'name' => 'Beta']);
+        $product = Product::factory()->create(['business_id' => $business->id]);
+
+        $buy = function (?Supplier $supplier, string $date, float $total) use ($business, $product): void {
+            $purchase = Purchase::factory()->create([
+                'business_id' => $business->id,
+                'supplier_id' => $supplier?->id,
+                'purchased_at' => $date,
+            ]);
+            PurchaseLine::factory()->create([
+                'purchase_id' => $purchase->id, 'product_id' => $product->id,
+                'quantity' => 1, 'unit_cost_cop' => $total, 'line_total_cop' => $total,
+            ]);
+        };
+        $buy($acme, '2026-09-03', 100000);
+        $buy($acme, '2026-10-15', 50000);
+        $buy($beta, '2026-10-20', 30000);
+        $buy(null, '2026-10-22', 20000);
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/suppliers?from=2026-09-01&to=2026-10-31')
+            ->assertOk()
+            ->assertJsonPath('totals.total_cop', 200000)
+            ->assertJsonPath('totals.purchase_count', 4)
+            ->assertJsonPath('totals.supplier_count', 2)
+            ->assertJsonPath('totals.month_count', 2)
+            ->assertJsonPath('by_month.0.month', '2026-09')
+            ->assertJsonPath('by_month.0.total_cop', 100000)
+            ->assertJsonPath('by_month.1.month', '2026-10')
+            ->assertJsonPath('by_month.1.total_cop', 100000)
+            ->assertJsonPath('by_month.1.purchase_count', 3);
+
+        $suppliers = collect($response->json('by_supplier'))->keyBy('supplier_name');
+        $this->assertSame(['Acme', 'Beta', 'Sin proveedor'], array_keys($suppliers->all()));
+        $this->assertEquals(150000, $suppliers['Acme']['total_cop']);
+        $this->assertEquals(75, $suppliers['Acme']['pct_of_total']);
+        $this->assertSame('2026-10-15', $suppliers['Acme']['last_purchase_at']);
+        $this->assertNull($suppliers['Sin proveedor']['supplier_id']);
+
+        // Un solo proveedor: sus meses.
+        $this->actingAs($admin, 'sanctum')
+            ->getJson("/api/v1/reports/suppliers?supplier_id={$acme->id}&from=2026-09-01&to=2026-10-31")
+            ->assertJsonPath('totals.total_cop', 150000)
+            ->assertJsonCount(2, 'by_month')
+            ->assertJsonCount(1, 'by_supplier');
+
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/suppliers?supplier_id=none&from=2026-09-01&to=2026-10-31')
+            ->assertJsonPath('totals.total_cop', 20000)
+            ->assertJsonPath('totals.supplier_count', 0);
+    }
+
     public function test_supplier_report_export_returns_csv(): void
     {
         [, $admin] = $this->adminWithPurchases();
