@@ -41,6 +41,7 @@ class AuditActionDictionary
             'cash_closing.updated' => 'Cierre de caja actualizado',
             'cash_closing.undone' => 'Cierre de caja deshecho',
             'financing.settings_updated' => 'Cambio cómo se da por recibido lo financiado',
+            'subscription.auto_renew_updated' => 'Cambio la renovación automática de la suscripción',
             'expense.created' => 'Gasto registrado',
             'expense.updated' => 'Gasto actualizado',
             'expense.deleted' => 'Gasto eliminado',

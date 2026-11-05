@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\ChargeSubscriptionCheckoutRequest;
 use App\Http\Requests\Api\V1\InitiateSubscriptionCheckoutRequest;
 use App\Services\SubscriptionService;
+use App\Support\AuditLogger;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,6 +25,10 @@ class SubscriptionController extends Controller
             'days_remaining' => $business->daysRemaining(),
             'trial_ends_at' => $business->trial_ends_at?->toDateString(),
             'paid_until' => $business->paid_until?->toDateString(),
+            'grace_ends_at' => $business->inGracePeriod() ? $business->graceEndsAt()?->toDateString() : null,
+            'access_locked' => $business->isLockedOut(),
+            'auto_renew' => (bool) $business->subscription_auto_renew,
+            'renewal_amount_cop' => $this->subscriptions->renewalAmountCop($business),
             'pricing' => $this->subscriptions->pricingBreakdown($business),
             'payments' => $business->saasSubscriptionPayments()
                 ->orderByDesc('paid_at')
@@ -39,6 +44,19 @@ class SubscriptionController extends Controller
                     'days_granted' => $payment->days_granted,
                 ]),
         ]);
+    }
+
+    /** Prende o apaga el cobro automatico al medio de pago guardado (ver subscriptions:renew). */
+    public function updateAutoRenew(Request $request): JsonResponse
+    {
+        $data = $request->validate(['auto_renew' => ['required', 'boolean']]);
+
+        $business = $request->user()->business;
+        $business->update(['subscription_auto_renew' => $data['auto_renew']]);
+
+        AuditLogger::log('subscription.auto_renew_updated', ['auto_renew' => $data['auto_renew']]);
+
+        return response()->json(['auto_renew' => (bool) $business->subscription_auto_renew]);
     }
 
     public function initiate(InitiateSubscriptionCheckoutRequest $request): JsonResponse

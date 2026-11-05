@@ -240,7 +240,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         ->middleware('throttle:password-recovery')
         ->name('password.reset');
 
-    Route::middleware(['auth:sanctum', 'sentry.context', 'branch.context'])->group(function () {
+    // subscription.active: vencido y sin dias de gracia, solo se puede pagar
+    // (ver EnsureSubscriptionActive).
+    Route::middleware(['auth:sanctum', 'sentry.context', 'branch.context', 'subscription.active'])->group(function () {
         Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
         // Soporte por WhatsApp: cualquier usuario autenticado, sin permiso ni
         // feature. Pedir ayuda no puede depender de tener un modulo contratado.
@@ -317,6 +319,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // no es algo que un empleado deba poder hacer.
         Route::middleware('business-admin')->group(function () {
             Route::get('/subscription/status', [SubscriptionController::class, 'status'])->name('subscription.status');
+            Route::put('/subscription/auto-renew', [SubscriptionController::class, 'updateAutoRenew'])->name('subscription.auto-renew.update');
             Route::post('/subscription/checkout', [SubscriptionController::class, 'initiate'])->name('subscription.checkout');
             Route::get('/subscription/checkout/{reference}', [SubscriptionController::class, 'checkoutStatus'])->name('subscription.checkout.status');
             Route::post('/subscription/checkout/{reference}/charge', [SubscriptionController::class, 'charge'])->name('subscription.checkout.charge');

@@ -4,14 +4,17 @@ namespace App\Console\Commands;
 
 use App\Mail\SubscriptionExpiringMail;
 use App\Models\Business;
+use App\Models\BusinessPaymentSource;
 use App\Models\User;
+use App\Services\SubscriptionNotifier;
+use App\Services\SubscriptionService;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
 
 /**
- * Avisa por correo al dueño de un negocio cuando su suscripcion PAGADA esta
+ * Avisa por correo y WhatsApp al dueño de un negocio cuando su suscripcion PAGADA esta
  * por vencer, dentro de la ventana de dias configurada. El aviso de trials
  * es un comando aparte (trials:notify-expiring) porque legacy lo trata con
  * una cadencia distinta (dos ventanas: 3 dias y 1 dia).
@@ -24,10 +27,10 @@ use Illuminate\Support\Facades\Mail;
  * ciclo - no hace falta limpiar el campo a mano.
  */
 #[Signature('subscriptions:notify-expiring {--days=3 : Dias de anticipacion antes del vencimiento}')]
-#[Description('Notifica por correo a los negocios cuya suscripcion pagada vence pronto')]
+#[Description('Notifica por correo y WhatsApp a los negocios cuya suscripcion pagada vence pronto')]
 class SubscriptionsNotifyExpiring extends Command
 {
-    public function handle(): int
+    public function handle(SubscriptionNotifier $notifier, SubscriptionService $subscriptions): int
     {
         $days = (int) $this->option('days');
         $windowEnd = now()->addDays($days)->endOfDay();
@@ -47,15 +50,27 @@ class SubscriptionsNotifyExpiring extends Command
             }
 
             $owner = User::where('business_id', $business->id)->where('is_business_owner', true)->first();
-            if (! $owner) {
-                continue;
+
+            $mailed = false;
+            if ($owner) {
+                try {
+                    Mail::to($owner->email)->send(
+                        new SubscriptionExpiringMail($owner, $business, $business->paid_until, true)
+                    );
+                    $mailed = true;
+                } catch (\Throwable) {
+                    // Sigue con el WhatsApp: un correo caido no puede dejar
+                    // al negocio sin aviso.
+                }
             }
 
-            try {
-                Mail::to($owner->email)->send(
-                    new SubscriptionExpiringMail($owner, $business, $business->paid_until, true)
-                );
-            } catch (\Throwable) {
+            // WhatsApp ademas del correo: casi nadie lee el correo. Si va a
+            // haber cobro automatico, el mensaje dice cuanto, cuando y a que
+            // medio de pago.
+            $source = BusinessPaymentSource::where('business_id', $business->id)->where('status', 'active')->latest('id')->first();
+            $whatsApped = $notifier->upcoming($business, $source, $subscriptions->renewalAmountCop($business)) > 0;
+
+            if (! $mailed && ! $whatsApped) {
                 continue;
             }
 

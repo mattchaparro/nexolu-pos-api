@@ -25,6 +25,9 @@ $logCronRun = fn (string $command, string $jobKey) => CronJobLogger::attachTo(Sc
     ->when(fn () => CronJobCatalog::isEnabled($jobKey));
 
 $logCronRun('subscriptions:notify-expiring', 'subscription_expiring')->dailyAt('08:30');
+// 07:00: el cobro automatico sale antes de que abra el negocio, y si falla
+// el aviso le llega temprano, con el dia por delante para pagar.
+$logCronRun('subscriptions:renew', 'subscription_renewal')->dailyAt('07:00');
 $logCronRun('trials:notify-expiring', 'trial_expiring')->dailyAt('09:00');
 $logCronRun('audit:prune', 'audit_prune')->dailyAt('03:15');
 // Cada 15 min y no una hora fija: un carrito se abandona a cualquier hora y

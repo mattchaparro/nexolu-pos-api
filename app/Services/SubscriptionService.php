@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Business;
+use App\Models\BusinessPaymentSource;
 use App\Models\SubscriptionCheckoutOrder;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
@@ -21,6 +22,12 @@ class SubscriptionService
     public const CYCLE_MONTHLY = 'monthly';
 
     public const CYCLE_ANNUAL = 'annual';
+
+    /** El dueño pago desde Suscripcion. */
+    public const ORIGIN_CHECKOUT = 'checkout';
+
+    /** Lo cobro subscriptions:renew con el medio de pago guardado. */
+    public const ORIGIN_AUTO_RENEW = 'auto_renew';
 
     /** Dias que otorga un pago mensual. Igual al default de Business::activate(). */
     private const MONTHLY_DAYS = 30;
@@ -49,7 +56,7 @@ class SubscriptionService
      *
      * @return array{order_key: string, amount_cop: int, cycle: string, checkout: array<string, mixed>, payment_init: array<string, mixed>|null}
      */
-    public function initiateCheckout(Business $business, User $user, string $redirectUrl, string $flow = 'widget', string $cycle = self::CYCLE_MONTHLY): array
+    public function initiateCheckout(Business $business, User $user, string $redirectUrl, string $flow = 'widget', string $cycle = self::CYCLE_MONTHLY, string $origin = self::ORIGIN_CHECKOUT): array
     {
         $isAnnual = $cycle === self::CYCLE_ANNUAL;
         $amount = $isAnnual
@@ -70,6 +77,7 @@ class SubscriptionService
             'subscription_days' => $days,
             'status' => 'pending',
             'provider' => 'wompi',
+            'origin' => $origin,
         ]);
 
         try {
@@ -174,5 +182,63 @@ class SubscriptionService
         }
 
         return $result;
+    }
+
+    /** La renovacion repite el ciclo del ultimo pago: quien pago anual renueva anual. */
+    public function renewalCycle(Business $business): string
+    {
+        $lastPayment = $business->saasSubscriptionPayments()->orderByDesc('paid_at')->orderByDesc('id')->first();
+
+        return ($lastPayment?->days_granted ?? 0) >= self::ANNUAL_DAYS ? self::CYCLE_ANNUAL : self::CYCLE_MONTHLY;
+    }
+
+    /** Lo que se le va a cobrar en la proxima renovacion. */
+    public function renewalAmountCop(Business $business): int
+    {
+        return $this->renewalCycle($business) === self::CYCLE_ANNUAL
+            ? $this->pricing->annualTotalCop($business)
+            : $this->pricing->totalCop($business);
+    }
+
+    /**
+     * Renovacion automatica: cobra la suscripcion al medio de pago guardado
+     * (tarjeta o Nequi tokenizados) sin que el dueño haga nada. Mismo camino
+     * que pagar desde Suscripcion con una fuente guardada, pero iniciado por
+     * subscriptions:renew. Repite el ciclo del ultimo pago: quien paga anual
+     * renueva anual.
+     *
+     * La respuesta del Core es solo el ACK; la aprobacion o el rechazo
+     * llegan por webhook, igual que siempre. Si el Core ni siquiera acepta
+     * el cobro, la orden queda fallida y se relanza la excepcion.
+     */
+    public function chargeSavedSource(Business $business, BusinessPaymentSource $source): SubscriptionCheckoutOrder
+    {
+        $payer = User::where('business_id', $business->id)->where('is_business_owner', true)->first()
+            ?? User::where('business_id', $business->id)->firstOrFail();
+
+        $intent = $this->initiateCheckout(
+            $business,
+            $payer,
+            rtrim((string) config('app.frontend_url'), '/').'/suscripcion',
+            'api',
+            $this->renewalCycle($business),
+            self::ORIGIN_AUTO_RENEW,
+        );
+
+        $order = SubscriptionCheckoutOrder::where('order_key', $intent['order_key'])->firstOrFail();
+
+        try {
+            $this->paymentsCore->charge($order->order_key, [
+                'type' => 'PAYMENT_SOURCE',
+                'payment_source_id' => (string) $source->payment_source_id,
+                'installments' => 1,
+            ]);
+        } catch (\Throwable $e) {
+            $order->update(['status' => 'failed']);
+
+            throw $e;
+        }
+
+        return $order;
     }
 }

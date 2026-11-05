@@ -23,9 +23,16 @@ class CronJobCatalog
         [
             'key' => 'subscription_expiring',
             'name' => 'Avisos de suscripcion por vencer',
-            'description' => 'Notifica por correo a negocios cuya suscripcion vence en 3 dias.',
+            'description' => 'Notifica por correo y WhatsApp a negocios cuya suscripcion vence en 3 dias.',
             'schedule' => 'Diario a las 8:30 AM',
             'command' => 'subscriptions:notify-expiring',
+        ],
+        [
+            'key' => 'subscription_renewal',
+            'name' => 'Renovacion de suscripciones',
+            'description' => 'Cobra la renovacion al medio de pago guardado (el dia que vence y reintentos) y avisa por WhatsApp a quien vence sin medio guardado.',
+            'schedule' => 'Diario a las 7:00 AM',
+            'command' => 'subscriptions:renew',
         ],
         [
             'key' => 'trial_expiring',

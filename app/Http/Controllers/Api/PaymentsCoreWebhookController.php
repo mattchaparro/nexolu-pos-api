@@ -16,6 +16,8 @@ use App\Models\User;
 use App\Services\AiMessagePackService;
 use App\Services\GatewayReconciliationService;
 use App\Services\OnlineOrderPaymentService;
+use App\Services\SubscriptionNotifier;
+use App\Services\SubscriptionService;
 use App\Services\TerminalChargeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -237,6 +239,7 @@ class PaymentsCoreWebhookController extends Controller
                 'paid_at' => now()->toDateString(),
                 'payment_method' => $order->provider,
                 'notes' => ($order->subscription_days >= 365 ? 'Plan anual. ' : '')
+                    .($order->origin === SubscriptionService::ORIGIN_AUTO_RENEW ? 'Renovacion automatica. ' : '')
                     .'Pago automatico via Payments Core - Transaccion: '.($payload['provider_transaction_id'] ?? $payload['transaction_id'] ?? ''),
                 'days_granted' => $order->subscription_days,
                 'recorded_by_user_id' => null,
@@ -253,6 +256,10 @@ class PaymentsCoreWebhookController extends Controller
 
         if ($order) {
             $this->notifyPaymentResult($order, succeeded: true, payload: $payload);
+
+            if ($order->origin === SubscriptionService::ORIGIN_AUTO_RENEW) {
+                app(SubscriptionNotifier::class)->renewed($order->business->fresh(), $order->amount_cop);
+            }
         }
     }
 
@@ -346,6 +353,12 @@ class PaymentsCoreWebhookController extends Controller
         Log::info('payments_core.webhook: pago fallido', ['reference' => $reference, 'status' => $payload['status'] ?? null]);
 
         $this->notifyPaymentResult($order, succeeded: false, payload: $payload);
+
+        // El dueño no estaba pagando en ese momento: si no se le avisa, se
+        // entera cuando se le bloquea el sistema.
+        if ($order->origin === SubscriptionService::ORIGIN_AUTO_RENEW) {
+            app(SubscriptionNotifier::class)->chargeFailed($order->business, $order->amount_cop);
+        }
     }
 
     /**

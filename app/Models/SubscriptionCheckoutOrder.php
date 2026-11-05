@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'provider_order_id',
     'confirmed_at',
     'payload',
+    'origin',
 ])]
 class SubscriptionCheckoutOrder extends Model
 {

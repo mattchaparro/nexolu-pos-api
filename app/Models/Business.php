@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Support\BusinessFeaturePresets;
 use App\Support\NotificationTypes;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -54,6 +56,8 @@ use Illuminate\Validation\ValidationException;
     'trial_ends_at',
     'paid_until',
     'subscription_expiry_notified_at',
+    'subscription_auto_renew',
+    'subscription_renewal_checked_on',
     'subscription_plan',
     'custom_price_cop',
     'feature_flags',
@@ -76,6 +80,12 @@ class Business extends Model
     use HasFactory, SoftDeletes;
 
     const TRIAL_DAYS = 14;
+
+    /** Dias que un negocio vencido sigue funcionando antes de bloquearse. */
+    public const SUBSCRIPTION_GRACE_DAYS = 2;
+
+    /** Hasta cuantos dias de atraso un pago cuenta desde el vencimiento (ver renewalStartsAt). */
+    public const RENEWAL_ANCHOR_MAX_DAYS = 30;
 
     private const DEFAULT_PAYMENT_METHODS = [
         ['id' => 'cash', 'label' => 'Efectivo'],
@@ -102,6 +112,8 @@ class Business extends Model
             'low_stock_email_enabled' => 'boolean',
             'low_stock_snoozed_until' => 'datetime',
             'subscription_expiry_notified_at' => 'datetime',
+            'subscription_auto_renew' => 'boolean',
+            'subscription_renewal_checked_on' => 'date',
             'email_config' => 'array',
             'notification_preferences' => 'array',
             'notification_schedule' => 'array',
@@ -726,10 +738,89 @@ class Business extends Model
         return (int) ($this->custom_price_cop ?: BusinessFeaturePresets::planPriceCop($this->subscription_plan ?? 'basic'));
     }
 
-    /** Extiende (o inicia) el periodo pago, encadenado al vencimiento vigente si ya estaba pago. */
+    /**
+     * Hasta cuando estuvo (o esta) cubierto: lo ultimo entre lo pagado y la
+     * prueba gratis. Null si nunca tuvo ninguna de las dos.
+     */
+    public function coverageEndsAt(): ?CarbonInterface
+    {
+        return collect([$this->paid_until, $this->trial_ends_at])->filter()->max();
+    }
+
+    /**
+     * Ultimo momento en que un negocio vencido todavia puede usar el sistema:
+     * fin del dia SUBSCRIPTION_GRACE_DAYS despues del vencimiento actual (o
+     * del que viene, si todavia esta cubierto). Null si nunca tuvo fechas.
+     *
+     * `subscriptions.lockout_not_before` corre el bloqueo para quien ya
+     * estaba vencido cuando el bloqueo empezo a existir: que se entere antes
+     * de que le cierren la caja.
+     */
+    public function graceEndsAt(): ?CarbonInterface
+    {
+        $end = $this->coverageEndsAt();
+        if (! $end) {
+            return null;
+        }
+
+        $graceEnd = $end->copy()->addDays(self::SUBSCRIPTION_GRACE_DAYS)->endOfDay();
+        $notBefore = config('subscriptions.lockout_not_before');
+        if ($notBefore) {
+            $graceEnd = $graceEnd->max(Carbon::parse($notBefore)->endOfDay());
+        }
+
+        return $graceEnd;
+    }
+
+    /** Vencido, pero todavia dentro de los dias de gracia: puede seguir vendiendo. */
+    public function inGracePeriod(): bool
+    {
+        return $this->active && ! $this->onTrial() && ! $this->isPaid()
+            && ($this->graceEndsAt()?->isFuture() ?? false);
+    }
+
+    /**
+     * Vencido y sin gracia: solo puede entrar a pagar. Un negocio sin
+     * ninguna fecha (nunca tuvo prueba ni pago) tampoco se bloquea: es un
+     * alta a medias que el superadmin resuelve, no un moroso. Los negocios
+     * desactivados por el superadmin ya se tratan aparte (active=false).
+     */
+    public function isLockedOut(): bool
+    {
+        if (! $this->active || $this->onTrial() || $this->isPaid()) {
+            return false;
+        }
+
+        $graceEnd = $this->graceEndsAt();
+
+        return $graceEnd !== null && $graceEnd->isPast();
+    }
+
+    /**
+     * Desde cuando cuenta un pago nuevo. Si ya estaba pago, se encadena al
+     * vencimiento vigente. Si se vencio hace poco, cuenta desde el
+     * vencimiento y no desde el pago: quien paga el 5 lo que vencia el 1 no
+     * se gana esos 4 dias. Pasado un ciclo entero ya no es una renovacion
+     * sino volver despues de irse, y cuenta desde hoy. Una prueba gratis que
+     * vencio tampoco se cobra hacia atras: es el primer pago.
+     */
+    public function renewalStartsAt(): CarbonInterface
+    {
+        if ($this->isPaid()) {
+            return $this->paid_until;
+        }
+
+        if ($this->paid_until && $this->paid_until->gte(now()->subDays(self::RENEWAL_ANCHOR_MAX_DAYS))) {
+            return $this->paid_until;
+        }
+
+        return now();
+    }
+
+    /** Extiende (o inicia) el periodo pago, desde renewalStartsAt(). */
     public function activate(int $days = 30): void
     {
-        $from = $this->isPaid() ? $this->paid_until : now();
+        $from = $this->renewalStartsAt();
         $this->update([
             'paid_until' => $from->copy()->addDays($days),
             'active' => true,

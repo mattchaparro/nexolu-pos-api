@@ -110,6 +110,10 @@ class BusinessResource extends JsonResource
             // 2026-09-28). Mismo umbral configurable que el legacy.
             'days_remaining' => $this->daysRemaining(),
             'subscription_warning_days' => $this->subscriptionWarningDays(),
+            // Vencido: hasta cuando sigue funcionando, y si ya se bloqueo
+            // (la app manda a pagar, ver EnsureSubscriptionActive).
+            'grace_ends_at' => $this->inGracePeriod() ? $this->graceEndsAt()?->toIso8601String() : null,
+            'access_locked' => $this->isLockedOut(),
             'active' => $this->active,
         ];
     }

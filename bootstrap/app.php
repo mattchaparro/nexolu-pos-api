@@ -5,6 +5,7 @@ use App\Http\Middleware\EnsureBusinessCanAccessPurchases;
 use App\Http\Middleware\EnsureBusinessFeatureEnabled;
 use App\Http\Middleware\EnsureBusinessPermission;
 use App\Http\Middleware\EnsureCashShiftOpenForSales;
+use App\Http\Middleware\EnsureSubscriptionActive;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\EnsureValidIaCoreKey;
 use App\Http\Middleware\EnsureValidLegacyAdminKey;
@@ -46,6 +47,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'sentry.context' => SentryBusinessContext::class,
             'storefront.tenant' => ResolveStorefrontTenant::class,
             'branch.context' => ResolveBranch::class,
+            'subscription.active' => EnsureSubscriptionActive::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
