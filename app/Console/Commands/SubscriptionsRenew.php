@@ -27,7 +27,7 @@ use Throwable;
  * nadie le cobrara (Las Banquitas, nov-2026). Cada negocio se evalua una sola
  * vez por dia (subscription_renewal_checked_on).
  */
-#[Signature('subscriptions:renew {--business_id= : Solo para un negocio}')]
+#[Signature('subscriptions:renew {--business_id= : Solo para un negocio} {--now : Cobrar hoy aunque no sea dia de reintento (exige --business_id)}')]
 #[Description('Cobra la renovacion con el medio de pago guardado y avisa por WhatsApp a los negocios que vencen')]
 class SubscriptionsRenew extends Command
 {
@@ -38,6 +38,15 @@ class SubscriptionsRenew extends Command
     {
         $today = now()->startOfDay();
         $attemptDays = config('subscriptions.auto_renew_attempt_days', []);
+
+        // Cobro a mano de un negocio puntual (p. ej. uno que vencio antes de
+        // que existiera el cobro automatico y ya se paso de los reintentos).
+        $force = (bool) $this->option('now');
+        if ($force && ! $this->option('business_id')) {
+            $this->error('--now solo se usa con --business_id.');
+
+            return self::FAILURE;
+        }
 
         $query = Business::query()
             ->where('active', true)
@@ -57,7 +66,7 @@ class SubscriptionsRenew extends Command
         foreach ($query->get() as $business) {
             // Un pago hecho entre ayer y hoy ya lo saco de la ventana.
             $dueDay = $business->coverageEndsAt()?->copy()->startOfDay();
-            if (! $dueDay || $dueDay->isAfter($today) || $business->subscription_renewal_checked_on?->isSameDay($today)) {
+            if (! $dueDay || $dueDay->isAfter($today) || (! $force && $business->subscription_renewal_checked_on?->isSameDay($today))) {
                 continue;
             }
 
@@ -69,7 +78,7 @@ class SubscriptionsRenew extends Command
                 : null;
 
             if ($source && $business->subscription_auto_renew) {
-                if (in_array($daysLate, $attemptDays, true) && $this->charge($business, $source, $subscriptions, $notifier)) {
+                if (($force || in_array($daysLate, $attemptDays, true)) && $this->charge($business, $source, $subscriptions, $notifier)) {
                     $charged++;
                 }
 

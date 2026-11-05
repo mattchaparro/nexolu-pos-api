@@ -180,6 +180,47 @@ class SubscriptionRenewalTest extends TestCase
         $this->assertSame(0, SubscriptionCheckoutOrder::where('business_id', $restDay->id)->count());
     }
 
+    public function test_now_charges_a_business_outside_the_retry_days(): void
+    {
+        $this->fakePaymentsCore();
+        [$business] = $this->expiredBusiness(daysAgo: 5, withSource: true);
+
+        // Dia 5 no es de reintento: sin --now no cobra.
+        $this->artisan('subscriptions:renew', ['--business_id' => $business->id])->assertSuccessful();
+        $this->assertSame(0, SubscriptionCheckoutOrder::where('business_id', $business->id)->count());
+
+        // Y aunque ya se reviso hoy, --now lo cobra.
+        $this->artisan('subscriptions:renew', ['--business_id' => $business->id, '--now' => true])->assertSuccessful();
+        $this->assertSame('auto_renew', SubscriptionCheckoutOrder::where('business_id', $business->id)->sole()->origin);
+    }
+
+    public function test_now_requires_a_single_business(): void
+    {
+        $this->artisan('subscriptions:renew', ['--now' => true])->assertFailed();
+    }
+
+    public function test_preview_sends_every_message_to_one_number_without_touching_the_business(): void
+    {
+        [$business] = $this->expiredBusiness(daysAgo: 4, withSource: true);
+        $paidUntil = $business->paid_until->copy();
+
+        $this->artisan('subscriptions:preview-messages', ['phone' => '319 524 4852', '--business_id' => $business->id, '--pause' => 0])
+            ->assertSuccessful();
+
+        $this->assertCount(9, $this->whatsApps);
+        $this->assertSame(['573195244852'], array_values(array_unique(array_column($this->whatsApps, 'to'))));
+        $texts = array_column($this->whatsApps, 'text');
+        $this->assertStringContainsString('Visa •••• 4242', $texts[0]);
+        $this->assertStringContainsString('renovamos tu suscripción', $texts[2]);
+        $this->assertStringContainsString('Lo intentaremos de nuevo el', $texts[3]);
+        $this->assertStringContainsString('bloqueado hasta que se pague', $texts[4]);
+        $this->assertStringContainsString('Camila intentó usar', $texts[8]);
+        foreach ($texts as $text) {
+            $this->assertLessThanOrEqual(300, mb_strlen($text));
+        }
+        $this->assertTrue($business->fresh()->paid_until->equalTo($paidUntil));
+    }
+
     public function test_an_annual_customer_renews_for_a_year(): void
     {
         $this->fakePaymentsCore();

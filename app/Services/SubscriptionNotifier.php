@@ -23,7 +23,19 @@ use Throwable;
  */
 class SubscriptionNotifier
 {
+    /** Numero fijo en vez de los del negocio: para mandar los mensajes de prueba. */
+    private ?string $recipientOverride = null;
+
     public function __construct(private MessagingChannel $channel) {}
+
+    /** Una copia que le manda todo a un solo numero (ver subscriptions:preview-messages). */
+    public function to(string $phone): static
+    {
+        $copy = clone $this;
+        $copy->recipientOverride = $phone;
+
+        return $copy;
+    }
 
     /**
      * 3 dias antes. Con medio guardado se le dice cuando, cuanto y a que
@@ -73,7 +85,7 @@ class SubscriptionNotifier
         $retry = $next ? " Lo intentaremos de nuevo el {$this->date($next)}." : '';
         $deadline = $business->isLockedOut()
             ? ' El sistema está bloqueado hasta que se pague.'
-            : " Si no se paga antes del {$this->date($business->graceEndsAt())}, el sistema se bloquea.";
+            : " Si no se paga a más tardar el {$this->date($business->graceEndsAt())}, el sistema se bloquea.";
 
         return $this->whatsApp($business, "No pudimos cobrar la suscripción de Nexolú POS ({$this->money($amountCop)}) a tu medio de pago guardado.{$retry}{$deadline} Puedes pagar con otro medio aquí: {$this->url()}");
     }
@@ -110,7 +122,8 @@ class SubscriptionNotifier
 
         foreach ($this->recipients($business) as $phone) {
             try {
-                if ($this->channel->sendTemplate($phone, $template['name'], $template['lang'] ?? 'es', $components, $business->id, 'suscripcion')) {
+                $type = $this->recipientOverride ? 'suscripcion_prueba' : 'suscripcion';
+                if ($this->channel->sendTemplate($phone, $template['name'], $template['lang'] ?? 'es', $components, $business->id, $type)) {
                     $sent++;
                 }
             } catch (Throwable $e) {
@@ -130,6 +143,10 @@ class SubscriptionNotifier
      */
     private function recipients(Business $business): Collection
     {
+        if ($this->recipientOverride) {
+            return collect([$this->recipientOverride]);
+        }
+
         $linked = WhatsAppRecipients::linkedAdmins($business)->pluck('external_id')->filter();
         if ($linked->isNotEmpty()) {
             return $linked->unique()->values();
