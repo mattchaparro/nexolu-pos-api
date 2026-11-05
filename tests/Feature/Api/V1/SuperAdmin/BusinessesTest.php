@@ -46,6 +46,38 @@ class BusinessesTest extends TestCase
             ->assertJsonPath('data.0.name', 'Inactivo SA');
     }
 
+    public function test_businesses_in_use_come_first_with_a_summary(): void
+    {
+        $admin = $this->superadmin();
+        $idle = Business::factory()->create(['name' => 'Ya no vende', 'paid_until' => now()->subMonth(), 'trial_ends_at' => now()->subMonths(2)]);
+        Sale::factory()->create(['business_id' => $idle->id, 'created_at' => now()->subDays(40)]);
+        $never = Business::factory()->create(['name' => 'Nunca vendio', 'trial_ends_at' => now()->addDays(5), 'paid_until' => null]);
+        $busy = Business::factory()->create(['name' => 'Vende hoy', 'paid_until' => now()->addDays(20)]);
+        Sale::factory()->create(['business_id' => $busy->id, 'created_at' => now()->subHour()]);
+        $recent = Business::factory()->create(['name' => 'Vendio hace 3 dias', 'paid_until' => now()->addDays(20)]);
+        Sale::factory()->create(['business_id' => $recent->id, 'created_at' => now()->subDays(3)]);
+        Business::factory()->create(['name' => 'Apagado', 'active' => false]);
+
+        $response = $this->actingAs($admin, 'sanctum')->getJson('/api/v1/superadmin/businesses')->assertOk();
+
+        $this->assertSame(['Vende hoy', 'Vendio hace 3 dias'], array_slice(array_column($response->json('data'), 'name'), 0, 2));
+        $this->assertSame($idle->id, $response->json('data.2.id'));
+        $this->assertNotNull($response->json('data.0.last_sale_at'));
+        $response->assertJsonPath('summary.total', 5)
+            ->assertJsonPath('summary.in_use', 2)
+            ->assertJsonPath('summary.paid', 2)
+            ->assertJsonPath('summary.trial', 1)
+            ->assertJsonPath('summary.expired', 1)
+            ->assertJsonPath('summary.inactive', 1);
+
+        $this->actingAs($admin, 'sanctum')->getJson('/api/v1/superadmin/businesses?status=in_use')
+            ->assertJsonCount(2, 'data');
+        $this->actingAs($admin, 'sanctum')->getJson('/api/v1/superadmin/businesses?status=idle')
+            ->assertJsonCount(3, 'data')
+            ->assertJsonPath('summary.total', 5);
+        $this->assertNotNull($never);
+    }
+
     public function test_superadmin_can_create_a_business_with_a_direct_plan(): void
     {
         $admin = $this->superadmin();

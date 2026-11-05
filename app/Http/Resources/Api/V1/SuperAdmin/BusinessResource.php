@@ -41,6 +41,10 @@ class BusinessResource extends JsonResource
                 'name' => $this->admin_user_name,
             ]),
             'last_activity_at' => $this->when(isset($this->last_activity_at), fn () => Carbon::parse($this->last_activity_at)->toIso8601String()),
+            'last_sale_at' => $this->when(
+                array_key_exists('last_sale_at', $this->resource->getAttributes()),
+                fn () => $this->last_sale_at ? Carbon::parse($this->last_sale_at)->toIso8601String() : null,
+            ),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

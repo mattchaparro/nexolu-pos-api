@@ -36,9 +36,19 @@ class BusinessesController extends Controller
         private SuperAdminBusinessService $businessService
     ) {}
 
+    /** Dias sin vender a partir de los cuales un negocio deja de contar como "en uso". */
+    private const IN_USE_DAYS = 7;
+
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Business::withCount('users');
+        $inUseSince = now()->subDays(self::IN_USE_DAYS);
+        $query = Business::withCount('users')
+            // Ultima venta (abierta o cerrada): lo que dice si el negocio de
+            // verdad usa el POS. Varios siguen "activos" sin vender hace meses.
+            ->addSelect(['last_sale_at' => Sale::query()
+                ->selectRaw('max(created_at)')
+                ->whereColumn('sales.business_id', 'businesses.id'),
+            ]);
 
         if ($request->filled('search')) {
             $search = $request->string('search');
@@ -54,6 +64,8 @@ class BusinessesController extends Controller
                 'trial' => $query->where('trial_ends_at', '>', now())->whereNull('paid_until'),
                 'paid' => $query->where('paid_until', '>', now()),
                 'inactive' => $query->where('active', false),
+                'in_use' => $query->whereExists($this->salesSince($inUseSince)),
+                'idle' => $query->whereNotExists($this->salesSince($inUseSince)),
                 'expired' => $query->where(function ($q) {
                     $q->where(function ($q2) {
                         $q2->whereNull('paid_until')->where(function ($q3) {
@@ -81,11 +93,49 @@ class BusinessesController extends Controller
             });
         }
 
-        $businesses = $query->latest()->paginate(20)->withQueryString();
+        // Primero los que estan en uso, del que vendio mas reciente al que
+        // menos; los que nunca vendieron quedan al final (NULL va ultimo en DESC).
+        $businesses = $query
+            ->orderByRaw('last_sale_at >= ? desc', [$inUseSince])
+            ->orderByDesc('last_sale_at')
+            ->latest()
+            ->paginate(20)
+            ->withQueryString();
         $this->attachAdminUsers($businesses->getCollection());
         $this->attachLastActivity($businesses->getCollection());
 
-        return BusinessResource::collection($businesses);
+        return BusinessResource::collection($businesses)->additional(['summary' => $this->summary($inUseSince)]);
+    }
+
+    /**
+     * Conteo de todos los negocios (sin los filtros del listado), para ver de
+     * un vistazo cuantos usan de verdad el POS.
+     *
+     * @return array{total: int, in_use: int, in_use_days: int, paid: int, trial: int, expired: int, inactive: int}
+     */
+    private function summary(\DateTimeInterface $inUseSince): array
+    {
+        $businesses = Business::query()->get(['id', 'active', 'paid_until', 'trial_ends_at']);
+        $statuses = $businesses->countBy(fn (Business $business) => $business->active ? $business->subscriptionStatus() : 'inactive');
+
+        return [
+            'total' => $businesses->count(),
+            'in_use' => Business::query()->whereExists($this->salesSince($inUseSince))->count(),
+            'in_use_days' => self::IN_USE_DAYS,
+            'paid' => (int) ($statuses['paid'] ?? 0),
+            'trial' => (int) ($statuses['trial'] ?? 0),
+            'expired' => (int) ($statuses['expired'] ?? 0),
+            'inactive' => (int) ($statuses['inactive'] ?? 0),
+        ];
+    }
+
+    /** Subconsulta: el negocio tiene al menos una venta desde $since. */
+    private function salesSince(\DateTimeInterface $since): \Closure
+    {
+        return fn ($q) => $q->selectRaw('1')
+            ->from('sales')
+            ->whereColumn('sales.business_id', 'businesses.id')
+            ->where('sales.created_at', '>=', $since);
     }
 
     public function show(Business $business): array
