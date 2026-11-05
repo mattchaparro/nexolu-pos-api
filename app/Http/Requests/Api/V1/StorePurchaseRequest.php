@@ -2,7 +2,6 @@
 
 namespace App\Http\Requests\Api\V1;
 
-use App\Models\Expense;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Reminder;
@@ -32,8 +31,6 @@ class StorePurchaseRequest extends FormRequest
             'invoice_number' => ['sometimes', 'nullable', 'string', 'max:120'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'is_credit' => ['sometimes', 'boolean'],
-            'create_expense' => ['sometimes', 'boolean'],
-            'expense_payment_method' => ['sometimes', 'nullable', 'string', Rule::in(Expense::PAYMENT_METHODS)],
             // Recordatorio de pago opcional, solo tiene sentido si la compra
             // queda a credito - PurchaseController::store() lo ignora si no
             // hay payment_reminder_date, aunque is_credit venga true.

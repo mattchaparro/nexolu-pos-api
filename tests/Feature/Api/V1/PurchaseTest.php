@@ -121,7 +121,8 @@ class PurchaseTest extends TestCase
             ->assertJsonPath('balance', 5000);
     }
 
-    public function test_create_expense_flag_creates_a_linked_expense_with_the_capitalized_vocabulary(): void
+    /** Gastos son gastos y compras son compras (2026-11-05): ya no hay "registrar como gasto del dia". */
+    public function test_registering_a_purchase_never_creates_an_expense(): void
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
@@ -135,11 +136,10 @@ class PurchaseTest extends TestCase
             'lines' => [['product_id' => $product->id, 'quantity' => 1, 'line_total_cop' => 8000]],
         ]);
 
-        $this->assertDatabaseHas('expenses', [
+        $response->assertCreated();
+        $this->assertDatabaseMissing('expenses', [
             'linkable_type' => Purchase::class,
             'linkable_id' => $response->json('id'),
-            'value' => 8000,
-            'payment_method' => 'Nequi',
         ]);
     }
 

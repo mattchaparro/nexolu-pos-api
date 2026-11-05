@@ -69,6 +69,11 @@ class BusinessOverviewTest extends TestCase
         $purchase = Purchase::factory()->create(['business_id' => $business->id, 'purchased_at' => now()->toDateString()]);
         PurchaseLine::factory()->create(['purchase_id' => $purchase->id, 'line_total_cop' => 250000]);
         Expense::factory()->create(['business_id' => $business->id, 'date' => now()->toDateString(), 'value' => 1500]);
+        // El abono a una compra a credito crea un gasto ligado: no cuenta.
+        Expense::factory()->create([
+            'business_id' => $business->id, 'date' => now()->toDateString(), 'value' => 90000,
+            'linkable_type' => Purchase::class, 'linkable_id' => $purchase->id,
+        ]);
 
         $this->actingAs($admin, 'sanctum')
             ->getJson('/api/v1/reports/sales/business-overview?year='.now()->year.'&month='.now()->month)

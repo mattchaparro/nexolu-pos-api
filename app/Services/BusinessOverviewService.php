@@ -235,8 +235,12 @@ class BusinessOverviewService
             ->whereBetween('closed_at', [$start, $end])
         )->sum('quantity');
 
+        // Sin los pagos a proveedores: cada abono a una compra a credito crea un
+        // gasto ligado a ella para que el cierre de caja cuadre, pero esa
+        // plata ya pesa en el margen como costo de lo vendido.
         $expensesTotal = (float) Expense::where('business_id', $businessId)
             ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->where(fn ($q) => $q->whereNull('linkable_type')->orWhere('linkable_type', '!=', Purchase::class))
             ->sum('value');
 
         // Compras a proveedores del mes: informativas, NO se restan. Entran al

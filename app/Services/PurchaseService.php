@@ -31,7 +31,7 @@ class PurchaseService
     public function __construct(private StockService $stockService) {}
 
     /**
-     * @param  array{supplier_id?: ?int, purchased_at: string, invoice_number?: ?string, notes?: ?string, is_credit?: bool, create_expense?: bool, expense_payment_method?: ?string, lines: array<int, array{product_id?: ?int, ingredient_id?: ?int, quantity: float|int, line_total_cop: float|int, notes?: ?string}>}  $data
+     * @param  array{supplier_id?: ?int, purchased_at: string, invoice_number?: ?string, notes?: ?string, is_credit?: bool, lines: array<int, array{product_id?: ?int, ingredient_id?: ?int, quantity: float|int, line_total_cop: float|int, notes?: ?string}>}  $data
      */
     public function registerPurchase(User $user, array $data): Purchase
     {
@@ -127,15 +127,6 @@ class PurchaseService
             // resincronizar el mismo producto N veces si la compra trae
             // varias lineas del mismo insumo).
             $ingredientsToSync->each(fn (Ingredient $ingredient) => $ingredient->syncLinkedProductCosts());
-
-            if (! empty($data['create_expense'])) {
-                $total = round(collect($lines)->sum(fn ($l) => (float) $l['line_total_cop']), 2);
-                $this->createExpenseForPurchase(
-                    $business->id, $purchase, $total,
-                    $data['expense_payment_method'] ?? Expense::PAYMENT_METHODS[0],
-                    (string) $data['purchased_at'],
-                );
-            }
 
             return $purchase->load('lines.product', 'lines.productVariant.attributeValues.productAttribute', 'lines.ingredient', 'supplier');
         });
