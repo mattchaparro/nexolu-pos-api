@@ -5,11 +5,12 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\ChargeSubscriptionCheckoutRequest;
 use App\Http\Requests\Api\V1\InitiateSubscriptionCheckoutRequest;
+use App\Services\SubscriptionNotifier;
 use App\Services\SubscriptionService;
-use App\Support\AuditLogger;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 
 class SubscriptionController extends Controller
@@ -27,7 +28,6 @@ class SubscriptionController extends Controller
             'paid_until' => $business->paid_until?->toDateString(),
             'grace_ends_at' => $business->inGracePeriod() ? $business->graceEndsAt()?->toDateString() : null,
             'access_locked' => $business->isLockedOut(),
-            'auto_renew' => (bool) $business->subscription_auto_renew,
             'renewal_amount_cop' => $this->subscriptions->renewalAmountCop($business),
             'pricing' => $this->subscriptions->pricingBreakdown($business),
             'payments' => $business->saasSubscriptionPayments()
@@ -46,17 +46,24 @@ class SubscriptionController extends Controller
         ]);
     }
 
-    /** Prende o apaga el cobro automatico al medio de pago guardado (ver subscriptions:renew). */
-    public function updateAutoRenew(Request $request): JsonResponse
+    /**
+     * Un empleado con el sistema bloqueado no puede pagar: esto le avisa al
+     * dueño por WhatsApp. Una vez por hora por negocio, para que varios
+     * empleados (o el mismo, insistiendo) no le llenen el chat.
+     */
+    public function notifyAdmin(Request $request, SubscriptionNotifier $notifier): JsonResponse
     {
-        $data = $request->validate(['auto_renew' => ['required', 'boolean']]);
-
         $business = $request->user()->business;
-        $business->update(['subscription_auto_renew' => $data['auto_renew']]);
 
-        AuditLogger::log('subscription.auto_renew_updated', ['auto_renew' => $data['auto_renew']]);
+        if (! $business->isLockedOut()) {
+            return response()->json(['sent' => false, 'reason' => 'not_locked'], 422);
+        }
 
-        return response()->json(['auto_renew' => (bool) $business->subscription_auto_renew]);
+        if (Cache::add("subscription:lockout-notice:{$business->id}", true, now()->addHour())) {
+            $notifier->employeeFoundLockout($business, $request->user()->name);
+        }
+
+        return response()->json(['sent' => true]);
     }
 
     public function initiate(InitiateSubscriptionCheckoutRequest $request): JsonResponse

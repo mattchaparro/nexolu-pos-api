@@ -26,16 +26,15 @@ class SubscriptionNotifier
     public function __construct(private MessagingChannel $channel) {}
 
     /**
-     * 3 dias antes. Si tiene renovacion automatica se le dice cuando y a que
-     * medio se le va a cobrar: es lo que hace legitimo el cobro sin que el
-     * dueño lo apruebe cada vez.
+     * 3 dias antes. Con medio guardado se le dice cuando, cuanto y a que
+     * medio se intentara el cobro, para que tenga saldo o cupo.
      */
     public function upcoming(Business $business, ?BusinessPaymentSource $source, int $amountCop): int
     {
         $when = $this->date($business->paid_until);
 
         if ($source && $business->subscription_auto_renew) {
-            return $this->whatsApp($business, "Tu suscripción de Nexolú POS se renueva el {$when}. Ese día cobraremos {$this->money($amountCop)} a tu {$source->label}. Si quieres cambiar el medio de pago o apagar la renovación automática, entra a {$this->url()}");
+            return $this->whatsApp($business, "Tu suscripción de Nexolú POS se renueva el {$when}. Ese día intentaremos el cobro de {$this->money($amountCop)} a tu medio de pago registrado ({$source->label}). Te recomendamos tener saldo o cupo disponible. Si quieres cambiar el medio de pago, entra a {$this->url()}");
         }
 
         return $this->whatsApp($business, "Tu suscripción de Nexolú POS vence el {$when} ({$this->money($amountCop)}). Paga a tiempo para no perder el acceso: {$this->url()}");
@@ -54,6 +53,12 @@ class SubscriptionNotifier
     public function lockedOut(Business $business): int
     {
         return $this->whatsApp($business, "Tu acceso a Nexolú POS quedó suspendido por falta de pago. Apenas pagues se activa de nuevo, con todos tus datos: {$this->url()}");
+    }
+
+    /** Un empleado se encontro el sistema bloqueado y le avisa al dueño. */
+    public function employeeFoundLockout(Business $business, string $employeeName): int
+    {
+        return $this->whatsApp($business, "{$employeeName} intentó usar Nexolú POS en {$business->name}, pero el sistema está bloqueado porque la suscripción no se ha pagado. Paga aquí para desbloquearlo: {$this->url()}");
     }
 
     public function renewed(Business $business, int $amountCop): int

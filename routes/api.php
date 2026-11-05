@@ -314,12 +314,15 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('/dashboard/whatsapp-onboarding', [DashboardController::class, 'whatsappOnboarding'])->name('dashboard.whatsapp-onboarding');
         Route::post('/dashboard/whatsapp-onboarding/dismiss', [DashboardController::class, 'dismissWhatsappOnboarding'])->name('dashboard.whatsapp-onboarding.dismiss');
 
+        // Cualquier empleado: con el sistema bloqueado no puede pagar, pero si
+        // avisarle al dueño (ver SubscriptionController::notifyAdmin).
+        Route::post('/subscription/notify-admin', [SubscriptionController::class, 'notifyAdmin'])->name('subscription.notify-admin');
+
         // Suscripcion/facturacion del negocio: mismo criterio de
         // business-admin que arriba - mover dinero o ver el estado del plan
         // no es algo que un empleado deba poder hacer.
         Route::middleware('business-admin')->group(function () {
             Route::get('/subscription/status', [SubscriptionController::class, 'status'])->name('subscription.status');
-            Route::put('/subscription/auto-renew', [SubscriptionController::class, 'updateAutoRenew'])->name('subscription.auto-renew.update');
             Route::post('/subscription/checkout', [SubscriptionController::class, 'initiate'])->name('subscription.checkout');
             Route::get('/subscription/checkout/{reference}', [SubscriptionController::class, 'checkoutStatus'])->name('subscription.checkout.status');
             Route::post('/subscription/checkout/{reference}/charge', [SubscriptionController::class, 'charge'])->name('subscription.checkout.charge');

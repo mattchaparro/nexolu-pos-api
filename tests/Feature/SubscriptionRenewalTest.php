@@ -234,7 +234,8 @@ class SubscriptionRenewalTest extends TestCase
         $this->artisan('subscriptions:notify-expiring')->assertSuccessful();
 
         $this->assertCount(1, $this->whatsApps);
-        $this->assertStringContainsString('cobraremos $65.000 a tu Visa •••• 4242', $this->whatsApps[0]['text']);
+        $this->assertStringContainsString('intentaremos el cobro de $65.000 a tu medio de pago registrado (Visa •••• 4242)', $this->whatsApps[0]['text']);
+        $this->assertStringContainsString('saldo o cupo disponible', $this->whatsApps[0]['text']);
         $this->assertNotNull($business->fresh()->subscription_expiry_notified_at);
     }
 
@@ -282,21 +283,28 @@ class SubscriptionRenewalTest extends TestCase
     }
 
     // ---------------------------------------------------------------
-    // Interruptor de renovacion automatica
+    // El empleado que se encuentra el bloqueo
     // ---------------------------------------------------------------
 
-    public function test_the_admin_can_turn_auto_renew_off_and_an_employee_cannot(): void
+    public function test_an_employee_can_tell_the_owner_the_system_is_locked_once_an_hour(): void
     {
-        [$business, $admin] = $this->expiredBusiness(daysAgo: -10);
+        [$business] = $this->expiredBusiness(daysAgo: 5);
+        $employee = User::factory()->create(['business_id' => $business->id, 'name' => 'Pedro Caja']);
 
-        $this->actingAs($admin, 'sanctum')->putJson('/api/v1/subscription/auto-renew', ['auto_renew' => false])
-            ->assertOk()
-            ->assertJsonPath('auto_renew', false);
-        $this->assertFalse($business->fresh()->subscription_auto_renew);
-        $this->actingAs($admin, 'sanctum')->getJson('/api/v1/subscription/status')->assertJsonPath('auto_renew', false);
+        $this->actingAs($employee, 'sanctum')->postJson('/api/v1/subscription/notify-admin')->assertOk();
+        $this->actingAs($employee, 'sanctum')->postJson('/api/v1/subscription/notify-admin')->assertOk();
 
+        $this->assertCount(1, $this->whatsApps);
+        $this->assertStringContainsString('Pedro Caja intentó usar Nexolú POS', $this->whatsApps[0]['text']);
+    }
+
+    public function test_notify_admin_does_nothing_when_the_business_is_not_locked(): void
+    {
+        [$business] = $this->expiredBusiness(daysAgo: -10);
         $employee = User::factory()->create(['business_id' => $business->id]);
-        $this->actingAs($employee, 'sanctum')->putJson('/api/v1/subscription/auto-renew', ['auto_renew' => true])->assertForbidden();
+
+        $this->actingAs($employee, 'sanctum')->postJson('/api/v1/subscription/notify-admin')->assertStatus(422);
+        $this->assertSame([], $this->whatsApps);
     }
 
     // ---------------------------------------------------------------
