@@ -34,7 +34,9 @@ class SupplierController extends Controller
             });
         }
 
-        return SupplierResource::collection($query->paginate(20)->withQueryString());
+        $perPage = min(max($request->integer('per_page', 20), 1), 200);
+
+        return SupplierResource::collection($query->paginate($perPage)->withQueryString());
     }
 
     public function store(StoreSupplierRequest $request): SupplierResource

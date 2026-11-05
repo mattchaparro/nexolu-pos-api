@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Business;
 use App\Models\Expense;
 use App\Models\LayawayPayment;
+use App\Models\Purchase;
 use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\SaleItem;
@@ -43,6 +44,7 @@ class BusinessOverviewService
                 'receivables' => $business->hasFeature('receivables'),
                 'layaway' => $business->hasFeature('layaway'),
                 'expenses' => $business->hasFeature('expenses'),
+                'purchases' => $business->canAccessPurchases(),
             ],
         ];
     }
@@ -237,6 +239,14 @@ class BusinessOverviewService
             ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
             ->sum('value');
 
+        // Compras a proveedores del mes: informativas, NO se restan. Entran al
+        // inventario y pesan en el margen como costo de lo vendido
+        // (sale_items.unit_cost_at_sale); restarlas otra vez las contaria doble.
+        $purchases = Purchase::where('business_id', $businessId)
+            ->whereBetween('purchased_at', [$start->toDateString(), $end->toDateString()])
+            ->withSum('lines', 'line_total_cop')
+            ->get(['id']);
+
         // Dos consultas separadas a proposito: sumar cart_discount_amount con
         // un join a sale_items lo repetiria una vez por cada item de la
         // venta (join 1-a-N) - un SUM(DISTINCT ...) para "arreglarlo"
@@ -269,6 +279,8 @@ class BusinessOverviewService
                 'units_sold' => $unitsSold,
                 'expenses_total' => $expensesTotal,
                 'net_estimate' => round($current['revenue'] - $expensesTotal, 2),
+                'purchases_total' => round((float) $purchases->sum('lines_sum_line_total_cop'), 2),
+                'purchases_count' => $purchases->count(),
                 'revenue_change_pct' => $this->growthPct($current['revenue'], $previous['revenue']),
             ],
             'discounts' => [
@@ -286,7 +298,7 @@ class BusinessOverviewService
             'top_products' => $this->productRotation($businessId, $start, $end, 'desc', $current['revenue']),
             'bottom_products' => $this->productRotation($businessId, $start, $end, 'asc', $current['revenue']),
             'top_services' => $business->hasFeature('services') ? $this->topServices($businessId, $start, $end) : null,
-            'profit' => $canViewProfit ? $this->profitSummary($businessId, $start, $end) : null,
+            'profit' => $canViewProfit ? $this->profitSummary($businessId, $start, $end, $expensesTotal) : null,
         ];
     }
 
@@ -299,11 +311,12 @@ class BusinessOverviewService
      *
      * @return array{
      *   revenue: float, cost: float, profit: float, margin_pct: float|null,
+     *   profit_after_expenses: float,
      *   uncosted_products_count: int, uncosted_revenue: float,
      *   top_products: list<array{product_id: int, name: string, sku: string|null, qty_sold: int, revenue: float, cost_total: float, profit: float, margin_pct: float|null}>,
      * }
      */
-    private function profitSummary(int $businessId, Carbon $start, Carbon $end): array
+    private function profitSummary(int $businessId, Carbon $start, Carbon $end, float $expensesTotal): array
     {
         $breakdown = ProductProfitBreakdown::forPeriod($businessId, $start, $end);
 
@@ -312,6 +325,9 @@ class BusinessOverviewService
             'cost' => $breakdown['total_cost'],
             'profit' => $breakdown['total_profit'],
             'margin_pct' => $breakdown['margin_pct'],
+            // Lo que queda despues de pagar los gastos del mes (arriendo,
+            // servicios...). Las compras ya estan dentro de 'cost'.
+            'profit_after_expenses' => round($breakdown['total_profit'] - $expensesTotal, 2),
             'uncosted_products_count' => $breakdown['uncosted']['products_count'],
             'uncosted_revenue' => $breakdown['uncosted']['total_revenue'],
             'top_products' => array_slice($breakdown['lines'], 0, 10),

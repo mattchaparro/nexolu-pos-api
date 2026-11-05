@@ -35,6 +35,7 @@ class SaleResource extends JsonResource
             'customer_name' => $this->customer_name,
             'customer_phone' => $this->customer_phone,
             'customer_identification' => $this->customer_identification,
+            'notes' => $this->notes,
             'client_id' => $this->client_id,
             'client' => new ClientResource($this->whenLoaded('client')),
             'closed_at' => $this->closed_at?->toIso8601String(),

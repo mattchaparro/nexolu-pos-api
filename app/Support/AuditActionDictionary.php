@@ -31,6 +31,8 @@ class AuditActionDictionary
             'tab.partial_payment' => 'Abono parcial a la cuenta',
             'tab.closed' => 'Cuenta cerrada y cobrada',
             'tab.cancelled' => 'Cuenta cancelada',
+            'tab.moved' => 'Cuenta cambiada de mesa',
+            'tab.notes_updated' => 'Nota de la cuenta actualizada',
             'receivable.collected' => 'Fiado cobrado',
             'cash_shift.opened' => 'Turno de caja abierto',
             'cash_shift.closed' => 'Turno de caja cerrado',

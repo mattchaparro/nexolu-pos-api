@@ -34,6 +34,12 @@ class PurchaseController extends Controller
         if ($request->filled('payment_status')) {
             $query->where('payment_status', $request->string('payment_status'));
         }
+        // 'none' = las compras sin proveedor.
+        if ($request->filled('supplier_id')) {
+            $request->input('supplier_id') === 'none'
+                ? $query->whereNull('supplier_id')
+                : $query->where('supplier_id', $request->integer('supplier_id'));
+        }
 
         return PurchaseResource::collection($query->paginate(20)->withQueryString());
     }

@@ -44,6 +44,7 @@ class OpenTabService
                 'customer_name' => $data['customer_name'] ?? null,
                 'customer_phone' => $data['customer_phone'] ?? null,
                 'customer_identification' => $data['customer_identification'] ?? null,
+                'notes' => filled($data['notes'] ?? null) ? trim($data['notes']) : null,
                 'client_id' => $data['client_id'] ?? null,
                 'is_delivery' => $isDelivery,
                 'delivery_fee' => $deliveryFee,
@@ -69,6 +70,29 @@ class OpenTabService
             // modelo). Mismo cuidado que ya tuvimos en SaleService::createSale.
             return $sale->load('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'table');
         });
+    }
+
+    /**
+     * Cambia la nota de la cuenta y/o la pasa a otra mesa (la gente se movio).
+     * La mesa destino ya viene validada como libre (UpdateOpenTabRequest).
+     *
+     * @param  array{table_id?: int|null, notes?: string|null}  $data
+     */
+    public function updateDetails(Sale $sale, array $data): Sale
+    {
+        $this->assertOpen($sale);
+
+        $changes = [];
+        if (array_key_exists('notes', $data)) {
+            $changes['notes'] = filled($data['notes']) ? trim($data['notes']) : null;
+        }
+        if (! empty($data['table_id'])) {
+            $changes['table_id'] = (int) $data['table_id'];
+        }
+
+        $sale->update($changes);
+
+        return $sale->load('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'partialPayments', 'table');
     }
 
     /**

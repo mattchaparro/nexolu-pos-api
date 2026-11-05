@@ -3,7 +3,10 @@
 namespace Tests\Feature\Api\V1;
 
 use App\Models\Business;
+use App\Models\Expense;
 use App\Models\Product;
+use App\Models\Purchase;
+use App\Models\PurchaseLine;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\User;
@@ -52,6 +55,29 @@ class BusinessOverviewTest extends TestCase
             ->getJson('/api/v1/reports/sales/business-overview?year='.now()->year.'&month='.now()->month);
 
         $response->assertOk()->assertJsonPath('period.profit.revenue', 10000);
+    }
+
+    /**
+     * Las compras se muestran pero no se restan: ya pesan en el margen como
+     * costo de lo vendido (Las Banquitas, nov-2026, preguntaba por que no
+     * salian como gasto).
+     */
+    public function test_purchases_are_shown_apart_and_the_profit_discounts_the_expenses(): void
+    {
+        [$business, $admin] = $this->admin();
+        $this->seedCostedSale($business);
+        $purchase = Purchase::factory()->create(['business_id' => $business->id, 'purchased_at' => now()->toDateString()]);
+        PurchaseLine::factory()->create(['purchase_id' => $purchase->id, 'line_total_cop' => 250000]);
+        Expense::factory()->create(['business_id' => $business->id, 'date' => now()->toDateString(), 'value' => 1500]);
+
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/sales/business-overview?year='.now()->year.'&month='.now()->month)
+            ->assertOk()
+            ->assertJsonPath('period.summary.purchases_total', 250000)
+            ->assertJsonPath('period.summary.purchases_count', 1)
+            ->assertJsonPath('period.summary.expenses_total', 1500)
+            ->assertJsonPath('period.profit.profit', 6000)
+            ->assertJsonPath('period.profit.profit_after_expenses', 4500);
     }
 
     public function test_an_employee_without_accounting_manage_does_not_see_the_profit_section(): void

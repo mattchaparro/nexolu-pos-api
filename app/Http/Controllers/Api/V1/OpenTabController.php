@@ -7,6 +7,7 @@ use App\Http\Requests\Api\V1\CloseOpenTabRequest;
 use App\Http\Requests\Api\V1\OpenTabItemsRequest;
 use App\Http\Requests\Api\V1\RecordPartialPaymentRequest;
 use App\Http\Requests\Api\V1\StoreOpenTabRequest;
+use App\Http\Requests\Api\V1\UpdateOpenTabRequest;
 use App\Http\Resources\Api\V1\SaleResource;
 use App\Models\Sale;
 use App\Services\OpenTabService;
@@ -78,6 +79,23 @@ class OpenTabController extends Controller
     public function show(Sale $sale): SaleResource
     {
         return new SaleResource($sale->load([...self::itemRelations(), 'partialPayments', 'paymentSplits', 'table']));
+    }
+
+    /** Nota de la cuenta y/o cambio de mesa. */
+    public function update(UpdateOpenTabRequest $request, Sale $sale): SaleResource
+    {
+        $fromTableId = $sale->table_id;
+        $previousNotes = $sale->notes;
+        $sale = $this->openTabService->updateDetails($sale, $request->validated());
+
+        if ($sale->table_id !== $fromTableId) {
+            AuditLogger::log('tab.moved', ['sale_id' => $sale->id, 'from_table_id' => $fromTableId, 'to_table_id' => $sale->table_id]);
+        }
+        if ($sale->notes !== $previousNotes) {
+            AuditLogger::log('tab.notes_updated', ['sale_id' => $sale->id, 'notes' => $sale->notes]);
+        }
+
+        return new SaleResource($sale);
     }
 
     public function addItems(OpenTabItemsRequest $request, Sale $sale): SaleResource

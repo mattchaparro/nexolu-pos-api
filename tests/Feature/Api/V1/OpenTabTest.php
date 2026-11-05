@@ -101,6 +101,98 @@ class OpenTabTest extends TestCase
             ->assertJsonValidationErrors(['table_id']);
     }
 
+    public function test_a_tab_can_be_opened_with_a_note(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $table = BusinessTable::factory()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'stock' => 10]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'table_id' => $table->id,
+            'notes' => '  Juan y su familia  ',
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->assertCreated()->assertJsonPath('notes', 'Juan y su familia');
+    }
+
+    public function test_the_note_of_an_open_tab_can_be_changed_and_cleared(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $tab = Sale::factory()->create(['business_id' => $business->id, 'status' => 'open']);
+
+        $this->actingAs($user, 'sanctum')->patchJson("/api/v1/open-tabs/{$tab->id}", ['notes' => 'Los de la camiseta roja'])
+            ->assertOk()->assertJsonPath('notes', 'Los de la camiseta roja');
+        $this->assertDatabaseHas('log_actions', ['action' => 'tab.notes_updated']);
+
+        $this->actingAs($user, 'sanctum')->patchJson("/api/v1/open-tabs/{$tab->id}", ['notes' => ''])
+            ->assertOk()->assertJsonPath('notes', null);
+    }
+
+    public function test_a_tab_can_be_moved_to_a_free_table_keeping_its_items_and_payments(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        [$from, $to] = BusinessTable::factory()->count(2)->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id, 'price' => 10000, 'stock' => 10]);
+        $tab = $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'table_id' => $from->id,
+            'notes' => 'Juan',
+            'items' => [['product_id' => $product->id, 'quantity' => 2]],
+        ])->json();
+
+        $this->actingAs($user, 'sanctum')->patchJson("/api/v1/open-tabs/{$tab['id']}", ['table_id' => $to->id])
+            ->assertOk()
+            ->assertJsonPath('table_id', $to->id)
+            ->assertJsonPath('notes', 'Juan')
+            ->assertJsonPath('total', '20000.00')
+            ->assertJsonCount(1, 'items');
+
+        $this->assertDatabaseHas('log_actions', ['action' => 'tab.moved']);
+        // La mesa de origen queda libre para otra cuenta.
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'table_id' => $from->id,
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->assertCreated();
+    }
+
+    public function test_a_tab_cannot_be_moved_to_an_occupied_or_inactive_table(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $occupied = BusinessTable::factory()->create(['business_id' => $business->id]);
+        $inactive = BusinessTable::factory()->create(['business_id' => $business->id, 'is_active' => false]);
+        Sale::factory()->create(['business_id' => $business->id, 'table_id' => $occupied->id, 'status' => 'open']);
+        $tab = Sale::factory()->create(['business_id' => $business->id, 'status' => 'open']);
+
+        $this->actingAs($user, 'sanctum')->patchJson("/api/v1/open-tabs/{$tab->id}", ['table_id' => $occupied->id])
+            ->assertStatus(422)->assertJsonValidationErrors(['table_id']);
+        $this->actingAs($user, 'sanctum')->patchJson("/api/v1/open-tabs/{$tab->id}", ['table_id' => $inactive->id])
+            ->assertStatus(422)->assertJsonValidationErrors(['table_id']);
+    }
+
+    public function test_a_tab_cannot_be_moved_to_a_table_of_another_business(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $foreign = BusinessTable::factory()->create(['business_id' => Business::factory()->create()->id]);
+        $tab = Sale::factory()->create(['business_id' => $business->id, 'status' => 'open']);
+
+        $this->actingAs($user, 'sanctum')->patchJson("/api/v1/open-tabs/{$tab->id}", ['table_id' => $foreign->id])
+            ->assertStatus(422)->assertJsonValidationErrors(['table_id']);
+    }
+
+    public function test_a_closed_sale_cannot_be_edited_as_a_tab(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $sale = Sale::factory()->create(['business_id' => $business->id, 'status' => 'closed']);
+
+        $this->actingAs($user, 'sanctum')->patchJson("/api/v1/open-tabs/{$sale->id}", ['notes' => 'x'])
+            ->assertStatus(422);
+        $this->assertNull($sale->fresh()->notes);
+    }
+
     public function test_adding_items_increases_the_total_and_decreases_stock(): void
     {
         $business = Business::factory()->create();

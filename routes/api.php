@@ -676,7 +676,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             // nombre de parametro distinto rompe el binding implicito (el
             // mismo bug que ya encontramos y arreglamos en BusinessTableController).
             Route::apiResource('open-tabs', OpenTabController::class)
-                ->only(['index', 'show', 'store'])
+                ->only(['index', 'show', 'store', 'update'])
                 ->parameters(['open-tabs' => 'sale']);
             Route::post('/open-tabs/{sale}/items', [OpenTabController::class, 'addItems'])->name('open-tabs.items.add');
             Route::put('/open-tabs/{sale}/items', [OpenTabController::class, 'syncItems'])->name('open-tabs.items.sync');

@@ -31,6 +31,7 @@ use Illuminate\Support\Collection;
     'customer_name',
     'customer_phone',
     'customer_identification',
+    'notes',
     'client_id',
     'is_delivery',
     'delivery_fee',

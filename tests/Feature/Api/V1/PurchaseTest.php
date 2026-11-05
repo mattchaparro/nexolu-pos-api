@@ -284,4 +284,22 @@ class PurchaseTest extends TestCase
             'remindable_id' => $purchaseId,
         ]);
     }
+
+    public function test_purchases_can_be_filtered_by_supplier_or_without_one(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        [$acme, $other] = Supplier::factory()->count(2)->create(['business_id' => $business->id]);
+        $fromAcme = Purchase::factory()->create(['business_id' => $business->id, 'supplier_id' => $acme->id]);
+        Purchase::factory()->create(['business_id' => $business->id, 'supplier_id' => $other->id]);
+        $withoutSupplier = Purchase::factory()->create(['business_id' => $business->id, 'supplier_id' => null]);
+
+        $this->actingAs($user, 'sanctum')->getJson("/api/v1/purchases?supplier_id={$acme->id}")
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $fromAcme->id);
+        $this->actingAs($user, 'sanctum')->getJson('/api/v1/purchases?supplier_id=none')
+            ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $withoutSupplier->id);
+        $this->actingAs($user, 'sanctum')->getJson('/api/v1/purchases')
+            ->assertOk()->assertJsonCount(3, 'data');
+    }
 }
