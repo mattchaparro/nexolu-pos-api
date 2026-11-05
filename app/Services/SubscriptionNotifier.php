@@ -46,31 +46,31 @@ class SubscriptionNotifier
         $when = $this->date($business->paid_until);
 
         if ($source && $business->subscription_auto_renew) {
-            return $this->whatsApp($business, "Tu suscripción de Nexolú POS se renueva el {$when}. Ese día intentaremos el cobro de {$this->money($amountCop)} a tu medio de pago registrado ({$source->label}). Te recomendamos tener saldo o cupo disponible. Si quieres cambiar el medio de pago, entra a {$this->url()}");
+            return $this->whatsApp($business, "Tu suscripción de Nexolú POS se renueva el {$when}. Ese día intentaremos el cobro de {$this->money($amountCop)} a tu medio de pago registrado ({$source->label}). Te recomendamos tener saldo o cupo disponible. {$this->link('Si quieres cambiar el medio de pago, hazlo')}");
         }
 
-        return $this->whatsApp($business, "Tu suscripción de Nexolú POS vence el {$when} ({$this->money($amountCop)}). Paga a tiempo para no perder el acceso: {$this->url()}");
+        return $this->whatsApp($business, "Tu suscripción de Nexolú POS vence el {$when} ({$this->money($amountCop)}). Paga a tiempo para no perder el acceso. {$this->link('Puedes pagar')}");
     }
 
     public function dueToday(Business $business): int
     {
-        return $this->whatsApp($business, "Tu suscripción de Nexolú POS vence hoy. Tienes hasta el {$this->date($business->graceEndsAt())} para pagar; después el sistema se bloquea hasta que pagues. Paga aquí: {$this->url()}");
+        return $this->whatsApp($business, "Tu suscripción de Nexolú POS vence hoy. Tienes hasta el {$this->date($business->graceEndsAt())} para pagar; después el sistema se bloquea hasta que pagues. {$this->link('Puedes pagar')}");
     }
 
     public function lastGraceDay(Business $business): int
     {
-        return $this->whatsApp($business, "Hoy es el último día para pagar tu suscripción de Nexolú POS. Mañana el sistema se bloquea y no podrás vender hasta que pagues. Paga aquí: {$this->url()}");
+        return $this->whatsApp($business, "Hoy es el último día para pagar tu suscripción de Nexolú POS. Mañana el sistema se bloquea y no podrás vender hasta que pagues. {$this->link('Puedes pagar')}");
     }
 
     public function lockedOut(Business $business): int
     {
-        return $this->whatsApp($business, "Tu acceso a Nexolú POS quedó suspendido por falta de pago. Apenas pagues se activa de nuevo, con todos tus datos: {$this->url()}");
+        return $this->whatsApp($business, "Tu acceso a Nexolú POS quedó suspendido por falta de pago. Apenas pagues se activa de nuevo, con todos tus datos. {$this->link('Puedes pagar')}");
     }
 
     /** Un empleado se encontro el sistema bloqueado y le avisa al dueño. */
     public function employeeFoundLockout(Business $business, string $employeeName): int
     {
-        return $this->whatsApp($business, "{$employeeName} intentó usar Nexolú POS en {$business->name}, pero el sistema está bloqueado porque la suscripción no se ha pagado. Paga aquí para desbloquearlo: {$this->url()}");
+        return $this->whatsApp($business, "{$employeeName} intentó usar Nexolú POS en {$business->name}, pero el sistema está bloqueado porque la suscripción no se ha pagado. {$this->link('Puedes pagar para desbloquearlo')}");
     }
 
     public function renewed(Business $business, int $amountCop): int
@@ -87,7 +87,7 @@ class SubscriptionNotifier
             ? ' El sistema está bloqueado hasta que se pague.'
             : " Si no se paga a más tardar el {$this->date($business->graceEndsAt())}, el sistema se bloquea.";
 
-        return $this->whatsApp($business, "No pudimos cobrar la suscripción de Nexolú POS ({$this->money($amountCop)}) a tu medio de pago guardado.{$retry}{$deadline} Puedes pagar con otro medio aquí: {$this->url()}");
+        return $this->whatsApp($business, "No pudimos cobrar la suscripción de Nexolú POS ({$this->money($amountCop)}) a tu medio de pago guardado.{$retry}{$deadline} {$this->link('Puedes pagar con otro medio')}");
     }
 
     /** Proximo dia en que subscriptions:renew volvera a intentar el cobro, o null si ya no. */
@@ -112,12 +112,12 @@ class SubscriptionNotifier
     /** @return int a cuantos numeros se envio */
     public function whatsApp(Business $business, string $text): int
     {
-        $template = config('services.whatsapp.templates.recordatorio');
+        $template = $this->template();
         if (empty($template['name'])) {
             return 0;
         }
 
-        $components = [['type' => 'body', 'parameters' => [['type' => 'text', 'text' => mb_substr($text, 0, 300)]]]];
+        $components = [['type' => 'body', 'parameters' => [['type' => 'text', 'text' => mb_substr(trim($text), 0, 300)]]]];
         $sent = 0;
 
         foreach ($this->recipients($business) as $phone) {
@@ -156,6 +156,35 @@ class SubscriptionNotifier
         $phone = ChannelPhone::normalize((string) ($owner?->cellphone ?: $business->phone));
 
         return collect($phone ? [$phone] : []);
+    }
+
+    /**
+     * La plantilla propia de suscripcion (con boton a /suscripcion) apenas
+     * Meta la apruebe; mientras tanto, la de recordatorio.
+     *
+     * @return array{name?: string, lang?: string}
+     */
+    private function template(): array
+    {
+        $own = config('services.whatsapp.templates.suscripcion', []);
+
+        return $this->hasButton() ? $own : config('services.whatsapp.templates.recordatorio', []);
+    }
+
+    private function hasButton(): bool
+    {
+        $own = config('services.whatsapp.templates.suscripcion', []);
+
+        return filled($own['name'] ?? null) && ! ($own['pending_approval'] ?? false);
+    }
+
+    /**
+     * Cierre con el enlace a Suscripcion. Con la plantilla propia sobra: su
+     * cuerpo ya dice que se paga desde el POS y trae el boton.
+     */
+    private function link(string $lead): string
+    {
+        return $this->hasButton() ? '' : "{$lead} aquí: {$this->url()}";
     }
 
     private function url(): string

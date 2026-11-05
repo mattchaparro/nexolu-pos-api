@@ -129,6 +129,18 @@ return [
                 'description' => 'Recordatorio genérico (Planificador de recordatorios).',
                 'triggered_by' => 'reminders:send-whatsapp-notifications',
             ],
+            // Avisos de la suscripcion (cobro, vencimiento, bloqueo). Un solo
+            // texto libre en el body y un boton fijo a /suscripcion, para que
+            // no llegue como "recordatorio" (la gente no le para bolas).
+            // Creada en Meta el 2026-11-05 (UTILITY, es_CO). Mientras este en
+            // revision, SubscriptionNotifier sigue con 'recordatorio'.
+            'suscripcion' => [
+                'name' => 'subscription_update',
+                'lang' => 'es_CO',
+                'pending_approval' => true,
+                'description' => 'Novedades sobre la suscripción del POS (cobro, vencimiento, bloqueo).',
+                'triggered_by' => 'SubscriptionNotifier',
+            ],
             // Resumen diario del negocio (notifications:send-daily-whatsapp-summary).
             // Mismo nombre real que ya usa legacy en el mismo WABA: creada en
             // Meta como 'daily_business_summary', EN REVISION al 2026-07-23.

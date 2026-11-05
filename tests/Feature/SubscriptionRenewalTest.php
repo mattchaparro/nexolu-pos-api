@@ -28,7 +28,7 @@ class SubscriptionRenewalTest extends TestCase
 
     private const SECRET = 'webhook-secret-test';
 
-    /** @var list<array{to: string, text: string}> */
+    /** @var list<array{to: string, text: string, template: string}> */
     private array $whatsApps = [];
 
     protected function setUp(): void
@@ -41,12 +41,13 @@ class SubscriptionRenewalTest extends TestCase
             'services.payments_core.base_url' => 'http://payments-core.test',
             'services.payments_core.webhook_secret' => self::SECRET,
             'services.whatsapp.templates.recordatorio' => ['name' => 'general_reminder', 'lang' => 'es_CO'],
+            'services.whatsapp.templates.suscripcion' => ['name' => 'subscription_update', 'lang' => 'es_CO', 'pending_approval' => true],
         ]);
 
         $channel = Mockery::mock(MessagingChannel::class);
         $channel->shouldReceive('isConfigured')->andReturn(true);
         $channel->shouldReceive('sendTemplate')->andReturnUsing(function (string $to, string $name, string $lang, array $components) {
-            $this->whatsApps[] = ['to' => $to, 'text' => $components[0]['parameters'][0]['text']];
+            $this->whatsApps[] = ['to' => $to, 'text' => $components[0]['parameters'][0]['text'], 'template' => $name];
 
             return true;
         });
@@ -278,6 +279,29 @@ class SubscriptionRenewalTest extends TestCase
         $this->assertStringContainsString('intentaremos el cobro de $65.000 a tu medio de pago registrado (Visa •••• 4242)', $this->whatsApps[0]['text']);
         $this->assertStringContainsString('saldo o cupo disponible', $this->whatsApps[0]['text']);
         $this->assertNotNull($business->fresh()->subscription_expiry_notified_at);
+    }
+
+    public function test_while_its_template_is_in_review_it_goes_as_a_reminder_with_the_link(): void
+    {
+        [$business] = $this->expiredBusiness(daysAgo: 0);
+
+        $this->artisan('subscriptions:renew', ['--business_id' => $business->id])->assertSuccessful();
+
+        $this->assertSame('general_reminder', $this->whatsApps[0]['template']);
+        $this->assertStringEndsWith('Puedes pagar aquí: '.rtrim((string) config('app.frontend_url'), '/').'/suscripcion', $this->whatsApps[0]['text']);
+    }
+
+    public function test_once_approved_it_uses_its_own_template_and_leaves_the_link_to_the_button(): void
+    {
+        config(['services.whatsapp.templates.suscripcion.pending_approval' => false]);
+        [$business] = $this->expiredBusiness(daysAgo: 0);
+
+        $this->artisan('subscriptions:renew', ['--business_id' => $business->id])->assertSuccessful();
+
+        $this->assertSame('subscription_update', $this->whatsApps[0]['template']);
+        $this->assertStringContainsString('vence hoy', $this->whatsApps[0]['text']);
+        $this->assertStringNotContainsString('/suscripcion', $this->whatsApps[0]['text']);
+        $this->assertStringEndsWith('hasta que pagues.', $this->whatsApps[0]['text']);
     }
 
     // ---------------------------------------------------------------
