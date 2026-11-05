@@ -132,12 +132,12 @@ return [
             // Avisos de la suscripcion (cobro, vencimiento, bloqueo). Un solo
             // texto libre en el body y un boton fijo a /suscripcion, para que
             // no llegue como "recordatorio" (la gente no le para bolas).
-            // Creada en Meta el 2026-11-05 (UTILITY, es_CO). Mientras este en
-            // revision, SubscriptionNotifier sigue con 'recordatorio'.
+            // Creada en Meta el 2026-11-05 (UTILITY, es_CO), APPROVED el mismo
+            // dia. Si se marca pending_approval, SubscriptionNotifier vuelve a
+            // 'recordatorio' con el enlace en el texto.
             'suscripcion' => [
                 'name' => 'subscription_update',
                 'lang' => 'es_CO',
-                'pending_approval' => true,
                 'description' => 'Novedades sobre la suscripción del POS (cobro, vencimiento, bloqueo).',
                 'triggered_by' => 'SubscriptionNotifier',
             ],
