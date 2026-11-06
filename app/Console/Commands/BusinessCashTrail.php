@@ -97,7 +97,7 @@ class BusinessCashTrail extends Command
             $efectivo = $this->cashIncome($business, $date);
             $gastos = (float) Expense::withoutGlobalScopes()
                 ->where('business_id', $business->id)
-                ->where('scope', 'operacional')
+                ->paidFromCashRegister()
                 ->whereDate('date', $date)
                 ->sum('value');
 

@@ -170,7 +170,31 @@ class PurchaseTest extends TestCase
             'linkable_id' => $purchase->id,
             'value' => 15000,
             'payment_method' => 'Efectivo',
+            // Sin decirlo, el abono no sale de la caja del dia.
+            'paid_from_cash_register' => false,
         ]);
+    }
+
+    public function test_a_cash_payment_can_come_out_of_the_cash_register_but_a_transfer_cannot(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $purchase = Purchase::factory()->credit()->create(['business_id' => $business->id]);
+        $product = Product::factory()->create(['business_id' => $business->id]);
+        $purchase->lines()->create([
+            'product_id' => $product->id, 'quantity' => 1, 'unit_cost_cop' => 20000, 'line_total_cop' => 20000,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/purchases/{$purchase->id}/pay", ['amount' => 5000, 'payment_method' => 'cash', 'paid_from_cash_register' => true])
+            ->assertOk();
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/purchases/{$purchase->id}/pay", ['amount' => 5000, 'payment_method' => 'transfer', 'paid_from_cash_register' => true])
+            ->assertOk();
+
+        $this->assertDatabaseHas('expenses', ['linkable_id' => $purchase->id, 'payment_method' => 'Efectivo', 'paid_from_cash_register' => true]);
+        $this->assertDatabaseHas('expenses', ['linkable_id' => $purchase->id, 'payment_method' => 'Transferencia', 'paid_from_cash_register' => false]);
     }
 
     public function test_pay_forbids_the_credit_method(): void

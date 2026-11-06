@@ -85,6 +85,7 @@ class CashClosingServiceTest extends TestCase
         Expense::factory()->create([
             'business_id' => $business->id,
             'scope' => 'operacional',
+            'paid_from_cash_register' => true,
             'value' => 30000,
             'date' => now()->subDay()->toDateString(),
             'created_at' => now(),

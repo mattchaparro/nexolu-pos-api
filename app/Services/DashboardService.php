@@ -111,7 +111,6 @@ class DashboardService
             ? Expense::query()
                 ->where('business_id', $business->id)
                 ->whereDate('date', $today)
-                ->where('scope', 'operacional')
                 ->sum('value')
             : 0;
 

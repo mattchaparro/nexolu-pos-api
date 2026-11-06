@@ -20,6 +20,7 @@ class PayPurchaseRequest extends FormRequest
         return [
             'amount' => ['required', 'numeric', 'min:0.01'],
             'payment_method' => ['required', 'string', 'max:50'],
+            'paid_from_cash_register' => ['sometimes', 'boolean'],
         ];
     }
 }

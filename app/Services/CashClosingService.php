@@ -61,7 +61,7 @@ class CashClosingService
             ->get();
 
         $totalExpenses = (float) Expense::where('business_id', $businessId)
-            ->where('scope', 'operacional')
+            ->paidFromCashRegister()
             ->whereDate('date', $date)
             ->sum('value');
 
@@ -126,7 +126,7 @@ class CashClosingService
             ->get();
 
         $totalExpenses = (float) Expense::where('business_id', $businessId)
-            ->where('scope', 'operacional')
+            ->paidFromCashRegister()
             ->whereBetween('date', [$from->toDateString(), $to->toDateString()])
             ->sum('value');
 

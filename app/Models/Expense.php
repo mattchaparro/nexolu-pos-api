@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Traits\BelongsToBranch;
 use App\Traits\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,6 +20,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     'value',
     'scope',
     'payment_method',
+    'paid_from_cash_register',
     'type_id',
     'linkable_type',
     'linkable_id',
@@ -67,7 +69,21 @@ class Expense extends Model
         return [
             'date' => 'date',
             'value' => 'decimal:2',
+            'paid_from_cash_register' => 'boolean',
         ];
+    }
+
+    /**
+     * Gastos que salieron del efectivo de la caja del dia: los unicos que
+     * descuentan del efectivo esperado del cierre y del turno. Un gasto pagado
+     * de la cuenta del local o por Nequi es gasto del mes igual, pero no toco
+     * la caja (ver la migracion add_paid_from_cash_register_to_expenses_table).
+     *
+     * @param  Builder<Expense>  $query
+     */
+    public function scopePaidFromCashRegister(Builder $query): void
+    {
+        $query->where('paid_from_cash_register', true);
     }
 
     public function type(): BelongsTo

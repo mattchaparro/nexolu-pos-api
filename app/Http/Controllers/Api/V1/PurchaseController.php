@@ -79,7 +79,8 @@ class PurchaseController extends Controller
             $request->user(),
             $purchase,
             (float) $request->validated('amount'),
-            $request->validated('payment_method')
+            $request->validated('payment_method'),
+            $request->boolean('paid_from_cash_register'),
         );
 
         return new PurchaseResource($purchase->fresh()->load('supplier', 'lines.product', 'lines.productVariant.attributeValues.productAttribute', 'lines.ingredient', 'payments'));

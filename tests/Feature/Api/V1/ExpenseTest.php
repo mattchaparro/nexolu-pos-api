@@ -120,6 +120,35 @@ class ExpenseTest extends TestCase
             ->assertJsonPath('payment_method', 'Nequi');
     }
 
+    public function test_a_new_expense_does_not_come_out_of_the_cash_register_unless_marked(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $type = ExpenseType::factory()->create(['business_id' => $business->id]);
+        $payload = ['date' => '2026-01-15', 'description' => 'Insumos', 'value' => 300000, 'type_id' => $type->id, 'payment_method' => 'Transferencia'];
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/expenses', $payload)
+            ->assertCreated()
+            ->assertJsonPath('paid_from_cash_register', false)
+            ->assertJsonPath('payment_method', 'Transferencia');
+
+        // Lo que sale de la caja sale en efectivo, llegue el medio que llegue.
+        $id = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/v1/expenses', [...$payload, 'paid_from_cash_register' => true])
+            ->assertCreated()
+            ->assertJsonPath('paid_from_cash_register', true)
+            ->assertJsonPath('payment_method', 'Efectivo')
+            ->json('id');
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson("/api/v1/expenses/{$id}", ['paid_from_cash_register' => false, 'payment_method' => 'Nequi'])
+            ->assertOk()
+            ->assertJsonPath('paid_from_cash_register', false)
+            ->assertJsonPath('payment_method', 'Nequi');
+    }
+
     public function test_expense_value_below_the_minimum_is_rejected(): void
     {
         $business = Business::factory()->create();

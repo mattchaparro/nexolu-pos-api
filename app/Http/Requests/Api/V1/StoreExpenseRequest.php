@@ -36,6 +36,7 @@ class StoreExpenseRequest extends FormRequest
             'value' => ['required', 'numeric', 'min:100'],
             'scope' => ['sometimes', 'nullable', Rule::in(['operacional', 'administrativo'])],
             'payment_method' => ['sometimes', 'nullable', Rule::in(Expense::PAYMENT_METHODS)],
+            'paid_from_cash_register' => ['sometimes', 'boolean'],
             'type_id' => [
                 'required',
                 BusinessScopedExists::forOrGlobal('expense_types', $businessId),

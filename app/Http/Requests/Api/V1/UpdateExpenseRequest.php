@@ -34,6 +34,7 @@ class UpdateExpenseRequest extends FormRequest
             'value' => ['sometimes', 'numeric', 'min:100'],
             'scope' => ['sometimes', 'nullable', Rule::in(['operacional', 'administrativo'])],
             'payment_method' => ['sometimes', 'nullable', Rule::in(Expense::PAYMENT_METHODS)],
+            'paid_from_cash_register' => ['sometimes', 'boolean'],
             'type_id' => [
                 'sometimes',
                 BusinessScopedExists::forOrGlobal('expense_types', $businessId),

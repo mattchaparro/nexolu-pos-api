@@ -212,7 +212,6 @@ class SalesReportService
 
         $courtesyTotal = (float) $closedSales->where('is_non_revenue', true)->sum('total');
         $totalExpenses = (float) Expense::where('business_id', $businessId)
-            ->where('scope', 'operacional')
             ->whereBetween('date', [$from->toDateString(), $to->toDateString()])
             ->sum('value');
 

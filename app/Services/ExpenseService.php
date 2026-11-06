@@ -18,18 +18,34 @@ class ExpenseService
      */
     public function create(array $data): Expense
     {
-        return Expense::create([
+        return Expense::create($this->normalize([
             'scope' => 'operacional',
             'payment_method' => Expense::PAYMENT_METHODS[0],
             ...$data,
-        ]);
+        ]));
     }
 
     /** @param  array<string, mixed>  $data */
     public function update(Expense $expense, array $data): Expense
     {
-        $expense->update($data);
+        $expense->update($this->normalize($data));
 
         return $expense->fresh()->load('type');
+    }
+
+    /**
+     * La caja del dia solo tiene efectivo: un gasto que salio de ahi se pago
+     * en efectivo, diga lo que diga el medio de pago que llego.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function normalize(array $data): array
+    {
+        if (! empty($data['paid_from_cash_register'])) {
+            $data['payment_method'] = 'Efectivo';
+        }
+
+        return $data;
     }
 }

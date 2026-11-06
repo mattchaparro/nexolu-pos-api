@@ -280,13 +280,17 @@ class PurchaseService
      * desalinearia el cierre de caja de los dias anteriores en que si hubo
      * abonos - mismo cuidado que con los pagos de apartados/servicios.
      */
-    public function pay(User $user, Purchase $purchase, float $amount, string $paymentMethod): PurchasePayment
+    /**
+     * @param  bool  $paidFromCashRegister  el abono salio del efectivo de la caja
+     *                                      del dia (solo cuenta si se pago en efectivo)
+     */
+    public function pay(User $user, Purchase $purchase, float $amount, string $paymentMethod, bool $paidFromCashRegister = false): PurchasePayment
     {
         if ($purchase->payment_status === 'paid') {
             throw ValidationException::withMessages(['purchase' => 'Esta compra ya está pagada.']);
         }
 
-        return DB::transaction(function () use ($user, $purchase, $amount, $paymentMethod) {
+        return DB::transaction(function () use ($user, $purchase, $amount, $paymentMethod, $paidFromCashRegister) {
             $business = $user->business;
             $method = strtolower(trim($paymentMethod));
             // Igual que en Apartados/Servicios: no tiene sentido "pagar" una
@@ -307,10 +311,12 @@ class PurchaseService
                 'recorded_by_user_id' => $user->id,
             ]);
 
+            $expenseMethod = Expense::labelForPaymentMethodId($method);
             $this->createExpenseForPurchase(
                 $purchase->business_id, $purchase, $amount,
-                Expense::labelForPaymentMethodId($method),
+                $expenseMethod,
                 now()->toDateString(),
+                $paidFromCashRegister && $expenseMethod === 'Efectivo',
             );
 
             $purchase->load('payments');
@@ -327,7 +333,7 @@ class PurchaseService
         });
     }
 
-    private function createExpenseForPurchase(int $businessId, Purchase $purchase, float $total, string $paymentMethod, string $date): void
+    private function createExpenseForPurchase(int $businessId, Purchase $purchase, float $total, string $paymentMethod, string $date, bool $paidFromCashRegister): void
     {
         $typeId = ExpenseType::where('business_id', $businessId)
             ->whereIn('name', ['Insumos', 'insumos', 'Compras', 'compras'])
@@ -346,6 +352,7 @@ class PurchaseService
             'description' => $description,
             'value' => $total,
             'payment_method' => $paymentMethod,
+            'paid_from_cash_register' => $paidFromCashRegister,
             'type_id' => $typeId,
             'linkable_type' => Purchase::class,
             'linkable_id' => $purchase->id,

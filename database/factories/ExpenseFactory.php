@@ -31,4 +31,10 @@ class ExpenseFactory extends Factory
                 ->id,
         ];
     }
+
+    /** Gasto que salio del efectivo de la caja del dia. */
+    public function fromCashRegister(): static
+    {
+        return $this->state(['paid_from_cash_register' => true, 'payment_method' => 'Efectivo']);
+    }
 }

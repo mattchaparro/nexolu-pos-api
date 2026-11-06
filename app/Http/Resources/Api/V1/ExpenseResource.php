@@ -22,6 +22,7 @@ class ExpenseResource extends JsonResource
             'value' => $this->value,
             'scope' => $this->scope,
             'payment_method' => $this->payment_method,
+            'paid_from_cash_register' => (bool) $this->paid_from_cash_register,
             'type' => new ExpenseTypeResource($this->whenLoaded('type')),
             'linkable_type' => $this->linkable_type,
             'linkable_id' => $this->linkable_id,

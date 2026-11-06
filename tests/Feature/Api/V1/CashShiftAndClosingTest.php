@@ -366,16 +366,27 @@ class CashShiftAndClosingTest extends TestCase
             ->assertNoContent();
     }
 
-    public function test_operational_expenses_reduce_expected_cash(): void
+    /**
+     * Solo descuenta de la caja lo que salio de ella: un gasto pagado de la
+     * cuenta del local (aunque sea "operacional" y del mismo dia) no tiene por
+     * que descuadrar el cierre.
+     */
+    public function test_only_expenses_paid_from_the_cash_register_reduce_expected_cash(): void
     {
         $business = Business::factory()->create();
         $user = User::factory()->create(['business_id' => $business->id]);
         $user->assignRole('admin');
-        Expense::factory()->create([
+        Expense::factory()->fromCashRegister()->create([
             'business_id' => $business->id,
             'date' => now()->toDateString(),
             'value' => 7000,
+        ]);
+        Expense::factory()->create([
+            'business_id' => $business->id,
+            'date' => now()->toDateString(),
+            'value' => 300000,
             'scope' => 'operacional',
+            'paid_from_cash_register' => false,
         ]);
 
         $shift = $this->actingAs($user, 'sanctum')->postJson('/api/v1/cash-shifts', [

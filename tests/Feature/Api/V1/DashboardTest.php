@@ -79,11 +79,11 @@ class DashboardTest extends TestCase
         $layaway = Layaway::factory()->for($business)->create();
         LayawayPayment::factory()->for($layaway, 'layaway')->create(['business_id' => $business->id, 'amount' => 3000]);
 
-        // Cuenta: gasto operacional de hoy.
-        Expense::factory()->for($business)->create(['value' => 7000, 'scope' => 'operacional', 'date' => now()->toDateString()]);
-        // No cuenta: gasto administrativo (no operacional), aunque sea de hoy.
+        // Cuentan los gastos de hoy, salieran o no de la caja: "Gastos hoy"
+        // es lo que se gasto el negocio, no lo que falta en el cajon.
+        Expense::factory()->for($business)->fromCashRegister()->create(['value' => 7000, 'date' => now()->toDateString()]);
         Expense::factory()->for($business)->create(['value' => 3000, 'scope' => 'administrativo', 'date' => now()->toDateString()]);
-        // No cuenta: gasto operacional pero de otro dia.
+        // No cuenta: gasto de otro dia.
         Expense::factory()->for($business)->create(['value' => 9000, 'scope' => 'operacional', 'date' => now()->subDay()->toDateString()]);
 
         $response = $this->actingAs($user, 'sanctum')
@@ -104,7 +104,7 @@ class DashboardTest extends TestCase
         $response->assertJsonPath('receivables_enabled', true);
         $response->assertJsonPath('pending_receivables', 8000);
         $response->assertJsonPath('expenses_enabled', true);
-        $response->assertJsonPath('today_expenses', 7000);
+        $response->assertJsonPath('today_expenses', 10000);
     }
 
     public function test_today_cash_and_transfer_split_sales_paid_with_multiple_methods(): void
