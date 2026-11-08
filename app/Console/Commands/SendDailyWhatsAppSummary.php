@@ -61,6 +61,10 @@ class SendDailyWhatsAppSummary extends Command
         $sent = 0;
 
         foreach ($query->cursor() as $business) {
+            if (! $business->isInUse()) {
+                continue;
+            }
+
             // Preferencia apagada por defecto: nadie recibe WhatsApp sin
             // activarlo explicitamente desde Settings.
             if (! ($business->notification_preferences['resumen_diario'] ?? false)) {

@@ -53,7 +53,7 @@ class BusinessesWarnInactiveTrialTest extends TestCase
         Mail::assertNothingSent();
     }
 
-    public function test_respects_the_resend_cooldown(): void
+    public function test_warns_only_once(): void
     {
         Mail::fake();
         $business = $this->businessWithAdmin(['trial_ends_at' => now()->subDays(90)]);
@@ -67,7 +67,7 @@ class BusinessesWarnInactiveTrialTest extends TestCase
         Mail::assertNothingSent();
     }
 
-    public function test_resends_after_the_cooldown_expires(): void
+    public function test_does_not_resend_even_months_later(): void
     {
         Mail::fake();
         $business = $this->businessWithAdmin(['trial_ends_at' => now()->subDays(90)]);
@@ -75,11 +75,11 @@ class BusinessesWarnInactiveTrialTest extends TestCase
             'business_id' => $business->id, 'type' => 'inactive_trial_warning',
             'to_email' => 'x@example.com', 'subject' => 'x', 'status' => EmailLog::STATUS_SENT,
         ]);
-        $old->forceFill(['created_at' => now()->subDays(35)])->save();
+        $old->forceFill(['created_at' => now()->subDays(95)])->save();
 
         $this->artisan('businesses:warn-inactive-trial')->assertSuccessful();
 
-        Mail::assertSent(InactiveTrialWarningMail::class);
+        Mail::assertNotSent(InactiveTrialWarningMail::class);
     }
 
     public function test_skips_a_business_without_an_admin(): void

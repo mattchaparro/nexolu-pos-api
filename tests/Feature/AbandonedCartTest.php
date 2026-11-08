@@ -226,4 +226,18 @@ class AbandonedCartTest extends TestCase
 
         $this->assertSame(0, app(AbandonedCartReminder::class)->run($business));
     }
+
+    public function test_no_escribe_por_una_tienda_que_ya_no_usa_la_app(): void
+    {
+        config(['subscriptions.lockout_not_before' => null]);
+        Mail::fake();
+        $business = $this->tienda();
+        $business->update(['trial_ends_at' => now()->subDays(30), 'paid_until' => null]);
+        $cart = $this->carrito($business);
+
+        $this->artisan('carts:send-abandoned-reminders')->assertSuccessful();
+
+        Mail::assertNothingSent();
+        $this->assertNull($cart->fresh()->reminded_at);
+    }
 }

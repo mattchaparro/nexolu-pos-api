@@ -13,16 +13,14 @@ use Illuminate\Support\Facades\Mail;
 
 /**
  * Avisa a negocios con prueba vencida hace +60 dias y sin plan activo que su
- * cuenta sera eliminada. Con cooldown de reenvio: no se manda dos veces el
- * mismo aviso dentro de 30 dias, aunque el cron corra todos los dias.
+ * cuenta sera eliminada. Una sola vez por negocio: antes se repetia cada 30
+ * dias sin fin, y a quien ya no usa la app no se le escribe mes a mes.
  */
 #[Signature('businesses:warn-inactive-trial')]
 #[Description('Avisa a negocios con prueba vencida +60 dias y sin plan activo que su cuenta sera eliminada')]
 class BusinessesWarnInactiveTrial extends Command
 {
     private const INACTIVE_DAYS = 60;
-
-    private const RESEND_COOLDOWN_DAYS = 30;
 
     private const EMAIL_TYPE = 'inactive_trial_warning';
 
@@ -37,7 +35,6 @@ class BusinessesWarnInactiveTrial extends Command
             ->get();
 
         $alreadySent = EmailLog::where('type', self::EMAIL_TYPE)
-            ->where('created_at', '>=', now()->subDays(self::RESEND_COOLDOWN_DAYS))
             ->whereIn('business_id', $businesses->pluck('id'))
             ->pluck('business_id')
             ->flip();

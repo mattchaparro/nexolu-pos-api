@@ -122,4 +122,23 @@ class AppointmentsSendTwoHourRemindersTest extends TestCase
         $this->assertSame(Reminder::STATUS_PENDING, $reminder->fresh()->status);
         Carbon::setTestNow();
     }
+
+    public function test_does_not_remind_appointments_of_a_business_that_no_longer_uses_the_app(): void
+    {
+        config(['subscriptions.lockout_not_before' => null]);
+        Http::fake();
+        Carbon::setTestNow(Carbon::parse('2026-08-06 10:30', 'America/Bogota'));
+        $business = Business::factory()->lockedOut()->create();
+        $appointment = Appointment::factory()->create([
+            'business_id' => $business->id,
+            'client_phone' => '3001112233',
+        ]);
+        $reminder = $this->pendingReminder($appointment, '2026-08-06', '10:00');
+
+        $this->artisan('appointments:send-two-hour-reminders')->assertSuccessful();
+
+        Http::assertNothingSent();
+        $this->assertSame(Reminder::STATUS_DONE, $reminder->fresh()->status, 'Queda resuelto: no sale atrasado si renueva.');
+        Carbon::setTestNow();
+    }
 }

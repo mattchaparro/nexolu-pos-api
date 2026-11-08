@@ -399,4 +399,23 @@ class InventorySendLowStockAlertsTest extends TestCase
 
         Mail::assertSentCount(1);
     }
+
+    public function test_does_not_alert_a_business_that_no_longer_uses_the_app(): void
+    {
+        config(['subscriptions.lockout_not_before' => null]);
+        Mail::fake();
+        $business = $this->businessWithAdmin(['low_stock_email' => 'dueno@example.com', 'trial_ends_at' => now()->subDays(30), 'paid_until' => null]);
+        Product::factory()->create([
+            'business_id' => $business->id,
+            'is_active' => true,
+            'track_stock' => true,
+            'is_single_sale' => false,
+            'stock' => 2,
+            'low_stock_alert_threshold' => 5,
+        ]);
+
+        $this->artisan('inventory:send-low-stock-alerts')->assertSuccessful();
+
+        Mail::assertNothingSent();
+    }
 }

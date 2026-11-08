@@ -29,4 +29,14 @@ class BusinessFactory extends Factory
             'feature_flags' => null,
         ];
     }
+
+    /**
+     * Vencido hace un mes, sin pago y ya sin dias de gracia: el negocio que
+     * dejo de usar la app. Quien lo use debe apagar
+     * subscriptions.lockout_not_before, que corre el bloqueo.
+     */
+    public function lockedOut(): static
+    {
+        return $this->state(['trial_ends_at' => now()->subDays(30), 'paid_until' => null]);
+    }
 }

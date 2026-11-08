@@ -170,4 +170,16 @@ class SendDailyWhatsAppSummaryTest extends TestCase
         // (simula dos ticks de los everyFiveMinutes() del schedule).
         Http::assertSentCount(1);
     }
+
+    public function test_does_not_notify_a_business_that_no_longer_uses_the_app(): void
+    {
+        config(['subscriptions.lockout_not_before' => null]);
+        Http::fake();
+        $business = $this->businessWithLinkedAdmin(['trial_ends_at' => now()->subDays(30), 'paid_until' => null]);
+        Sale::factory()->create(['business_id' => $business->id, 'total' => 100000, 'closed_at' => now()]);
+
+        $this->artisan('notifications:send-daily-whatsapp-summary')->assertSuccessful();
+
+        Http::assertNothingSent();
+    }
 }

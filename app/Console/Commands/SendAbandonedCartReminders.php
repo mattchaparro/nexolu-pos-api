@@ -38,7 +38,7 @@ class SendAbandonedCartReminders extends Command
         // seria una consulta por negocio para nada.
         Business::withoutGlobalScopes()
             ->get()
-            ->filter(fn (Business $b) => $b->hasFeature('online_store'))
+            ->filter(fn (Business $b) => $b->isInUse() && $b->hasFeature('online_store'))
             ->each(function (Business $business) use ($reminder, &$total) {
                 $enviados = $reminder->run($business);
                 $total += $enviados;

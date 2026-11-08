@@ -64,7 +64,7 @@ class InventorySendLowStockAlerts extends Command
         $whatsappSent = 0;
 
         foreach ($query->get() as $business) {
-            if (! $business->hasFeature('low_stock_alert')) {
+            if (! $business->isInUse() || ! $business->hasFeature('low_stock_alert')) {
                 continue;
             }
 

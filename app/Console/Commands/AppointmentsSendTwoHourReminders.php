@@ -43,7 +43,7 @@ class AppointmentsSendTwoHourReminders extends Command
             ->where('remindable_type', Appointment::class)
             ->where('status', Reminder::STATUS_PENDING)
             ->whereDate('due_date', '<=', $today)
-            ->with('remindable')
+            ->with('remindable.business')
             ->get()
             ->filter(fn (Reminder $r) => $r->due_date->toDateString() < $today || $now->format('H:i') >= substr((string) $r->notify_time, 0, 5));
 
@@ -58,7 +58,7 @@ class AppointmentsSendTwoHourReminders extends Command
                 continue;
             }
 
-            if (empty($appointment->client_phone)) {
+            if (empty($appointment->client_phone) || ! $appointment->business?->isInUse()) {
                 $reminder->update(['status' => Reminder::STATUS_DONE, 'completed_at' => now()]);
 
                 continue;

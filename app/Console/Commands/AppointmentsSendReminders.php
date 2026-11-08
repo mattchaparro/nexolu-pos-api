@@ -39,7 +39,7 @@ class AppointmentsSendReminders extends Command
         foreach ($appointments as $appointment) {
             $email = $appointment->client_email ?? $appointment->client?->email;
 
-            if ($email) {
+            if ($email && $appointment->business?->isInUse()) {
                 try {
                     Mail::to($email)->send(new AppointmentReminderMail($appointment));
                     $sent++;

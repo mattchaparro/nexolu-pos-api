@@ -45,13 +45,19 @@ class RemindersSendWhatsAppNotifications extends Command
             ->where(function ($query) use ($today) {
                 $query->whereNull('last_notified_on')->orWhereDate('last_notified_on', '<>', $today);
             })
-            ->with('createdBy')
+            ->with('createdBy', 'business')
             ->get()
             ->filter(fn (Reminder $reminder) => $now->format('H:i') >= substr((string) $reminder->notify_time, 0, 5));
 
         $sent = 0;
 
         foreach ($pending as $reminder) {
+            if (! $reminder->business?->isInUse()) {
+                $reminder->update(['last_notified_on' => $today]);
+
+                continue;
+            }
+
             $user = $reminder->createdBy;
 
             $identity = $user ? AiChannelIdentity::query()

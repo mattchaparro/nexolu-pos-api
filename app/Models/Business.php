@@ -797,6 +797,18 @@ class Business extends Model
     }
 
     /**
+     * Esta en uso: activo y sin bloqueo por falta de pago (en prueba, pago o
+     * dentro de los dias de gracia). Los avisos automaticos del dia a dia
+     * (resumen diario, inventario bajo, recordatorios, citas, carritos) solo
+     * salen para estos: a un negocio vencido que ya no usa la app no se le
+     * escribe. Los avisos de cobro de la suscripcion van por su lado.
+     */
+    public function isInUse(): bool
+    {
+        return $this->active && ! $this->isLockedOut();
+    }
+
+    /**
      * Desde cuando cuenta un pago nuevo. Si ya estaba pago, se encadena al
      * vencimiento vigente. Si se vencio hace poco, cuenta desde el
      * vencimiento y no desde el pago: quien paga el 5 lo que vencia el 1 no

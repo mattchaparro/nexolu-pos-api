@@ -117,4 +117,24 @@ class AppointmentsSendRemindersTest extends TestCase
 
         Mail::assertSent(AppointmentReminderMail::class, fn ($mail) => $mail->hasTo('del-cliente@example.com'));
     }
+
+    public function test_does_not_remind_appointments_of_a_business_that_no_longer_uses_the_app(): void
+    {
+        config(['subscriptions.lockout_not_before' => null]);
+        Mail::fake();
+        $business = Business::factory()->lockedOut()->create();
+        $appointment = Appointment::factory()->create([
+            'business_id' => $business->id,
+            'client_email' => 'cliente@example.com',
+            'starts_at' => Carbon::tomorrow('America/Bogota')->setTime(10, 0),
+            'ends_at' => Carbon::tomorrow('America/Bogota')->setTime(11, 0),
+            'status' => 'confirmed',
+            'reminder_sent' => false,
+        ]);
+
+        $this->artisan('appointments:send-reminders')->assertSuccessful();
+
+        Mail::assertNothingSent();
+        $this->assertTrue($appointment->fresh()->reminder_sent, 'Queda resuelta: no sale atrasada si renueva.');
+    }
 }

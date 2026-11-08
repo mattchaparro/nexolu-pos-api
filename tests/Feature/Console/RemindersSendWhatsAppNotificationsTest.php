@@ -186,4 +186,26 @@ class RemindersSendWhatsAppNotificationsTest extends TestCase
         Http::assertSentCount(2);
         Carbon::setTestNow();
     }
+
+    public function test_does_not_notify_a_business_that_no_longer_uses_the_app(): void
+    {
+        config(['subscriptions.lockout_not_before' => null]);
+        Http::fake();
+        Carbon::setTestNow(Carbon::parse('2026-08-06 09:30'));
+        $user = $this->linkedUser();
+        $user->business->update(['trial_ends_at' => now()->subDays(30), 'paid_until' => null]);
+
+        $reminder = Reminder::factory()->for($user->business, 'business')->create([
+            'created_by_user_id' => $user->id,
+            'due_date' => '2026-08-06',
+            'notify_time' => '09:00',
+            'notify_whatsapp' => true,
+        ]);
+
+        $this->artisan('reminders:send-whatsapp-notifications')->assertSuccessful();
+
+        Http::assertNothingSent();
+        $this->assertSame('2026-08-06', $reminder->fresh()->last_notified_on->toDateString(), 'Se da por avisado hoy para no reintentar cada 5 min.');
+        Carbon::setTestNow();
+    }
 }
