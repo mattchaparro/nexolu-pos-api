@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Api\V1;
 
 use App\Models\Sale;
+use App\Models\SaleItemOption;
 use App\Services\KitchenBoardService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -27,10 +28,9 @@ class KitchenTicketResource extends JsonResource
                 'name' => $item->product?->name ?? 'Producto eliminado',
                 'is_deleted' => ! $item->product,
                 'quantity' => $item->quantity,
-                'options' => $item->options->map(fn ($option) => [
-                    'group' => $option->group_name,
-                    'name' => $option->name,
-                ])->values(),
+                'options' => SaleItemOption::tally($item->options)
+                    ->map(fn (array $option) => ['group' => $option['group'], 'name' => $option['name'], 'quantity' => $option['quantity']])
+                    ->values(),
                 'kitchen_status' => KitchenBoardService::normalizeStatus($item->kitchen_status),
             ]),
         ];

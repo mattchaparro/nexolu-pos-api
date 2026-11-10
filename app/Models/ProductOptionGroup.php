@@ -8,8 +8,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** Grupo de opciones de la biblioteca del negocio (ej. «Salsa», mínimo 1, máximo 2), enlazable a varios productos. */
-#[Fillable(['business_id', 'name', 'min_choices', 'max_choices', 'sort_order'])]
+/**
+ * Grupo de opciones de la biblioteca del negocio (ej. «Salsa», mínimo 1, máximo 2), enlazable a varios productos.
+ * Si es repetible (allow_repeat) la misma opción se puede elegir varias veces (doble porción de licor) y el
+ * máximo cuenta porciones; si no, cada opción entra una sola vez.
+ */
+#[Fillable(['business_id', 'name', 'min_choices', 'max_choices', 'allow_repeat', 'sort_order'])]
 class ProductOptionGroup extends Model
 {
     use BelongsToBusiness;
@@ -19,6 +23,7 @@ class ProductOptionGroup extends Model
         return [
             'min_choices' => 'integer',
             'max_choices' => 'integer',
+            'allow_repeat' => 'boolean',
             'sort_order' => 'integer',
         ];
     }

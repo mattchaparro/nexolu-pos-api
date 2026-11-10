@@ -387,6 +387,9 @@ class ProductService
                 'min_choices' => (int) $row['min_choices'],
                 'max_choices' => (int) $row['max_choices'],
             ];
+            if (array_key_exists('allow_repeat', $row)) {
+                $attributes['allow_repeat'] = (bool) $row['allow_repeat'];
+            }
 
             if ($group) {
                 $group->update($attributes);

@@ -10,6 +10,7 @@ use App\Models\LayawayPayment;
 use App\Models\Receivable;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\SaleItemOption;
 use App\Models\ServicePayment;
 use App\Support\RevenueByPaymentMethod;
 use App\Support\SortableQuery;
@@ -41,6 +42,7 @@ class SalesReportService
 
         $eagerLoads = [
             'items.product:id,name',
+            'items.options',
             'user:id,name',
             'table:id,name',
             'paymentSplits',
@@ -163,6 +165,7 @@ class SalesReportService
             'items' => $s->items->map(fn ($i) => [
                 'name' => $i->product?->name ?? 'Eliminado',
                 'is_deleted' => ! $i->product,
+                'options_label' => SaleItemOption::label($i->options),
                 'quantity' => (float) $i->quantity,
                 'subtotal' => (float) $i->subtotal,
             ])->all(),
@@ -281,7 +284,7 @@ class SalesReportService
         $filters = $this->normalizeFilters($filters, $business);
 
         $query = Sale::where('business_id', $business->id)
-            ->with(['items.product:id,name', 'user:id,name', 'table:id,name', 'paymentSplits']);
+            ->with(['items.product:id,name', 'items.options', 'user:id,name', 'table:id,name', 'paymentSplits']);
 
         $status = $filters['status'] ?? null;
         if ($status === 'open') {
@@ -368,6 +371,7 @@ class SalesReportService
                     'items' => $s->items->map(fn ($i) => [
                         'name' => $i->product?->name ?? 'Eliminado',
                         'is_deleted' => ! $i->product,
+                        'options_label' => SaleItemOption::label($i->options),
                         'quantity' => (float) $i->quantity,
                         'subtotal' => (float) $i->subtotal,
                     ])->all(),
@@ -388,7 +392,7 @@ class SalesReportService
         $filters = $this->normalizeFilters($filters, $business);
 
         $query = Sale::where('business_id', $business->id)
-            ->with(['items.product:id,name', 'user:id,name', 'table:id,name', 'paymentSplits']);
+            ->with(['items.product:id,name', 'items.options', 'user:id,name', 'table:id,name', 'paymentSplits']);
 
         $status = $filters['status'] ?? null;
         if ($status === 'open') {

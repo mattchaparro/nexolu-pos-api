@@ -25,6 +25,7 @@ trait ValidatesProductOptionGroups
             'option_groups.*.name' => ['required', 'string', 'max:80'],
             'option_groups.*.min_choices' => ['required', 'integer', 'min:0', 'max:50'],
             'option_groups.*.max_choices' => ['required', 'integer', 'min:1', 'max:50'],
+            'option_groups.*.allow_repeat' => ['sometimes', 'boolean'],
             'option_groups.*.options' => ['required', 'array', 'min:1', 'max:60'],
             'option_groups.*.options.*.id' => ['nullable', 'integer'],
             'option_groups.*.options.*.name' => ['required', 'string', 'max:80'],
@@ -54,7 +55,7 @@ trait ValidatesProductOptionGroups
 
             if ($max < $min) {
                 $validator->errors()->add("option_groups.{$i}.max_choices", 'El máximo no puede ser menor que el mínimo.');
-            } elseif ($min > $activeOptions) {
+            } elseif ($min > $activeOptions && ! filter_var($group['allow_repeat'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
                 $validator->errors()->add("option_groups.{$i}.min_choices", 'El mínimo es mayor que las opciones activas del grupo.');
             }
         }

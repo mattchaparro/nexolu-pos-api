@@ -351,4 +351,138 @@ class ProductOptionsTest extends TestCase
     {
         $this->assertFalse(Business::factory()->create(['feature_flags' => null])->hasFeature('product_options'));
     }
+
+    /** Granizado con un grupo repetible "Tragos" (1 a 3 porciones): Jack +$1.000 con 30 ml de insumo. */
+    private function slushWithShots(Business $business, Ingredient $whisky): array
+    {
+        $slush = Product::factory()->create(['business_id' => $business->id, 'price' => 9000, 'track_stock' => false]);
+        $group = ProductOptionGroup::create([
+            'business_id' => $business->id,
+            'name' => 'Tragos', 'min_choices' => 1, 'max_choices' => 3, 'allow_repeat' => true,
+        ]);
+        $slush->optionGroups()->attach($group->id);
+        $jack = ProductOption::create([
+            'business_id' => $business->id, 'product_option_group_id' => $group->id,
+            'name' => 'Jack Daniels', 'extra_price' => 1000,
+            'ingredient_id' => $whisky->id, 'ingredient_quantity' => 30,
+        ]);
+        $jagger = ProductOption::create([
+            'business_id' => $business->id, 'product_option_group_id' => $group->id,
+            'name' => 'Jagger', 'extra_price' => 1000,
+        ]);
+
+        return [$slush, $jack, $jagger];
+    }
+
+    public function test_a_repeatable_group_charges_and_deducts_each_portion_and_shows_them_grouped(): void
+    {
+        [$business, $user] = $this->adminAndBusiness();
+        $whisky = Ingredient::factory()->create(['business_id' => $business->id, 'stock' => 1000]);
+        [$slush, $jack, $jagger] = $this->slushWithShots($business, $whisky);
+
+        $sale = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
+            'payment_method' => 'cash',
+            'items' => [['product_id' => $slush->id, 'quantity' => 2, 'options' => [$jack->id, $jack->id, $jagger->id]]],
+        ])->assertCreated()->assertJsonCount(3, 'items.0.options')->json();
+
+        $this->assertEquals(12000, $sale['items'][0]['unit_price']);
+        $this->assertEquals(24000, $sale['total']);
+        // 2 porciones de 30 ml por granizado, 2 granizados.
+        $this->assertSame('880.00', (string) $whisky->fresh()->stock);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/reports/sales/history?from='.now()->toDateString().'&to='.now()->toDateString())
+            ->assertOk()
+            ->assertJsonPath('data.0.items.0.options_label', 'Jack Daniels ×2, Jagger');
+
+        $html = view('receipts.partials.body.sale', [
+            'sale' => Sale::with('items.product', 'items.options', 'business')->find($sale['id']),
+            'business' => $business,
+            'invoiceNumber' => 'T-1',
+            'issuedAt' => '01/01/2026 10:00',
+            'paperWidthMm' => 80,
+        ])->render();
+        $this->assertStringContainsString('Jack Daniels ×2', $html);
+    }
+
+    public function test_the_kitchen_ticket_groups_repeated_portions(): void
+    {
+        [$business, $user] = $this->adminAndBusiness();
+        $whisky = Ingredient::factory()->create(['business_id' => $business->id, 'stock' => 1000]);
+        [$slush, $jack] = $this->slushWithShots($business, $whisky);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'items' => [['product_id' => $slush->id, 'quantity' => 1, 'options' => [$jack->id, $jack->id]]],
+        ])->assertCreated()->assertJsonCount(2, 'items.0.options');
+
+        $this->actingAs($user, 'sanctum')->getJson('/api/v1/kitchen/tickets')
+            ->assertOk()
+            ->assertJsonCount(1, '0.items.0.options')
+            ->assertJsonPath('0.items.0.options.0.name', 'Jack Daniels')
+            ->assertJsonPath('0.items.0.options.0.quantity', 2);
+    }
+
+    public function test_a_repeatable_group_still_caps_the_portions_at_max_choices(): void
+    {
+        [$business, $user] = $this->adminAndBusiness();
+        $whisky = Ingredient::factory()->create(['business_id' => $business->id, 'stock' => 1000]);
+        [$slush, $jack] = $this->slushWithShots($business, $whisky);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
+            'payment_method' => 'cash',
+            'items' => [['product_id' => $slush->id, 'quantity' => 1, 'options' => array_fill(0, 4, $jack->id)]],
+        ])->assertUnprocessable();
+    }
+
+    public function test_a_group_that_is_not_repeatable_counts_a_repeated_option_once(): void
+    {
+        [$business, $user] = $this->adminAndBusiness();
+        [$wings, , $hot] = $this->wingsWithSauces($business);
+
+        $response = $this->actingAs($user, 'sanctum')->postJson('/api/v1/sales', [
+            'payment_method' => 'cash',
+            'items' => [['product_id' => $wings->id, 'quantity' => 1, 'options' => [$hot->id, $hot->id]]],
+        ])->assertCreated()->assertJsonCount(1, 'items.0.options');
+
+        $this->assertEquals(21000, $response->json('items.0.unit_price'));
+    }
+
+    public function test_groups_are_not_repeatable_by_default_and_the_flag_survives_saves_that_omit_it(): void
+    {
+        [$business, $user] = $this->adminAndBusiness();
+        [$wings, $bbq] = $this->wingsWithSauces($business);
+        $groupId = $bbq->product_option_group_id;
+
+        $this->actingAs($user, 'sanctum')->getJson("/api/v1/products/{$wings->id}")
+            ->assertJsonPath('option_groups.0.allow_repeat', false);
+
+        $this->actingAs($user, 'sanctum')->putJson("/api/v1/products/{$wings->id}", [
+            'option_groups' => [[
+                'id' => $groupId, 'name' => 'Salsa', 'min_choices' => 1, 'max_choices' => 3, 'allow_repeat' => true,
+                'options' => [['id' => $bbq->id, 'name' => 'BBQ', 'extra_price' => 0]],
+            ]],
+        ])->assertOk()->assertJsonPath('option_groups.0.allow_repeat', true);
+
+        // Una pestaña con el front anterior no manda el campo: no lo apaga.
+        $this->actingAs($user, 'sanctum')->putJson("/api/v1/products/{$wings->id}", [
+            'option_groups' => [[
+                'id' => $groupId, 'name' => 'Salsa', 'min_choices' => 1, 'max_choices' => 3,
+                'options' => [['id' => $bbq->id, 'name' => 'BBQ', 'extra_price' => 0]],
+            ]],
+        ])->assertOk()->assertJsonPath('option_groups.0.allow_repeat', true);
+    }
+
+    public function test_a_repeatable_group_may_require_more_portions_than_it_has_options(): void
+    {
+        [$business, $user] = $this->adminAndBusiness();
+        $category = ProductCategory::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')->postJson('/api/v1/products', [
+            'name' => 'Granizado doble', 'category_id' => $category->id, 'price' => 9000,
+            'option_groups' => [[
+                'name' => 'Tragos', 'min_choices' => 2, 'max_choices' => 3, 'allow_repeat' => true,
+                'options' => [['name' => 'Jack Daniels', 'extra_price' => 1000]],
+            ]],
+        ])->assertCreated();
+    }
 }

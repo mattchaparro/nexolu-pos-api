@@ -30,9 +30,9 @@
             <tr>
                 <td colspan="2" class="item-name">{{ $item->product?->name ?: 'Producto eliminado' }}</td>
             </tr>
-            @foreach ($item->options as $option)
+            @foreach (\App\Models\SaleItemOption::tally($item->options) as $option)
                 <tr>
-                    <td colspan="2" class="item-detail">+ {{ $option->name }}@if ((float) $option->extra_price > 0) ({{ \App\Support\ReceiptFormatter::money((float) $option->extra_price) }})@endif</td>
+                    <td colspan="2" class="item-detail">+ {{ $option['name'] }}@if ($option['quantity'] > 1) ×{{ $option['quantity'] }}@endif @if ($option['extra_price'] > 0)({{ \App\Support\ReceiptFormatter::money($option['extra_price']) }})@endif</td>
                 </tr>
             @endforeach
             <tr>

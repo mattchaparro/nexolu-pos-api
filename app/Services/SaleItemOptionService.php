@@ -18,6 +18,10 @@ use Illuminate\Validation\ValidationException;
  * elección contra los grupos del producto, guarda la foto en
  * sale_item_options y descuenta/restaura el insumo de las opciones que lo
  * tengan. Las opciones sin insumo solo informan a cocina y al recibo.
+ *
+ * En un grupo repetible la misma opción puede venir varias veces (una fila
+ * por porción: cobra y descuenta insumo por cada una); en uno que no lo es,
+ * los ids repetidos se ignoran.
  */
 class SaleItemOptionService
 {
@@ -34,10 +38,11 @@ class SaleItemOptionService
             return collect();
         }
 
-        $optionIds = collect($optionIds)->map(fn ($id) => (int) $id)->unique()->values();
+        $optionIds = collect($optionIds)->map(fn ($id) => (int) $id)->values();
         $product->loadMissing('optionGroups.options');
 
         $selectedByGroup = [];
+        $seenOptionIds = [];
         $chosen = collect();
 
         foreach ($optionIds as $optionId) {
@@ -50,6 +55,11 @@ class SaleItemOptionService
                 ]);
             }
 
+            if (isset($seenOptionIds[$optionId]) && ! $group->allow_repeat) {
+                continue;
+            }
+            $seenOptionIds[$optionId] = true;
+
             $option->setRelation('group', $group);
             $selectedByGroup[$group->id] = ($selectedByGroup[$group->id] ?? 0) + 1;
             $chosen->push($option);
@@ -58,7 +68,7 @@ class SaleItemOptionService
         foreach ($product->optionGroups as $group) {
             $count = $selectedByGroup[$group->id] ?? 0;
             $activeCount = $group->options->where('is_active', true)->count();
-            $required = min($group->min_choices, $activeCount);
+            $required = $group->allow_repeat && $activeCount > 0 ? $group->min_choices : min($group->min_choices, $activeCount);
 
             if ($count < $required) {
                 throw ValidationException::withMessages([
