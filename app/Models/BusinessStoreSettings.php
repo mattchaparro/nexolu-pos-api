@@ -28,7 +28,7 @@ use Illuminate\Support\Facades\Storage;
     'hero_cta_label', 'hero_image_path',
     'trust_enabled', 'trust_items',
     'story_enabled', 'story_eyebrow', 'story_title', 'story_body', 'story_image_path', 'story_stats',
-    'address', 'opening_hours', 'instagram_url', 'facebook_url', 'bio_links',
+    'address', 'opening_hours', 'instagram_url', 'facebook_url', 'link_page_enabled', 'bio_links',
 ])]
 class BusinessStoreSettings extends Model
 {
@@ -93,6 +93,7 @@ class BusinessStoreSettings extends Model
             'story_enabled' => 'boolean',
             'trust_items' => 'array',
             'story_stats' => 'array',
+            'link_page_enabled' => 'boolean',
             'bio_links' => 'array',
         ];
     }

@@ -80,7 +80,6 @@ class BusinessStoreSettingsResource extends JsonResource
             'opening_hours' => $this->opening_hours,
             'instagram_url' => $this->instagram_url,
             'facebook_url' => $this->facebook_url,
-            'bio_links' => array_values($this->bio_links ?? []),
             // Para que la pantalla pueda mostrar (y copiar) la direccion
             // publica sin tener que componerla a mano.
             'public_url' => rtrim((string) config('app.storefront_url'), '/').'/'.$this->business?->slug,

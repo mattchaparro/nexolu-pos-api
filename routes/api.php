@@ -45,6 +45,7 @@ use App\Http\Controllers\Api\V1\IngredientStockMovementController;
 use App\Http\Controllers\Api\V1\InventoryReportController;
 use App\Http\Controllers\Api\V1\KitchenBoardController;
 use App\Http\Controllers\Api\V1\LayawayController;
+use App\Http\Controllers\Api\V1\LinkPageController;
 use App\Http\Controllers\Api\V1\OpenTabController;
 use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\PaymentMethodsController;
@@ -69,6 +70,7 @@ use App\Http\Controllers\Api\V1\SsoExchangeController;
 use App\Http\Controllers\Api\V1\StockMovementController;
 use App\Http\Controllers\Api\V1\StockMovementReasonController;
 use App\Http\Controllers\Api\V1\StockTransferController;
+use App\Http\Controllers\Api\V1\Storefront\PublicLinkPageController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontCartController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontCatalogController;
 use App\Http\Controllers\Api\V1\Storefront\StorefrontContactController;
@@ -139,6 +141,19 @@ Route::get('/public/receipts/{type}/{id}', [PublicReceiptController::class, 'sho
     ->whereNumber('id')
     ->middleware('signed')
     ->name('receipts.public.show');
+
+// Pagina de enlaces publica (la de la bio de Instagram/TikTok). Aparte de la
+// tienda y sin su middleware: existe aunque el negocio no tenga tienda
+// online. Lo no publicado responde 404 (ver PublicLinkPageController).
+Route::prefix('v1/link-page/{slug}')
+    ->name('api.v1.link-page.public.')
+    ->middleware('throttle:120,1')
+    ->group(function () {
+        Route::get('/', [PublicLinkPageController::class, 'show'])->name('show');
+        Route::get('/whatsapp', [PublicLinkPageController::class, 'whatsapp'])
+            ->middleware('throttle:30,1')
+            ->name('whatsapp');
+    });
 
 // Catalogo publico de la tienda online. SIN auth: quien llega es un
 // comprador anonimo. El aislamiento entre negocios lo garantiza
@@ -302,6 +317,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::put('/business/notifications', [BusinessController::class, 'updateNotifications'])->name('business.notifications.update');
             Route::delete('/business/low-stock-snooze', [BusinessController::class, 'clearLowStockSnooze'])->name('business.low-stock-snooze.clear');
             Route::get('/business/payment-methods', [PosPaymentMethodController::class, 'index'])->name('business.payment-methods.index');
+            // Pagina de enlaces (la de la bio): para todos, con o sin tienda.
+            Route::get('/link-page', [LinkPageController::class, 'show'])->name('link-page.show');
+            Route::put('/link-page', [LinkPageController::class, 'update'])->name('link-page.update');
             Route::put('/business/payment-methods', [PosPaymentMethodController::class, 'update'])->name('business.payment-methods.update');
         });
 

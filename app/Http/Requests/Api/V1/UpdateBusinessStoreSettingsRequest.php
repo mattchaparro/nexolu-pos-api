@@ -92,13 +92,6 @@ class UpdateBusinessStoreSettingsRequest extends FormRequest
             // url estricta: son enlaces que se pintan en la tienda publica.
             'instagram_url' => ['sometimes', 'nullable', 'url', 'max:255'],
             'facebook_url' => ['sometimes', 'nullable', 'url', 'max:255'],
-
-            // --- Página de enlaces (la de la bio) ---
-            // Solo http(s): se pintan como enlaces en una página pública, y un
-            // `javascript:` ahí sería ejecutar código en nombre de la tienda.
-            'bio_links' => ['sometimes', 'nullable', 'array', 'max:'.BusinessStoreSettings::MAX_BIO_LINKS],
-            'bio_links.*.label' => ['required', 'string', 'max:40'],
-            'bio_links.*.url' => ['required', 'url:http,https', 'max:255'],
         ];
     }
 
@@ -110,10 +103,6 @@ class UpdateBusinessStoreSettingsRequest extends FormRequest
             'accent_color.regex' => 'El color de acento debe ser un hexadecimal como #0ea5e9.',
             'trust_items.max' => 'La franja admite hasta 3 servicios.',
             'story_stats.max' => 'Puedes destacar hasta 4 cifras.',
-            'bio_links.max' => 'La página de enlaces admite hasta '.BusinessStoreSettings::MAX_BIO_LINKS.' enlaces propios.',
-            'bio_links.*.label.required' => 'Cada enlace necesita un texto.',
-            'bio_links.*.url.required' => 'Cada enlace necesita una dirección.',
-            'bio_links.*.url.url' => 'La dirección del enlace debe empezar por https://',
         ];
     }
 
