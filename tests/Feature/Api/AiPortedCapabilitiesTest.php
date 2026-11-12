@@ -12,6 +12,9 @@ use App\Models\Layaway;
 use App\Models\LayawayItem;
 use App\Models\LayawayPayment;
 use App\Models\Product;
+use App\Models\ProductAttribute;
+use App\Models\ProductAttributeValue;
+use App\Models\ProductVariant;
 use App\Models\Purchase;
 use App\Models\PurchaseLine;
 use App\Models\Receivable;
@@ -574,5 +577,28 @@ class AiPortedCapabilitiesTest extends TestCase
 
         $this->assertSame(1, $data['total_ordenes']);
         $this->assertSame('Juan Pérez', $data['ordenes'][0]['cliente']);
+    }
+
+    /**
+     * Ropa con tallas: el stock vive en cada variacion. La reposicion leia el
+     * del producto padre (0) y decia "sin stock" a un producto lleno.
+     */
+    public function test_inventario_reposicion_goes_by_variant(): void
+    {
+        $this->business->update(['feature_flags' => ['inventory' => true, 'variants' => true]]);
+        $product = Product::factory()->create(['business_id' => $this->business->id, 'name' => 'Legging', 'stock' => 0, 'track_stock' => true, 'is_active' => true, 'is_single_sale' => false]);
+        $size = ProductAttribute::factory()->create(['business_id' => $this->business->id, 'name' => 'Talla']);
+        foreach ([['M', 20], ['L', 1]] as [$value, $stock]) {
+            $attributeValue = ProductAttributeValue::factory()->create(['product_attribute_id' => $size->id, 'business_id' => $this->business->id, 'value' => $value]);
+            $variant = ProductVariant::factory()->create(['product_id' => $product->id, 'business_id' => $this->business->id, 'stock' => $stock, 'is_active' => true]);
+            $variant->attributeValues()->sync([$attributeValue->id => ['product_attribute_id' => $size->id]]);
+        }
+
+        $rows = collect($this->invoke('inventario_reposicion')['productos'])->keyBy('nombre');
+
+        $this->assertArrayNotHasKey('Legging', $rows->all(), 'El padre no se lista: se repone por talla.');
+        $this->assertEquals(20, $rows['Legging · M']['stock_actual']);
+        $this->assertFalse($rows['Legging · M']['bajo_umbral']);
+        $this->assertTrue($rows['Legging · L']['bajo_umbral']);
     }
 }
