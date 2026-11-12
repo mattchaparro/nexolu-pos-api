@@ -20,6 +20,7 @@ class StorefrontCategoryResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'parent_id' => $this->parent_id,
+            'products_count' => (int) ($this->products_count ?? 0),
         ];
     }
 }

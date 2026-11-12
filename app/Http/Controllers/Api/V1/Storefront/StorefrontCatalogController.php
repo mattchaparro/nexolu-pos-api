@@ -61,7 +61,11 @@ class StorefrontCatalogController extends Controller
      */
     public function categories(): AnonymousResourceCollection
     {
+        // products_count: los productos visibles PROPIOS de la categoria. La
+        // tienda le suma los de sus subcategorias a la madre, como hacen las
+        // tiendas grandes junto a cada categoria del filtro.
         $categories = ProductCategory::query()
+            ->withCount(['products as products_count' => fn (Builder $q) => $this->visible($q)])
             ->where(function (Builder $query) {
                 $query->whereHas('products', fn (Builder $q) => $this->visible($q))
                     ->orWhereHas('children', fn (Builder $q) => $q

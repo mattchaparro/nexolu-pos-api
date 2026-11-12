@@ -399,4 +399,16 @@ class StorefrontCatalogTest extends TestCase
             'in_stock' => 1,
         ]))->assertOk()->assertJsonCount(0, 'data');
     }
+
+    public function test_each_category_says_how_many_visible_products_it_has(): void
+    {
+        $business = $this->storefront();
+        $product = $this->publishedProduct($business);
+        $this->publishedProduct($business, ['category_id' => $product->category_id]);
+        $this->publishedProduct($business, ['category_id' => $product->category_id, 'is_published' => false]);
+
+        $this->getJson("/api/v1/storefront/{$business->slug}/categories")
+            ->assertOk()
+            ->assertJsonPath('0.products_count', 2);
+    }
 }
