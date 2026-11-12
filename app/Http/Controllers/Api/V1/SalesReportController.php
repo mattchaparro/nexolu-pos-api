@@ -48,7 +48,7 @@ class SalesReportController extends Controller
             $request->string('from', today()->toDateString())->toString(),
             $request->string('to', today()->toDateString())->toString(),
             min(100, max(1, $request->integer('per_page', 20))),
-            $request->only(['status', 'payment_method', 'search', 'sort', 'direction']),
+            $request->only(['status', 'payment_method', 'source', 'search', 'sort', 'direction']),
         );
 
         return [
@@ -77,7 +77,7 @@ class SalesReportController extends Controller
             $business,
             $request->string('from', today()->toDateString())->toString(),
             $request->string('to', today()->toDateString())->toString(),
-            $request->only(['status', 'payment_method', 'search']),
+            $request->only(['status', 'payment_method', 'source', 'search']),
         );
 
         $filename = 'ventas-'.now()->format('Y-m-d').'.csv';
@@ -85,10 +85,11 @@ class SalesReportController extends Controller
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, ['ID', 'Factura', 'Fecha', 'Estado', 'Total', 'Metodo de pago', 'Cliente', 'Telefono', 'Vendedor', 'Es cortesia', 'Es fiado', 'Productos'], ';');
+            fputcsv($out, ['ID', 'Fuente', 'Factura', 'Fecha', 'Estado', 'Total', 'Metodo de pago', 'Cliente', 'Telefono', 'Vendedor', 'Es cortesia', 'Es fiado', 'Detalle'], ';');
             foreach ($rows as $r) {
                 fputcsv($out, [
-                    $r['id'],
+                    $r['id'] ?? $r['row_key'],
+                    $r['source_label'],
                     $r['invoice_number'],
                     $r['created_at'],
                     $r['status'] === 'closed' ? 'Cerrada' : 'Abierta',

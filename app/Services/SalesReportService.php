@@ -13,11 +13,12 @@ use App\Models\SaleItem;
 use App\Models\SaleItemOption;
 use App\Models\ServicePayment;
 use App\Support\RevenueByPaymentMethod;
-use App\Support\SortableQuery;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator as LengthAwarePaginatorContract;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 
 class SalesReportService
 {
@@ -272,19 +273,171 @@ class SalesReportService
     }
 
     /**
-     * Historial de ventas paginado con filtros (máx. 90 días de rango).
+     * Fuentes de ingreso del historial. Las ventas no son la unica plata que
+     * entra: un apartado se paga por abonos, un servicio se paga aparte, un
+     * fiado se cobra despues y una financiadora gira despues. Antes el
+     * historial solo mostraba ventas y el dueño no veia esa plata.
+     */
+    public const INCOME_SOURCES = [
+        'sale' => 'Venta',
+        'layaway' => 'Abono a apartado',
+        'service' => 'Pago de servicio',
+        'receivable' => 'Cobro de fiado',
+        'financing' => 'Pago de financiera',
+    ];
+
+    /**
+     * Historial de ingresos paginado con filtros (máx. 90 días de rango):
+     * ventas mas abonos de apartados, pagos de servicios, fiados cobrados y
+     * giros de financieras, cada fila con su `source`.
      *
      * @param  array<string, mixed>  $filters
      */
-    public function salesHistory(Business $business, string $dateFrom, string $dateTo, int $perPage, array $filters): LengthAwarePaginator
+    public function salesHistory(Business $business, string $dateFrom, string $dateTo, int $perPage, array $filters): LengthAwarePaginatorContract
     {
         [$from, $to] = $this->normalizeDateRange($dateFrom, $dateTo, 90);
         $sameDay = $from->toDateString() === $to->toDateString();
-
         $filters = $this->normalizeFilters($filters, $business);
 
-        $query = Sale::where('business_id', $business->id)
-            ->with(['items.product:id,name', 'items.options', 'user:id,name', 'table:id,name', 'paymentSplits']);
+        $entries = $this->incomeEntries($business, $from, $to, $filters);
+        $page = Paginator::resolveCurrentPage();
+        $pageEntries = $entries->forPage($page, $perPage)->values();
+
+        return new LengthAwarePaginator(
+            $this->hydrateIncomeRows($business, $pageEntries, $sameDay, 'd/m · H:i')->all(),
+            $entries->count(),
+            $perPage,
+            $page,
+            ['path' => Paginator::resolveCurrentPath()],
+        );
+    }
+
+    /**
+     * Mismo historial para exportar CSV (tope 5000 filas).
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    public function salesHistoryForExport(Business $business, string $dateFrom, string $dateTo, array $filters): Collection
+    {
+        [$from, $to] = $this->normalizeDateRange($dateFrom, $dateTo, 90);
+        $sameDay = $from->toDateString() === $to->toDateString();
+        $filters = $this->normalizeFilters($filters, $business);
+
+        $entries = $this->incomeEntries($business, $from, $to, $filters)->take(5000)->values();
+
+        return $this->hydrateIncomeRows($business, $entries, $sameDay, 'd/m/Y H:i');
+    }
+
+    /**
+     * Lista liviana (tipo, id, fecha, monto) de todo lo que entro en el rango,
+     * ya filtrada y ordenada. Se arma liviana a proposito: con 90 dias de un
+     * negocio con mucho movimiento son miles de filas, y solo se cargan
+     * completas las de la pagina que se va a mostrar.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return Collection<int, array{type: string, id: int, at: Carbon, total: float}>
+     */
+    private function incomeEntries(Business $business, Carbon $from, Carbon $to, array $filters): Collection
+    {
+        $source = $filters['source'] ?? null;
+        $search = trim((string) ($filters['search'] ?? ''));
+        $pm = $filters['payment_method'] ?? null;
+        $pmVariants = $pm && $pm !== 'mixed' ? Business::paymentMethodIdWithAliases($pm) : [];
+        $wants = fn (string $type) => $source === null || $source === $type;
+        $entries = collect();
+
+        if ($wants('sale')) {
+            $entries = $entries->concat(
+                $this->historySalesQuery($business, $from, $to, $filters)
+                    ->get(['id', 'status', 'closed_at', 'created_at', 'total'])
+                    ->map(fn (Sale $sale) => [
+                        'type' => 'sale',
+                        'id' => $sale->id,
+                        'at' => $sale->closed_at ?? $sale->created_at,
+                        'total' => (float) $sale->total,
+                    ])
+            );
+        }
+
+        // Los abonos y cobros ya entraron: no tienen estado "abierta", y uno
+        // con varios medios no existe (cada abono es un solo medio).
+        $includePayments = ($filters['status'] ?? null) !== 'open' && $pm !== 'mixed';
+
+        if ($includePayments && $wants('layaway')) {
+            $entries = $entries->concat(
+                LayawayPayment::where('business_id', $business->id)
+                    ->whereBetween('created_at', [$from, $to])
+                    ->when($pmVariants, fn ($q) => $q->whereIn('payment_method', $pmVariants))
+                    ->when($search !== '', fn ($q) => $q->whereHas('layaway', fn ($l) => $l
+                        ->where('customer_name', 'like', "%{$search}%")
+                        ->orWhere('customer_phone', 'like', "%{$search}%")))
+                    ->get(['id', 'created_at', 'amount'])
+                    ->map(fn ($p) => ['type' => 'layaway', 'id' => $p->id, 'at' => $p->created_at, 'total' => (float) $p->amount])
+            );
+        }
+
+        if ($includePayments && $wants('service')) {
+            $entries = $entries->concat(
+                ServicePayment::where('business_id', $business->id)
+                    ->whereBetween('created_at', [$from, $to])
+                    ->when($pmVariants, fn ($q) => $q->whereIn('payment_method', $pmVariants))
+                    ->when($search !== '', fn ($q) => $q->whereHas('order', fn ($o) => $o
+                        ->where('service_name', 'like', "%{$search}%")
+                        ->orWhereHas('client', fn ($c) => $c->where('name', 'like', "%{$search}%"))))
+                    ->get(['id', 'created_at', 'amount'])
+                    ->map(fn ($p) => ['type' => 'service', 'id' => $p->id, 'at' => $p->created_at, 'total' => (float) $p->amount])
+            );
+        }
+
+        if ($includePayments && $wants('receivable')) {
+            $entries = $entries->concat(
+                Receivable::where('business_id', $business->id)
+                    ->where('status', 'paid')
+                    ->whereBetween('paid_at', [$from, $to])
+                    ->when($pmVariants, fn ($q) => $q->whereIn('payment_method', $pmVariants))
+                    ->when($search !== '', fn ($q) => $q->where(fn ($r) => $r
+                        ->where('customer_name', 'like', "%{$search}%")
+                        ->orWhere('customer_phone', 'like', "%{$search}%")))
+                    ->get(['id', 'paid_at', 'amount'])
+                    ->map(fn ($r) => ['type' => 'receivable', 'id' => $r->id, 'at' => $r->paid_at, 'total' => (float) $r->amount])
+            );
+        }
+
+        if ($includePayments && $wants('financing')) {
+            $entries = $entries->concat(
+                FinancingCredit::where('business_id', $business->id)
+                    ->where('status', FinancingCredit::STATUS_PAID)
+                    ->whereBetween('paid_at', [$from, $to])
+                    ->when($pmVariants, fn ($q) => $q->whereIn('payout_method', $pmVariants))
+                    ->when($search !== '', fn ($q) => $q->where(fn ($f) => $f
+                        ->where('customer_name', 'like', "%{$search}%")
+                        ->orWhere('approval_number', 'like', "%{$search}%")))
+                    ->get(['id', 'paid_at', 'amount'])
+                    ->map(fn ($f) => ['type' => 'financing', 'id' => $f->id, 'at' => $f->paid_at, 'total' => (float) $f->amount])
+            );
+        }
+
+        $sort = $filters['sort'] ?? null;
+        $descending = strtolower((string) ($filters['direction'] ?? 'desc')) !== 'asc';
+
+        if ($sort === 'total') {
+            $sorted = $entries->sortBy(fn ($e) => $e['total'], SORT_REGULAR, $descending);
+        } else {
+            $sorted = $entries->sortBy(fn ($e) => $e['at']->getTimestamp(), SORT_REGULAR, $sort === 'date' ? $descending : true);
+        }
+
+        return $sorted->values();
+    }
+
+    /**
+     * Ventas del rango con los filtros del historial (sin ordenar ni cargar
+     * relaciones: eso lo hace quien lo use).
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    private function historySalesQuery(Business $business, Carbon $from, Carbon $to, array $filters): Builder
+    {
+        $query = Sale::where('business_id', $business->id);
 
         $status = $filters['status'] ?? null;
         if ($status === 'open') {
@@ -307,8 +460,7 @@ class SalesReportService
                 // guardan a veces el vocabulario en espanol del legacy
                 // (`efectivo`) y a veces el normalizado (`cash`) segun que app
                 // escribio la fila - una comparacion exacta perdia el 100% de
-                // las ventas de negocios con datos legacy (ver docs/CUTOVER_TODO.md #1,
-                // bug reportado: filtrar por "Efectivo" no devolvia nada).
+                // las ventas de negocios con datos legacy (ver docs/CUTOVER_TODO.md #1).
                 $pmVariants = Business::paymentMethodIdWithAliases($pm);
                 $query->where(function ($q) use ($pmVariants) {
                     $q->whereIn('payment_method', $pmVariants)
@@ -330,124 +482,126 @@ class SalesReportService
             });
         }
 
-        $sort = SortableQuery::resolve($filters['sort'] ?? null, $filters['direction'] ?? null, [
-            'date' => DB::raw('COALESCE(closed_at, created_at)'),
-            'total' => 'total',
-            'status' => 'status',
-        ]);
-        if ($sort) {
-            $query->orderBy(...$sort);
-        } else {
-            $query->orderByRaw('COALESCE(closed_at, created_at) DESC');
-        }
-
-        return $query->paginate($perPage)
-            ->through(function ($s) use ($sameDay, $business) {
-                $relevant = $s->closed_at ?? $s->created_at;
-
-                return [
-                    'id' => $s->id,
-                    'invoice_number' => $s->invoice_number,
-                    'total' => (float) $s->total,
-                    // Normalizado al vocabulario configurado del negocio (ver
-                    // Business::normalizePaymentMethodId()) - sin esto, una
-                    // venta guardada como "efectivo" no matcheaba ningun id
-                    // de paymentMethodOptions() del lado del frontend y se
-                    // mostraba el string crudo en vez de la label ("Efectivo").
-                    'payment_method' => $business->normalizePaymentMethodId($s->payment_method),
-                    'payment_splits' => $s->paymentSplits->map(fn ($p) => [
-                        'payment_method' => $business->normalizePaymentMethodId($p->payment_method),
-                        'amount' => (float) $p->amount,
-                    ])->values()->all(),
-                    'status' => $s->status,
-                    'is_non_revenue' => (bool) $s->is_non_revenue,
-                    'is_credit' => (bool) $s->is_credit,
-                    'table_name' => $s->table?->name,
-                    'customer_name' => $s->customer_name,
-                    'customer_phone' => $s->customer_phone,
-                    'user_name' => $s->user?->name,
-                    'created_at' => $sameDay ? $relevant->format('H:i') : $relevant->format('d/m · H:i'),
-                    'items_preview' => $this->briefItemsLabel($s),
-                    'items' => $s->items->map(fn ($i) => [
-                        'name' => $i->product?->name ?? 'Eliminado',
-                        'is_deleted' => ! $i->product,
-                        'options_label' => SaleItemOption::label($i->options),
-                        'quantity' => (float) $i->quantity,
-                        'subtotal' => (float) $i->subtotal,
-                    ])->all(),
-                ];
-            });
+        return $query;
     }
 
     /**
-     * Colección de ventas para exportar CSV (mismo filtro que salesHistory, tope 5000).
+     * Carga completas solo las filas pedidas y las arma en el formato del
+     * historial, en el mismo orden.
      *
-     * @param  array<string, mixed>  $filters
+     * @param  Collection<int, array{type: string, id: int, at: Carbon, total: float}>  $entries
+     * @return Collection<int, array<string, mixed>>
      */
-    public function salesHistoryForExport(Business $business, string $dateFrom, string $dateTo, array $filters): Collection
+    private function hydrateIncomeRows(Business $business, Collection $entries, bool $sameDay, string $dateFormat): Collection
     {
-        [$from, $to] = $this->normalizeDateRange($dateFrom, $dateTo, 90);
-        $sameDay = $from->toDateString() === $to->toDateString();
+        $idsOf = fn (string $type) => $entries->where('type', $type)->pluck('id')->all();
 
-        $filters = $this->normalizeFilters($filters, $business);
+        $sales = Sale::whereIn('id', $idsOf('sale'))
+            ->with(['items.product:id,name', 'items.options', 'user:id,name', 'table:id,name', 'paymentSplits'])
+            ->get()->keyBy('id');
+        $layaways = LayawayPayment::whereIn('id', $idsOf('layaway'))
+            ->with(['layaway:id,customer_name,customer_phone', 'recordedBy:id,name'])->get()->keyBy('id');
+        $services = ServicePayment::whereIn('id', $idsOf('service'))
+            ->with(['order:id,service_name,client_id', 'order.client:id,name,phone', 'recordedBy:id,name'])->get()->keyBy('id');
+        $receivables = Receivable::whereIn('id', $idsOf('receivable'))
+            ->with(['collectedByUser:id,name', 'sale:id,invoice_number'])->get()->keyBy('id');
+        $financing = FinancingCredit::whereIn('id', $idsOf('financing'))
+            ->with(['provider:id,name', 'sale:id,invoice_number'])->get()->keyBy('id');
 
-        $query = Sale::where('business_id', $business->id)
-            ->with(['items.product:id,name', 'items.options', 'user:id,name', 'table:id,name', 'paymentSplits']);
+        $date = fn (Carbon $at) => $sameDay ? $at->format('H:i') : $at->format($dateFormat);
 
-        $status = $filters['status'] ?? null;
-        if ($status === 'open') {
-            $query->where('status', 'open')->whereBetween('created_at', [$from, $to]);
-        } elseif ($status === 'closed') {
-            $query->where('status', 'closed')->whereBetween('closed_at', [$from, $to]);
-        } else {
-            $query->where(function ($q) use ($from, $to) {
-                $q->where(fn ($q2) => $q2->where('status', 'closed')->whereBetween('closed_at', [$from, $to]))
-                    ->orWhere(fn ($q2) => $q2->where('status', 'open')->whereBetween('created_at', [$from, $to]));
-            });
-        }
+        $payment = fn (string $type, int $id, float $total, string $method, ?string $customer, ?string $phone, ?string $userName, string $description, ?string $reference, Carbon $at) => [
+            'row_key' => "{$type}-{$id}",
+            'id' => null,
+            'source' => $type,
+            'source_label' => self::INCOME_SOURCES[$type],
+            'invoice_number' => $reference,
+            'total' => $total,
+            'payment_method' => $business->normalizePaymentMethodId($method),
+            'payment_splits' => [],
+            'status' => 'closed',
+            'is_non_revenue' => false,
+            'is_credit' => false,
+            'table_name' => null,
+            'customer_name' => $customer,
+            'customer_phone' => $phone,
+            'user_name' => $userName,
+            'created_at' => $date($at),
+            'items_preview' => $description,
+            'items' => [],
+        ];
 
-        if (! empty($filters['payment_method'])) {
-            $pm = $filters['payment_method'];
-            if ($pm === 'mixed') {
-                $query->where('payment_method', 'mixed');
-            } else {
-                $pmVariants = Business::paymentMethodIdWithAliases($pm);
-                $query->where(fn ($q) => $q->whereIn('payment_method', $pmVariants)
-                    ->orWhere(fn ($q2) => $q2->where('payment_method', 'mixed')
-                        ->whereHas('paymentSplits', fn ($s) => $s->whereIn('payment_method', $pmVariants))));
+        return $entries->map(function (array $entry) use ($business, $sales, $layaways, $services, $receivables, $financing, $date, $payment) {
+            switch ($entry['type']) {
+                case 'layaway':
+                    $p = $layaways->get($entry['id']);
+
+                    return $p ? $payment('layaway', $p->id, (float) $p->amount, (string) $p->payment_method,
+                        $p->layaway?->customer_name, $p->layaway?->customer_phone, $p->recordedBy?->name,
+                        'Abono al apartado #'.$p->layaway_id, 'Apartado #'.$p->layaway_id, $entry['at']) : null;
+                case 'service':
+                    $p = $services->get($entry['id']);
+
+                    return $p ? $payment('service', $p->id, (float) $p->amount, (string) $p->payment_method,
+                        $p->order?->client?->name, $p->order?->client?->phone, $p->recordedBy?->name,
+                        'Pago de '.($p->order?->service_name ?: 'servicio'), 'Orden #'.$p->service_order_id, $entry['at']) : null;
+                case 'receivable':
+                    $r = $receivables->get($entry['id']);
+
+                    return $r ? $payment('receivable', $r->id, (float) $r->amount, (string) $r->payment_method,
+                        $r->customer_name, $r->customer_phone, $r->collectedByUser?->name,
+                        'Cobro del fiado'.($r->sale?->invoice_number ? ' de la venta '.$r->sale->invoice_number : ''),
+                        $r->sale?->invoice_number, $entry['at']) : null;
+                case 'financing':
+                    $f = $financing->get($entry['id']);
+
+                    return $f ? $payment('financing', $f->id, (float) $f->amount,
+                        (string) ($f->payout_method ?: $business->resolveTransferPaymentMethodId()),
+                        $f->customer_name, $f->customer_phone, null,
+                        'Giro de '.($f->provider?->name ?? 'la financiera').($f->approval_number ? ' · aprobación '.$f->approval_number : ''),
+                        $f->sale?->invoice_number, $entry['at']) : null;
             }
-        }
 
-        if (! empty($filters['search'])) {
-            $search = trim((string) $filters['search']);
-            $query->where(fn ($q) => $q
-                ->where('invoice_number', 'like', "%{$search}%")
-                ->orWhere('customer_name', 'like', "%{$search}%")
-                ->orWhere('customer_phone', 'like', "%{$search}%")
-                ->orWhereHas('items.product', fn ($p) => $p->where('name', 'like', "%{$search}%")));
-        }
+            $s = $sales->get($entry['id']);
+            if (! $s) {
+                return null;
+            }
 
-        return $query->orderByRaw('COALESCE(closed_at, created_at) DESC')
-            ->limit(5000)
-            ->get()
-            ->map(function ($s) use ($sameDay, $business) {
-                $relevant = $s->closed_at ?? $s->created_at;
-
-                return [
-                    'id' => $s->id,
-                    'invoice_number' => $s->invoice_number,
-                    'total' => (float) $s->total,
-                    'payment_method' => $business->normalizePaymentMethodId($s->payment_method),
-                    'status' => $s->status,
-                    'is_non_revenue' => (bool) $s->is_non_revenue,
-                    'is_credit' => (bool) $s->is_credit,
-                    'customer_name' => $s->customer_name,
-                    'customer_phone' => $s->customer_phone,
-                    'user_name' => $s->user?->name,
-                    'created_at' => $sameDay ? $relevant->format('H:i') : $relevant->format('d/m/Y H:i'),
-                    'items_preview' => $this->briefItemsLabel($s),
-                ];
-            });
+            return [
+                'row_key' => "sale-{$s->id}",
+                'id' => $s->id,
+                'source' => 'sale',
+                // Un fiado es una venta, pero la plata entra cuando se cobra
+                // (fila «Cobro de fiado»): se rotula distinto para no leerla
+                // como ingreso del dia.
+                'source_label' => $s->is_credit ? 'Venta a crédito' : self::INCOME_SOURCES['sale'],
+                'invoice_number' => $s->invoice_number,
+                'total' => (float) $s->total,
+                // Normalizado al vocabulario configurado del negocio (ver
+                // Business::normalizePaymentMethodId()).
+                'payment_method' => $business->normalizePaymentMethodId($s->payment_method),
+                'payment_splits' => $s->paymentSplits->map(fn ($p) => [
+                    'payment_method' => $business->normalizePaymentMethodId($p->payment_method),
+                    'amount' => (float) $p->amount,
+                ])->values()->all(),
+                'status' => $s->status,
+                'is_non_revenue' => (bool) $s->is_non_revenue,
+                'is_credit' => (bool) $s->is_credit,
+                'table_name' => $s->table?->name,
+                'customer_name' => $s->customer_name,
+                'customer_phone' => $s->customer_phone,
+                'user_name' => $s->user?->name,
+                'created_at' => $date($entry['at']),
+                'items_preview' => $this->briefItemsLabel($s),
+                'items' => $s->items->map(fn ($i) => [
+                    'name' => $i->product?->name ?? 'Eliminado',
+                    'is_deleted' => ! $i->product,
+                    'options_label' => SaleItemOption::label($i->options),
+                    'quantity' => (float) $i->quantity,
+                    'subtotal' => (float) $i->subtotal,
+                ])->all(),
+            ];
+        })->filter()->values();
     }
 
     /**
@@ -724,6 +878,9 @@ class SalesReportService
             if (in_array($pm, $allowedPm, true)) {
                 $out['payment_method'] = $pm;
             }
+        }
+        if (! empty($filters['source']) && array_key_exists($filters['source'], self::INCOME_SOURCES)) {
+            $out['source'] = $filters['source'];
         }
         if (array_key_exists('search', $filters)) {
             $out['search'] = $filters['search'];
