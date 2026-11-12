@@ -157,15 +157,21 @@ class OpenTabService
             $productIds = $lineKeys->map(fn (string $key) => (int) explode(':', $key)[0])->unique()->values();
             $variantIds = $lineKeys->map(fn (string $key) => (int) explode(':', $key)[1])->filter()->unique()->values();
 
+            // Stock de la sede e insumos precargados para todas las lineas (ver
+            // SaleService::applyItems: mismo N+1).
             $products = Product::where('business_id', $business->id)
                 ->whereIn('id', $productIds)
-                ->when($ingredientsEnabled, fn ($query) => $query->with('ingredients'))
+                ->when($ingredientsEnabled, fn ($query) => $query->with(['ingredients' => fn ($relation) => $relation->withBranchStock()]))
+                ->withBranchStock()
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
+            if ($variantsEnabled) {
+                $products->loadExists('variants');
+            }
 
             $variants = $variantsEnabled && $variantIds->isNotEmpty()
-                ? ProductVariant::where('business_id', $business->id)->whereIn('id', $variantIds)->lockForUpdate()->get()->keyBy('id')
+                ? ProductVariant::where('business_id', $business->id)->whereIn('id', $variantIds)->withBranchStock()->lockForUpdate()->get()->keyBy('id')
                 : collect();
 
             foreach ($lineKeys as $key) {

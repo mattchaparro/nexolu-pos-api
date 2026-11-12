@@ -453,16 +453,33 @@ class SaleService
         $total = 0.0;
 
         $productIds = collect($items)->pluck('product_id')->unique()->values()->all();
+        // Precio y stock de la sede, insumos y "tiene variantes" se precargan
+        // para toda la lista: antes cada linea hacia sus propias consultas
+        // (N+1 en Sentry, NEXOLU-POS-API-6 y -B: una cuenta de Las Banquitas
+        // con 15 lineas eran 45 consultas extra por cada "agregar").
         $products = Product::where('business_id', $business->id)
             ->whereIn('id', $productIds)
-            ->when($ingredientsEnabled, fn ($query) => $query->with('ingredients'))
+            ->when($ingredientsEnabled, fn ($query) => $query->with(['ingredients' => fn ($relation) => $relation->withBranchStock()]))
+            ->withBranchPrice()
+            ->withBranchStock()
             ->lockForUpdate()
             ->get()
             ->keyBy('id');
+        // Aparte y no como subconsulta del SELECT ... FOR UPDATE: asi no
+        // bloquea filas de product_variants que esta venta no toca.
+        if ($variantsEnabled) {
+            $products->loadExists('variants');
+        }
 
         $variantIds = collect($items)->pluck('product_variant_id')->filter()->unique()->values()->all();
         $variants = $variantsEnabled && $variantIds !== []
-            ? ProductVariant::where('business_id', $business->id)->whereIn('id', $variantIds)->lockForUpdate()->get()->keyBy('id')
+            ? ProductVariant::where('business_id', $business->id)
+                ->whereIn('id', $variantIds)
+                ->withBranchPrice()
+                ->withBranchStock()
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id')
             : collect();
 
         foreach ($items as $item) {

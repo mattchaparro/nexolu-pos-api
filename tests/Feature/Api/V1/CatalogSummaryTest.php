@@ -7,6 +7,7 @@ use App\Models\Ingredient;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class CatalogSummaryTest extends TestCase
@@ -20,6 +21,38 @@ class CatalogSummaryTest extends TestCase
         $admin->assignRole('admin');
 
         return $admin;
+    }
+
+    /**
+     * El resumen no puede hacer una consulta por producto: con sede activa
+     * cada stockAt() iba a branch_stocks fila por fila (N+1 en Sentry,
+     * NEXOLU-POS-API-A/-D). Con 2 o con 12 productos, las mismas consultas.
+     */
+    public function test_products_summary_queries_do_not_grow_with_the_catalog(): void
+    {
+        $admin = $this->admin(['feature_flags' => ['ingredients' => false]]);
+
+        $queries = 0;
+        DB::listen(function () use (&$queries) {
+            $queries++;
+        });
+        $countQueries = function () use ($admin, &$queries): int {
+            $queries = 0;
+            $this->actingAs($admin, 'sanctum')->getJson('/api/v1/products/summary')->assertOk();
+
+            return $queries;
+        };
+
+        Product::factory()->count(2)->create(['business_id' => $admin->business_id, 'stock' => 4, 'is_service' => false]);
+        // La primera petición resuelve la sede principal y el rol una sola
+        // vez: se descarta para comparar solo lo que depende del catálogo.
+        $countQueries();
+        $withTwo = $countQueries();
+
+        Product::factory()->count(10)->create(['business_id' => $admin->business_id, 'stock' => 4, 'is_service' => false]);
+        $withTwelve = $countQueries();
+
+        $this->assertSame($withTwo, $withTwelve);
     }
 
     public function test_products_summary_counts_low_stock_out_of_stock_and_single_sale(): void

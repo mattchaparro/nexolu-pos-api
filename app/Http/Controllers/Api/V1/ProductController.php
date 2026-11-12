@@ -41,10 +41,16 @@ class ProductController extends Controller
         $variantsEnabled = (bool) $business?->hasFeature('variants');
         $lowStockThreshold = (float) ($business?->low_stock_alert_threshold ?? 5);
 
+        // Stock de la sede precargado para productos, variantes e insumos:
+        // sin esto cada producto consultaba su fila de branch_stocks (N+1 en
+        // Sentry, NEXOLU-POS-API-A y -D, cientos de consultas por pantalla).
         $products = Product::where('is_service', false)
-            ->when($ingredientsEnabled, fn ($q) => $q->with('ingredients:id'))
-            ->when($variantsEnabled, fn ($q) => $q->with('variants:id,product_id,stock,is_active,low_stock_alert_threshold'))
-            ->get(['id', 'stock', 'track_stock', 'is_single_sale', 'is_active', 'low_stock_alert_threshold']);
+            ->when($ingredientsEnabled, fn ($q) => $q->with(['ingredients' => fn ($relation) => $relation->withBranchStock()]))
+            ->when($variantsEnabled, fn ($q) => $q->with(['variants' => fn ($relation) => $relation
+                ->select('id', 'product_id', 'business_id', 'stock', 'is_active', 'low_stock_alert_threshold')
+                ->withBranchStock()]))
+            ->withBranchStock()
+            ->get(['id', 'business_id', 'stock', 'track_stock', 'is_single_sale', 'is_active', 'low_stock_alert_threshold']);
 
         // effectiveStock(), no la columna cruda: products.stock es
         // "fantasma" para un producto con variantes (siempre 0, ver
@@ -65,7 +71,7 @@ class ProductController extends Controller
         $isLowStock = function (Product $p) use ($lowStockThreshold, $variantsEnabled, $effectiveStock): bool {
             if ($variantsEnabled && $p->hasVariants()) {
                 return $p->variants->where('is_active', true)->contains(
-                    fn (ProductVariant $variant) => (float) $variant->stock <= ($variant->low_stock_alert_threshold !== null
+                    fn (ProductVariant $variant) => $variant->stockAt() <= ($variant->low_stock_alert_threshold !== null
                         ? (float) $variant->low_stock_alert_threshold
                         : $lowStockThreshold)
                 );
