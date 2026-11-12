@@ -484,7 +484,10 @@ class StorefrontOrderTest extends TestCase
             && $request['channels'] === ['whatsapp', 'email']
             && $request['to']['whatsapp'] !== null
             && $request['to']['email'] === 'ana@compradora.test'
-            && $request['whatsapp_template']['name'] === 'pedido_recibido_v1');
+            && $request['whatsapp_template']['name'] === 'pedido_recibido_v1'
+            // El boton "Ver mi pedido" lleva a la pagina de seguimiento.
+            && $request['whatsapp_template']['components'][1]['sub_type'] === 'url'
+            && preg_match('#^[a-z0-9-]+/pedido/[A-Za-z0-9]{40}$#', $request['whatsapp_template']['components'][1]['parameters'][0]['text']) === 1);
     }
 
     /** Sin plantilla aprobada en Meta, el aviso sale solo por correo. */
@@ -492,6 +495,11 @@ class StorefrontOrderTest extends TestCase
     {
         Mail::fake();
         $this->fakeComms();
+        config(['services.whatsapp.templates.pedido_recibido' => [
+            'name' => 'pedido_recibido',
+            'lang' => 'es_CO',
+            'pending_approval' => true,
+        ]]);
         $product = $this->publishedProduct(['stock' => 5, 'price' => 10000]);
 
         $this->checkout([
@@ -536,8 +544,9 @@ class StorefrontOrderTest extends TestCase
 
         $this->checkout(['items' => [['product_id' => $product->id, 'quantity' => 1]]])->assertCreated();
 
-        // Sin correo ni plantilla no queda ningun canal: no se llama al Core.
-        Http::assertNothingSent();
+        // Sin correo, el aviso sale solo por WhatsApp a su telefono.
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/notifications/send')
+            && $request['channels'] === ['whatsapp']);
     }
 
     /** Estados internos: al comprador no le dicen nada y no se le escribe. */

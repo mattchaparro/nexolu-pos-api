@@ -152,7 +152,15 @@ class OnlineOrderNotifier
             $parameters[] = ['type' => 'text', 'text' => '$'.number_format((float) $order->total, 0, ',', '.')];
         }
 
-        return [['type' => 'body', 'parameters' => $parameters]];
+        return [
+            ['type' => 'body', 'parameters' => $parameters],
+            // Boton "Ver mi pedido": la plantilla fija https://tienda.nexolu.co/
+            // y aca va el resto. Es la misma pagina de seguimiento a la que
+            // vuelve el comprador despues de pagar.
+            ['type' => 'button', 'sub_type' => 'url', 'index' => '0', 'parameters' => [
+                ['type' => 'text', 'text' => $order->business?->slug.'/pedido/'.$order->public_token],
+            ]],
+        ];
     }
 
     private function storeName(Order $order): string

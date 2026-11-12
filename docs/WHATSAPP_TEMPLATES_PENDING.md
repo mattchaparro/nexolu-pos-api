@@ -87,7 +87,7 @@ se activa depende de cómo esté declarada:
 
 ## 5. `pedido_recibido` - al comprador, su pedido llegó a la tienda
 
-- **Config:** `whatsapp.templates.pedido_recibido`, con `pending_approval => true`.
+- **Config:** `whatsapp.templates.pedido_recibido`, (activa).
 - **Dispara:** `OnlineOrderNotifier::sendReceived()`, al crear un pedido en la
   tienda online. Hoy sale solo el correo.
 - **Categoría en Meta:** Utility.
@@ -96,27 +96,27 @@ se activa depende de cómo esté declarada:
 - **Texto sugerido:**
   > Hola {{1}}, recibimos tu pedido #{{3}} en {{2}} por {{4}}. Te avisamos
   > apenas la tienda lo confirme.
-- **Estado:** sin crear en Meta.
+- **Estado:** creada en Meta el 2026-11-12 (UTILITY). `pending_approval` ya se quitó del config.
 
 ## 6. `pedido_confirmado` - al comprador, la tienda lo confirmó
 
-- **Config:** `whatsapp.templates.pedido_confirmado`, con `pending_approval => true`.
+- **Config:** `whatsapp.templates.pedido_confirmado`, (activa).
 - **Dispara:** `OnlineOrderNotifier::sendConfirmed()`.
 - **Categoría en Meta:** Utility.
 - **Variables (body):** `{{1}}` comprador · `{{2}}` tienda · `{{3}}` número.
 - **Texto sugerido:**
   > {{1}}, {{2}} confirmó tu pedido #{{3}} y ya lo está alistando.
-- **Estado:** sin crear en Meta.
+- **Estado:** creada en Meta el 2026-11-12 (UTILITY). `pending_approval` ya se quitó del config.
 
 ## 7. `pedido_enviado` - al comprador, su pedido va en camino
 
-- **Config:** `whatsapp.templates.pedido_enviado`, con `pending_approval => true`.
+- **Config:** `whatsapp.templates.pedido_enviado`, (activa).
 - **Dispara:** `OnlineOrderNotifier::sendShipped()`.
 - **Categoría en Meta:** Utility.
 - **Variables (body):** `{{1}}` comprador · `{{2}}` tienda · `{{3}}` número.
 - **Texto sugerido:**
   > {{1}}, tu pedido #{{3}} de {{2}} ya va en camino.
-- **Estado:** sin crear en Meta.
+- **Estado:** creada en Meta el 2026-11-12 (UTILITY). `pending_approval` ya se quitó del config.
 
 ## 8. `pedido_nuevo_comercio` - al COMERCIANTE, entró un pedido
 
@@ -124,7 +124,7 @@ La más urgente de las cuatro. Hasta ahora al comerciante solo le llegaba
 correo, que es justo el canal que no mira quien está atendiendo el mostrador:
 un pedido del que se entera tarde es un pedido que se despacha tarde.
 
-- **Config:** `whatsapp.templates.pedido_nuevo_comercio`, con `pending_approval => true`.
+- **Config:** `whatsapp.templates.pedido_nuevo_comercio`, (activa).
 - **Dispara:** `OrderService::notifyMerchantOnWhatsApp()`, desde
   `StorefrontOrderController::store` junto al correo (no lo reemplaza: el
   correo deja constancia, WhatsApp es el que se ve).
@@ -136,4 +136,4 @@ un pedido del que se entera tarde es un pedido que se despacha tarde.
 - **Texto sugerido:**
   > Entró el pedido #{{1}} por {{2}} de {{3}}. Míralo en tu POS para
   > confirmarlo.
-- **Estado:** sin crear en Meta.
+- **Estado:** creada en Meta el 2026-11-12 (UTILITY). `pending_approval` ya se quitó del config.
