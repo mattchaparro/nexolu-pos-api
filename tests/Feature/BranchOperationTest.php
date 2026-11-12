@@ -164,6 +164,39 @@ class BranchOperationTest extends TestCase
         $this->assertSame($main->id, (int) $expense->fresh()->branch_id);
     }
 
+    /**
+     * Con «todas las sedes» puesto no hay local donde caiga la venta: antes
+     * aterrizaba callada en la principal aunque el dueño estuviera vendiendo
+     * en la otra.
+     */
+    public function test_selling_from_the_all_branches_view_asks_for_a_branch(): void
+    {
+        [$business, $main, , $user] = $this->scenario();
+        $product = Product::factory()->for($business)->create(['price' => 5000, 'track_stock' => false]);
+
+        $this->actingAs($user, 'sanctum')
+            ->withHeader('X-Branch-Id', 'all')
+            ->postJson('/api/v1/sales', [
+                'payment_method' => 'cash',
+                'items' => [['product_id' => $product->id, 'quantity' => 1]],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('branch');
+
+        $this->assertSame(0, Sale::withoutGlobalScopes()->where('business_id', $business->id)->count());
+    }
+
+    /** Lo que si se puede desde el consolidado: registrar algo diciendo de que sede es. */
+    public function test_an_expense_with_an_explicit_branch_can_be_recorded_from_the_all_branches_view(): void
+    {
+        [$business, , $second, $user] = $this->scenario();
+        BranchContext::setAllBranches();
+
+        $expense = Expense::factory()->create(['business_id' => $business->id, 'branch_id' => $second->id]);
+
+        $this->assertSame($second->id, $expense->branch_id);
+    }
+
     private function sellIn(Branch $branch, User $user, Product $product, int $quantity = 1): void
     {
         $this->actingAs($user, 'sanctum')
