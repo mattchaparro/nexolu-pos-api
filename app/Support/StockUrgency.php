@@ -23,6 +23,7 @@ class StockUrgency
     public static function productVelocity(int $businessId, int $productId, int $days = self::DEFAULT_WINDOW_DAYS): float
     {
         $sold = abs((float) DB::table('stock_movements')
+            ->tap(fn ($query) => BranchFilter::apply($query, 'stock_movements'))
             ->where('business_id', $businessId)
             ->where('product_id', $productId)
             ->where('type', 'sale')
@@ -41,6 +42,7 @@ class StockUrgency
     {
         $consumed = (float) (DB::table('sale_items')
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+            ->tap(fn ($query) => BranchFilter::apply($query, 'sales'))
             ->join('ingredient_product', 'ingredient_product.product_id', '=', 'sale_items.product_id')
             ->where('sales.business_id', $businessId)
             ->where('sales.status', 'closed')
@@ -68,6 +70,7 @@ class StockUrgency
         }
 
         $rows = DB::table('stock_movements')
+            ->tap(fn ($query) => BranchFilter::apply($query, 'stock_movements'))
             ->where('business_id', $businessId)
             ->where('type', 'sale')
             ->whereIn('product_id', $productIds)
@@ -98,6 +101,7 @@ class StockUrgency
         }
 
         $rows = DB::table('stock_movements')
+            ->tap(fn ($query) => BranchFilter::apply($query, 'stock_movements'))
             ->where('business_id', $businessId)
             ->where('type', 'sale')
             ->whereIn('product_variant_id', $variantIds)
@@ -123,6 +127,7 @@ class StockUrgency
 
         $rows = DB::table('sale_items')
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+            ->tap(fn ($query) => BranchFilter::apply($query, 'sales'))
             ->join('ingredient_product', 'ingredient_product.product_id', '=', 'sale_items.product_id')
             ->where('sales.business_id', $businessId)
             ->where('sales.status', 'closed')

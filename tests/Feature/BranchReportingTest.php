@@ -12,6 +12,7 @@ use App\Services\BranchComparisonService;
 use App\Services\BusinessOverviewService;
 use App\Support\BranchContext;
 use App\Support\ProductProfitBreakdown;
+use App\Support\StockUrgency;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
 
@@ -205,6 +206,29 @@ class BranchReportingTest extends TestCase
         $this->assertEquals(6000, $valueIn((string) $second->id)['inventory_retail_cop']);
         $this->assertEquals(1600, $valueIn((string) $second->id)['inventory_cost_products_cop']);
         $this->assertEquals(14000, $valueIn('all')['inventory_retail_cop']);
+    }
+
+    /**
+     * La velocidad de venta (base de las sugerencias de reposicion del
+     * asistente) mezclaba las sedes: el centro comercial pedia reponer por
+     * lo que vendia la fabrica.
+     */
+    public function test_the_sales_velocity_is_the_one_of_the_active_branch(): void
+    {
+        [$business, $main, $second, $user] = $this->scenario();
+        $product = $this->productIn($business, $second, 10000, 40);
+
+        $this->sellIn($main, $user, $product, 6);
+        $this->sellIn($second, $user, $product, 3);
+
+        BranchContext::set($main);
+        $this->assertEqualsWithDelta(6 / 30, StockUrgency::productsVelocityBatch($business->id, [$product->id])[$product->id], 0.0001);
+
+        BranchContext::set($second);
+        $this->assertEqualsWithDelta(3 / 30, StockUrgency::productsVelocityBatch($business->id, [$product->id])[$product->id], 0.0001);
+
+        BranchContext::setAllBranches();
+        $this->assertEqualsWithDelta(9 / 30, StockUrgency::productsVelocityBatch($business->id, [$product->id])[$product->id], 0.0001);
     }
 
     private function productIn(Business $business, Branch $second, float $price, int $stock): Product
