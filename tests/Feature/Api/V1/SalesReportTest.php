@@ -706,4 +706,41 @@ class SalesReportTest extends TestCase
 
         $response->assertOk()->assertJsonPath('sales_count', 0);
     }
+
+    /**
+     * El historial no son solo ventas: un abono a un apartado tambien es
+     * plata que entro, y antes no aparecia.
+     */
+    public function test_sales_history_lists_every_income_source_with_its_label(): void
+    {
+        [$business, $admin] = $this->admin();
+        Sale::factory()->create([
+            'business_id' => $business->id, 'status' => 'closed', 'total' => 80000,
+            'is_credit' => false, 'is_non_revenue' => false, 'closed_at' => '2026-03-02 12:00:00',
+        ]);
+        $layaway = Layaway::factory()->create(['business_id' => $business->id, 'customer_name' => 'Ana Ruiz']);
+        $payment = LayawayPayment::factory()->create([
+            'business_id' => $business->id, 'layaway_id' => $layaway->id, 'amount' => 30000, 'payment_method' => 'cash',
+        ]);
+        $payment->forceFill(['created_at' => '2026-03-03 10:00:00'])->save();
+
+        $response = $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/sales/history?from=2026-03-01&to=2026-03-31')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 2);
+
+        $rows = collect($response->json('data'))->keyBy('source');
+        $this->assertSame('Abono a apartado', $rows['layaway']['source_label']);
+        $this->assertSame('Ana Ruiz', $rows['layaway']['customer_name']);
+        $this->assertNull($rows['layaway']['id'], 'Un abono no se reversa desde el historial.');
+        $this->assertSame('Venta', $rows['sale']['source_label']);
+        // Lo mas reciente primero.
+        $this->assertSame('layaway', $response->json('data.0.source'));
+
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/reports/sales/history?from=2026-03-01&to=2026-03-31&source=layaway')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.source', 'layaway');
+    }
 }
