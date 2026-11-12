@@ -16,7 +16,12 @@ class ProductCategoryController extends Controller
     public function index(): AnonymousResourceCollection
     {
         return ProductCategoryResource::collection(
-            ProductCategory::orderBy('name')->get()
+            ProductCategory::withCount(['products as published_products_count' => fn ($query) => $query
+                ->where('is_published', true)
+                ->where('is_active', true)
+                ->where('is_service', false)])
+                ->orderBy('name')
+                ->get()
         );
     }
 

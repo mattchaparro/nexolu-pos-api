@@ -8,12 +8,14 @@ use App\Http\Resources\Api\V1\Storefront\StorefrontProductResource;
 use App\Http\Resources\Api\V1\Storefront\StorefrontSettingsResource;
 use App\Models\Business;
 use App\Models\Product;
+use App\Models\ProductAttributeValue;
 use App\Models\ProductCategory;
 use App\Services\CrossSellService;
 use App\Services\OrderService;
 use App\Services\ProductReviewService;
 use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
@@ -42,8 +44,13 @@ class StorefrontCatalogController extends Controller
     }
 
     /**
-     * Solo categorias publicadas Y con algo que mostrar: una categoria vacia
-     * en la navegacion de una tienda es un callejon sin salida.
+     * Las categorias con algo que mostrar: una categoria vacia en la
+     * navegacion de una tienda es un callejon sin salida.
+     *
+     * No se mira `product_categories.is_published`: el POS nunca tuvo como
+     * encenderla (ni en el formulario ni en el API), asi que ninguna tienda
+     * mostraba categorias. Lo que el comerciante si decide es que productos
+     * publica, y una categoria aparece cuando tiene alguno.
      *
      * "Con algo que mostrar" incluye lo que cuelga de sus HIJAS. Una categoria
      * padre normalmente no tiene productos propios -- "Bebidas" existe para
@@ -54,11 +61,10 @@ class StorefrontCatalogController extends Controller
      */
     public function categories(): AnonymousResourceCollection
     {
-        $categories = ProductCategory::where('is_published', true)
+        $categories = ProductCategory::query()
             ->where(function (Builder $query) {
                 $query->whereHas('products', fn (Builder $q) => $this->visible($q))
                     ->orWhereHas('children', fn (Builder $q) => $q
-                        ->where('is_published', true)
                         ->whereHas('products', fn (Builder $p) => $this->visible($p)));
             })
             ->orderBy('sort_order')
@@ -66,6 +72,39 @@ class StorefrontCatalogController extends Controller
             ->get();
 
         return StorefrontCategoryResource::collection($categories);
+    }
+
+    /**
+     * Los atributos para filtrar la tienda (Talla, Color...), solo con los
+     * valores que tiene alguna variante activa de un producto visible: ofrecer
+     * «XXL» si nadie vende XXL es un filtro que siempre da cero resultados.
+     */
+    public function filters(): JsonResponse
+    {
+        $values = ProductAttributeValue::query()
+            ->whereHas('variants', fn (Builder $variant) => $variant
+                ->where('is_active', true)
+                ->whereHas('product', fn (Builder $product) => $this->visible($product)))
+            ->with('productAttribute')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        $attributes = $values
+            ->filter(fn (ProductAttributeValue $value) => $value->productAttribute !== null)
+            ->groupBy('product_attribute_id')
+            ->map(fn ($group) => [
+                'id' => (int) $group->first()->product_attribute_id,
+                'name' => $group->first()->productAttribute->name,
+                'values' => $group->map(fn (ProductAttributeValue $value) => [
+                    'id' => $value->id,
+                    'value' => $value->value,
+                ])->values(),
+            ])
+            ->sortBy('name')
+            ->values();
+
+        return response()->json(['attributes' => $attributes]);
     }
 
     public function products(Request $request): AnonymousResourceCollection
@@ -101,6 +140,35 @@ class StorefrontCatalogController extends Controller
                 'category_id',
                 $category ? ProductCategory::idsIncludingChildren($category->id) : [-1],
             );
+        }
+
+        // Talla/color: dentro de un mismo atributo es «cualquiera de» (S o M) y
+        // entre atributos es «y» (talla M y color rojo), y las dos cosas las
+        // tiene que cumplir la MISMA variante: una camiseta que viene en M
+        // azul y en S roja no es una «M roja». Con «solo disponibles» esa
+        // variante ademas tiene que tener existencias.
+        $valueIds = collect((array) $request->input('attribute_values', []))
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique();
+        if ($valueIds->isNotEmpty()) {
+            $groups = ProductAttributeValue::whereIn('id', $valueIds)
+                ->get(['id', 'product_attribute_id'])
+                ->groupBy('product_attribute_id')
+                ->map(fn ($group) => $group->pluck('id')->all());
+            $inStock = $request->boolean('in_stock');
+
+            $query->whereHas('variants', function (Builder $variant) use ($groups, $inStock) {
+                $variant->where('is_active', true);
+                foreach ($groups as $ids) {
+                    $variant->whereHas('attributeValues', fn (Builder $value) => $value->whereIn('product_attribute_values.id', $ids));
+                }
+                if ($inStock) {
+                    $variant->where(fn (Builder $available) => $available
+                        ->where('stock', '>', 0)
+                        ->orWhereHas('product', fn (Builder $product) => $product->where('track_stock', false)));
+                }
+            });
         }
 
         // "Solo lo que puedo comprar". Se resuelve en SQL con el stock crudo y

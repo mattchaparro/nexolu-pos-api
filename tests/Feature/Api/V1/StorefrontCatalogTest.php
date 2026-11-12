@@ -161,7 +161,7 @@ class StorefrontCatalogTest extends TestCase
     public function test_empty_categories_are_not_listed(): void
     {
         $business = $this->storefront();
-        // Publicada pero sin productos visibles.
+        // Sin productos visibles: no sale, este o no marcada.
         ProductCategory::factory()->create(['business_id' => $business->id, 'is_published' => true]);
         $withProducts = $this->publishedProduct($business)->category;
 
@@ -307,5 +307,96 @@ class StorefrontCatalogTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.name', 'De la tienda');
+    }
+
+    /**
+     * Camiseta con variantes por talla y color: [[talla, color, activa], ...].
+     *
+     * @param  list<array{0: string, 1: string, 2?: bool}>  $combos
+     * @return array{0: Product, 1: array<string, ProductAttributeValue>}
+     */
+    private function shirtWithVariants(Business $business, array $combos, array $productAttributes = []): array
+    {
+        $product = $this->publishedProduct($business, $productAttributes);
+        $size = ProductAttribute::firstOrCreate(['business_id' => $business->id, 'name' => 'Talla']);
+        $color = ProductAttribute::firstOrCreate(['business_id' => $business->id, 'name' => 'Color']);
+        $values = [];
+
+        foreach ($combos as $combo) {
+            [$sizeName, $colorName] = $combo;
+            $pair = [];
+            foreach ([[$size, $sizeName], [$color, $colorName]] as [$attribute, $name]) {
+                $values[$name] ??= ProductAttributeValue::firstOrCreate([
+                    'product_attribute_id' => $attribute->id,
+                    'business_id' => $business->id,
+                    'value' => $name,
+                ]);
+                $pair[$values[$name]->id] = ['product_attribute_id' => $attribute->id];
+            }
+            $variant = ProductVariant::factory()->create([
+                'product_id' => $product->id,
+                'business_id' => $business->id,
+                'price' => 50000,
+                'stock' => 5,
+                'is_active' => $combo[2] ?? true,
+            ]);
+            $variant->attributeValues()->sync($pair);
+        }
+
+        return [$product, $values];
+    }
+
+    public function test_a_category_shows_up_when_it_has_published_products_even_if_never_flagged(): void
+    {
+        $business = $this->storefront();
+        $product = $this->publishedProduct($business);
+        $product->category->update(['is_published' => false]);
+        $child = ProductCategory::factory()->create(['business_id' => $business->id, 'parent_id' => $product->category_id, 'is_published' => false]);
+        $this->publishedProduct($business, ['category_id' => $child->id]);
+
+        $ids = collect($this->getJson("/api/v1/storefront/{$business->slug}/categories")->assertOk()->json())->pluck('id');
+
+        $this->assertEqualsCanonicalizing([$product->category_id, $child->id], $ids->all());
+    }
+
+    public function test_filters_offer_only_the_sizes_and_colors_that_are_actually_sold(): void
+    {
+        $business = $this->storefront();
+        $this->shirtWithVariants($business, [['S', 'Rojo'], ['M', 'Negro'], ['XL', 'Verde', false]]);
+        // De un producto sin publicar: no debe aparecer.
+        $this->shirtWithVariants($business, [['XXL', 'Lila']], ['is_published' => false]);
+
+        $response = $this->getJson("/api/v1/storefront/{$business->slug}/filters")->assertOk();
+
+        $byName = collect($response->json('attributes'))->keyBy('name');
+        $this->assertSame(['S', 'M'], collect($byName['Talla']['values'])->pluck('value')->all());
+        $this->assertEqualsCanonicalizing(['Rojo', 'Negro'], collect($byName['Color']['values'])->pluck('value')->all());
+    }
+
+    public function test_filtering_by_size_and_color_requires_one_variant_with_both(): void
+    {
+        $business = $this->storefront();
+        // M azul y S roja: NO es una «M roja».
+        [$mixed, $values] = $this->shirtWithVariants($business, [['M', 'Azul'], ['S', 'Rojo']]);
+        [$redM] = $this->shirtWithVariants($business, [['M', 'Rojo']]);
+        $url = "/api/v1/storefront/{$business->slug}/products";
+
+        $ids = fn (array $valueIds) => collect($this->getJson($url.'?'.http_build_query(['attribute_values' => $valueIds]))->assertOk()->json('data'))->pluck('id')->all();
+
+        $this->assertSame([$redM->id], $ids([$values['M']->id, $values['Rojo']->id]));
+        // Dentro de un mismo atributo es «cualquiera de»: S o M trae las dos.
+        $this->assertEqualsCanonicalizing([$mixed->id, $redM->id], $ids([$values['S']->id, $values['M']->id]));
+    }
+
+    public function test_the_size_filter_with_only_available_skips_variants_without_stock(): void
+    {
+        $business = $this->storefront();
+        [$product, $values] = $this->shirtWithVariants($business, [['L', 'Negro']]);
+        $product->variants()->update(['stock' => 0]);
+
+        $this->getJson("/api/v1/storefront/{$business->slug}/products?".http_build_query([
+            'attribute_values' => [$values['L']->id],
+            'in_stock' => 1,
+        ]))->assertOk()->assertJsonCount(0, 'data');
     }
 }

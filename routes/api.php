@@ -151,6 +151,7 @@ Route::prefix('v1/storefront/{business}')
     ->group(function () {
         Route::get('/', [StorefrontCatalogController::class, 'settings'])->name('settings');
         Route::get('/categories', [StorefrontCatalogController::class, 'categories'])->name('categories');
+        Route::get('/filters', [StorefrontCatalogController::class, 'filters'])->name('filters');
         Route::get('/products', [StorefrontCatalogController::class, 'products'])->name('products.index');
         // Sugerencias para varios productos (el carrito). Aparte de la ficha
         // porque el carrito tiene varias lineas y seria una peticion por una.

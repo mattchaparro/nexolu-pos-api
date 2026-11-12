@@ -28,6 +28,9 @@ class ProductCategoryResource extends JsonResource
             // tienda, pero el POS no la veia: sin esto no habia forma de
             // ofrecer al comerciante solo las categorias publicadas.
             'is_published' => (bool) $this->is_published,
+            // Productos que salen en la tienda online. Es lo que decide si la
+            // categoria aparece en ella (is_published nunca se pudo encender).
+            'published_products_count' => $this->whenCounted('published_products_count'),
             'sort_order' => (int) $this->sort_order,
         ];
     }

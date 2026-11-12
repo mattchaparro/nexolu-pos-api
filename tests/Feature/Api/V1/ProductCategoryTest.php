@@ -254,4 +254,19 @@ class ProductCategoryTest extends TestCase
             ->assertOk()
             ->assertJsonPath('icon', 'local_bar');
     }
+
+    public function test_the_list_counts_the_products_each_category_shows_in_the_online_store(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $category = ProductCategory::factory()->create(['business_id' => $business->id]);
+        Product::factory()->create(['business_id' => $business->id, 'category_id' => $category->id, 'is_published' => true, 'is_active' => true, 'is_service' => false]);
+        Product::factory()->create(['business_id' => $business->id, 'category_id' => $category->id, 'is_published' => false]);
+
+        $this->actingAs($user, 'sanctum')
+            ->getJson('/api/v1/product-categories')
+            ->assertOk()
+            ->assertJsonPath('0.published_products_count', 1);
+    }
 }
