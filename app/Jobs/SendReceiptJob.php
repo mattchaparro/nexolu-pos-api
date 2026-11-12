@@ -3,8 +3,8 @@
 namespace App\Jobs;
 
 use App\Mail\ReceiptMail;
-use App\Services\Messaging\Contracts\MessagingChannel;
 use App\Services\ReceiptPdfService;
+use App\Services\ReceiptWhatsappSender;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -12,7 +12,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\URL;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Envia el comprobante de una venta/orden de servicio/apartado por correo o
@@ -38,7 +38,7 @@ class SendReceiptJob implements ShouldQueue
         public string $documentTitle,
     ) {}
 
-    public function handle(ReceiptPdfService $pdfService, MessagingChannel $messagingChannel): void
+    public function handle(ReceiptPdfService $pdfService): void
     {
         $pdf = $pdfService->forEntity($this->entityType, $this->entityId);
         if (! $pdf) {
@@ -53,18 +53,12 @@ class SendReceiptJob implements ShouldQueue
             return;
         }
 
-        $documentUrl = URL::temporarySignedRoute('receipts.public.show', now()->addHours(24), [
-            'type' => $this->entityType,
-            'id' => $this->entityId,
-        ]);
-
-        $messagingChannel->sendDocument(
-            $this->to,
-            $documentUrl,
-            $pdf['filename'],
-            'Aquí tienes tu comprobante.',
-            $pdf['business']->id,
-            'comprobante',
-        );
+        // WhatsApp ya no pasa por la cola (ver SendsReceipts). Un job viejo
+        // que quedara encolado se resuelve con el mismo envio por plantilla.
+        try {
+            app(ReceiptWhatsappSender::class)->send($this->entityType, $this->entityId, $this->to, $this->documentTitle);
+        } catch (ValidationException $e) {
+            Log::warning('SendReceiptJob: WhatsApp no enviado', ['error' => $e->getMessage()]);
+        }
     }
 }

@@ -241,7 +241,6 @@ class ReceiptTest extends TestCase
 
         (new SendReceiptJob('sale', $sale->id, 'email', 'cliente@example.com', 'Recibo de venta'))->handle(
             app(ReceiptPdfService::class),
-            app(MessagingChannel::class),
         );
 
         Mail::assertSent(ReceiptMail::class, fn (ReceiptMail $mail) => $mail->hasTo('cliente@example.com')
@@ -249,24 +248,76 @@ class ReceiptTest extends TestCase
             && str_starts_with($mail->pdfContent, '%PDF'));
     }
 
-    public function test_send_receipt_job_sends_a_whatsapp_document_with_a_signed_url(): void
+    /**
+     * Por plantilla con el PDF en el encabezado: fuera de la ventana de 24h
+     * (el caso normal de un comprobante) Meta solo entrega plantillas. Antes
+     * iba como documento libre y fallaban todos.
+     */
+    public function test_a_whatsapp_receipt_goes_by_template_with_the_pdf_and_the_country_code(): void
     {
-        $business = Business::factory()->create();
+        config(['services.whatsapp.templates.comprobante.name' => 'sale_receipt']);
+        [$business, $user] = $this->admin();
+        $business->update(['name' => 'Central Cell']);
         $sale = Sale::factory()->create(['business_id' => $business->id]);
 
         $this->mock(MessagingChannel::class, function (MockInterface $mock) {
-            $mock->shouldReceive('sendDocument')
+            $mock->shouldReceive('sendTemplate')
                 ->once()
-                ->withArgs(fn (string $to, string $url, string $filename, string $caption) => $to === '573001234567'
-                    && str_contains($url, '/api/public/receipts/sale/')
-                    && str_contains($url, 'signature=')
-                    && $filename !== '');
+                ->withArgs(function (string $to, string $name, string $lang, array $components) {
+                    $document = $components[0]['parameters'][0]['document'] ?? [];
+
+                    return $to === '573001234567'
+                        && $name === 'sale_receipt'
+                        && str_contains($document['link'] ?? '', '/api/public/receipts/sale/')
+                        && str_contains($document['link'] ?? '', 'signature=')
+                        && ($components[1]['parameters'][0]['text'] ?? null) === 'Central Cell'
+                        && ($components[1]['parameters'][1]['text'] ?? null) === 'recibo de venta';
+                })
+                ->andReturnTrue();
         });
 
-        (new SendReceiptJob('sale', $sale->id, 'whatsapp', '573001234567', 'Recibo de venta'))->handle(
-            app(ReceiptPdfService::class),
-            app(MessagingChannel::class),
-        );
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/sales/{$sale->id}/receipt/send", ['channel' => 'whatsapp', 'to' => '300 123 4567'])
+            ->assertOk()
+            ->assertJson(['sent' => true]);
+    }
+
+    public function test_the_cashier_learns_when_whatsapp_did_not_take_the_receipt(): void
+    {
+        config(['services.whatsapp.templates.comprobante.name' => 'sale_receipt']);
+        [$business, $user] = $this->admin();
+        $sale = Sale::factory()->create(['business_id' => $business->id]);
+        $this->mock(MessagingChannel::class, fn (MockInterface $mock) => $mock->shouldReceive('sendTemplate')->andReturnFalse());
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/sales/{$sale->id}/receipt/send", ['channel' => 'whatsapp', 'to' => '3001234567'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('to');
+    }
+
+    public function test_a_whatsapp_receipt_without_the_template_says_it_is_not_active(): void
+    {
+        config(['services.whatsapp.templates.comprobante.name' => '']);
+        [$business, $user] = $this->admin();
+        $sale = Sale::factory()->create(['business_id' => $business->id]);
+        $this->mock(MessagingChannel::class, fn (MockInterface $mock) => $mock->shouldNotReceive('sendTemplate'));
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/sales/{$sale->id}/receipt/send", ['channel' => 'whatsapp', 'to' => '3001234567'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('channel');
+    }
+
+    public function test_a_whatsapp_receipt_rejects_a_number_that_is_not_a_cellphone(): void
+    {
+        config(['services.whatsapp.templates.comprobante.name' => 'sale_receipt']);
+        [$business, $user] = $this->admin();
+        $sale = Sale::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/sales/{$sale->id}/receipt/send", ['channel' => 'whatsapp', 'to' => '12345'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('to');
     }
 
     public function test_send_receipt_job_does_nothing_for_a_missing_entity(): void
@@ -275,7 +326,6 @@ class ReceiptTest extends TestCase
 
         (new SendReceiptJob('sale', 999999, 'email', 'cliente@example.com', 'Recibo de venta'))->handle(
             app(ReceiptPdfService::class),
-            app(MessagingChannel::class),
         );
 
         Mail::assertNothingSent();

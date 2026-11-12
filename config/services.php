@@ -135,6 +135,16 @@ return [
             // Creada en Meta el 2026-11-05 (UTILITY, es_CO), APPROVED el mismo
             // dia. Si se marca pending_approval, SubscriptionNotifier vuelve a
             // 'recordatorio' con el enlace en el texto.
+            // Comprobante de venta/servicio/apartado al cliente (ReceiptWhatsappSender).
+            // UTILITY, es_CO. Encabezado DOCUMENTO (el PDF) y dos variables en el
+            // cuerpo: {{1}} negocio, {{2}} tipo de comprobante ("recibo de venta").
+            // Vacio = el envio por WhatsApp responde que no esta activo.
+            'comprobante' => [
+                'name' => env('WHATSAPP_TEMPLATE_COMPROBANTE', ''),
+                'lang' => 'es_CO',
+                'description' => 'Comprobante de compra al cliente, con el PDF adjunto.',
+                'triggered_by' => 'ReceiptWhatsappSender',
+            ],
             'suscripcion' => [
                 'name' => 'subscription_update',
                 'lang' => 'es_CO',

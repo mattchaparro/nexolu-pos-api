@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Concerns;
 
 use App\Jobs\SendReceiptJob;
 use App\Models\Business;
+use App\Services\ReceiptWhatsappSender;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -42,6 +43,15 @@ trait SendsReceipts
             'channel' => ['required', 'in:whatsapp,email'],
             'to' => ['required', 'string', 'max:255'],
         ]);
+
+        // WhatsApp en el momento: el cajero tiene que saber si le llego al
+        // cliente (antes iba a la cola y la pantalla decia "enviando" aunque
+        // fallara siempre). El correo sigue en cola: renderiza y adjunta el PDF.
+        if ($data['channel'] === 'whatsapp') {
+            app(ReceiptWhatsappSender::class)->send($entityType, $entityId, $data['to'], $documentTitle);
+
+            return response()->json(['sent' => true]);
+        }
 
         SendReceiptJob::dispatch($entityType, $entityId, $data['channel'], $data['to'], $documentTitle);
 
