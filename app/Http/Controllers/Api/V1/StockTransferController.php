@@ -14,11 +14,22 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class StockTransferController extends Controller
 {
+    /**
+     * Lo que cada linea necesita para decir que se movio. El listado no las
+     * cargaba y la columna Contenido salia siempre en «—».
+     */
+    private const ITEM_RELATIONS = [
+        'items.product',
+        'items.productVariant.product',
+        'items.productVariant.attributeValues',
+        'items.ingredient',
+    ];
+
     public function __construct(private StockTransferService $transfers) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = StockTransfer::with(['fromBranch', 'toBranch', 'user'])->latest('transferred_at')->latest('id');
+        $query = StockTransfer::with(['fromBranch', 'toBranch', 'user', ...self::ITEM_RELATIONS])->latest('transferred_at')->latest('id');
 
         // Con una sede activa se muestran sus traslados en las dos
         // direcciones: lo que mando y lo que le llego. Filtrar solo por
@@ -52,14 +63,14 @@ class StockTransferController extends Controller
         );
 
         return new StockTransferResource(
-            $transfer->load(['fromBranch', 'toBranch', 'user', 'items.product', 'items.productVariant', 'items.ingredient'])
+            $transfer->load(['fromBranch', 'toBranch', 'user', ...self::ITEM_RELATIONS])
         );
     }
 
     public function show(StockTransfer $stockTransfer): StockTransferResource
     {
         return new StockTransferResource(
-            $stockTransfer->load(['fromBranch', 'toBranch', 'user', 'items.product', 'items.productVariant', 'items.ingredient'])
+            $stockTransfer->load(['fromBranch', 'toBranch', 'user', ...self::ITEM_RELATIONS])
         );
     }
 }

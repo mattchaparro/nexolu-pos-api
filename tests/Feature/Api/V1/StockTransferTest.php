@@ -6,6 +6,9 @@ use App\Models\Branch;
 use App\Models\BranchStock;
 use App\Models\Business;
 use App\Models\Product;
+use App\Models\ProductAttribute;
+use App\Models\ProductAttributeValue;
+use App\Models\ProductVariant;
 use App\Models\StockMovement;
 use App\Models\StockMovementReason;
 use App\Models\User;
@@ -173,6 +176,37 @@ class StockTransferTest extends TestCase
     }
 
     /** @return array{0: Business, 1: Branch, 2: Branch, 3: User} */
+    /**
+     * Ropa con tallas: el stock vive en cada variacion. La pantalla solo
+     * ofrecia el producto padre y el traslado fallaba; aca se prueba que la
+     * variacion se mueve y que el listado dice cual fue.
+     */
+    public function test_a_variant_moves_between_branches_and_the_list_names_it(): void
+    {
+        [$business, $main, $second, $admin] = $this->scenario();
+        $business->update(['feature_flags' => $business->feature_flags + ['variants' => true]]);
+        $product = Product::factory()->for($business)->create(['name' => 'Legging Power', 'stock' => 0]);
+        $size = ProductAttribute::factory()->create(['business_id' => $business->id, 'name' => 'Talla']);
+        $m = ProductAttributeValue::factory()->create(['product_attribute_id' => $size->id, 'business_id' => $business->id, 'value' => 'M']);
+        $variant = ProductVariant::factory()->create(['product_id' => $product->id, 'business_id' => $business->id, 'stock' => 5]);
+        $variant->attributeValues()->sync([$m->id => ['product_attribute_id' => $size->id]]);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/v1/stock-transfers', [
+            'from_branch_id' => $main->id,
+            'to_branch_id' => $second->id,
+            'items' => [['product_variant_id' => $variant->id, 'quantity' => 2]],
+        ])->assertCreated();
+
+        $this->assertSame(3.0, BranchStock::quantity($main->id, 'product_variant_id', $variant->id));
+        $this->assertSame(2.0, BranchStock::quantity($second->id, 'product_variant_id', $variant->id));
+        $this->assertSame(5, (int) $variant->fresh()->stock);
+
+        $this->actingAs($admin, 'sanctum')
+            ->getJson('/api/v1/stock-transfers')
+            ->assertOk()
+            ->assertJsonPath('data.0.items.0.name', 'Legging Power · M');
+    }
+
     private function scenario(): array
     {
         $business = Business::factory()->create([

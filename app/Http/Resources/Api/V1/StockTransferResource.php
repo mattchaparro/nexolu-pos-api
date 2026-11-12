@@ -45,10 +45,18 @@ class StockTransferResource extends JsonResource
 
     private function itemName(StockTransferItem $item): ?string
     {
-        return $item->relationLoaded('productVariant') && $item->productVariant
-            ? $item->productVariant->name
-            : ($item->relationLoaded('product') && $item->product
-                ? $item->product->name
-                : ($item->relationLoaded('ingredient') && $item->ingredient ? $item->ingredient->name : null));
+        // Una variacion no tiene nombre propio: «Legging · M / Negro».
+        if ($item->relationLoaded('productVariant') && $item->productVariant) {
+            $variant = $item->productVariant;
+            $values = $variant->relationLoaded('attributeValues')
+                ? $variant->attributeValues->pluck('value')->join(' / ')
+                : '';
+
+            return trim(($variant->product->name ?? $item->product?->name ?? 'Producto').($values !== '' ? ' · '.$values : ''));
+        }
+
+        return $item->relationLoaded('product') && $item->product
+            ? $item->product->name
+            : ($item->relationLoaded('ingredient') && $item->ingredient ? $item->ingredient->name : null);
     }
 }
