@@ -411,4 +411,88 @@ class AiToolInvokeTest extends TestCase
             'context' => $this->context($employee),
         ])->assertOk();
     }
+
+    /**
+     * Central Cell preguntó por el «reno 14f» y el catálogo dice «Reno 14 F»:
+     * el listado devolvía los primeros 100 por orden alfabético, el producto
+     * no aparecía y el asistente contestaba que no existía.
+     */
+    public function test_inventario_finds_a_product_the_way_people_write_it_in_a_big_catalog(): void
+    {
+        $business = Business::factory()->create();
+        $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
+        Product::factory()->count(120)->create(['business_id' => $business->id, 'is_active' => true, 'is_service' => false]);
+        Product::factory()->create(['business_id' => $business->id, 'name' => 'Reno 14 F 256GB', 'stock' => 3, 'is_active' => true, 'is_service' => false]);
+
+        $this->invoke([
+            'tool' => 'inventario',
+            'arguments' => ['buscar' => 'reno 14f'],
+            'context' => $this->context($admin),
+        ])->assertOk()
+            ->assertJsonPath('data.total_encontrados', 1)
+            ->assertJsonPath('data.productos.0.nombre', 'Reno 14 F 256GB');
+    }
+
+    public function test_inventario_can_list_only_what_ran_out(): void
+    {
+        $business = Business::factory()->create();
+        $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
+        Product::factory()->create(['business_id' => $business->id, 'name' => 'Con stock', 'stock' => 5, 'track_stock' => true, 'is_active' => true, 'is_service' => false]);
+        Product::factory()->create(['business_id' => $business->id, 'name' => 'Agotado', 'stock' => 0, 'track_stock' => true, 'is_active' => true, 'is_service' => false]);
+
+        $this->invoke([
+            'tool' => 'inventario',
+            'arguments' => ['solo_agotados' => true],
+            'context' => $this->context($admin),
+        ])->assertOk()
+            ->assertJsonPath('data.total_encontrados', 1)
+            ->assertJsonPath('data.productos.0.nombre', 'Agotado');
+    }
+
+    public function test_stock_producto_prefers_the_exact_name_and_lists_the_other_matches(): void
+    {
+        $business = Business::factory()->create();
+        $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
+        Product::factory()->create(['business_id' => $business->id, 'name' => 'Camiseta Polo Larga', 'stock' => 4, 'is_active' => true]);
+        Product::factory()->create(['business_id' => $business->id, 'name' => 'Camiseta', 'stock' => 9, 'is_active' => true]);
+
+        $this->invoke([
+            'tool' => 'stock_producto',
+            'arguments' => ['producto' => 'camiseta'],
+            'context' => $this->context($admin),
+        ])->assertOk()
+            ->assertJsonPath('data.nombre', 'Camiseta')
+            ->assertJsonPath('data.stock', 9)
+            ->assertJsonPath('data.otras_coincidencias.0.nombre', 'Camiseta Polo Larga');
+    }
+
+    public function test_ventas_producto_says_when_it_last_sold_and_how_much(): void
+    {
+        $business = Business::factory()->create();
+        $admin = User::factory()->create(['business_id' => $business->id]);
+        $admin->assignRole('admin');
+        $product = Product::factory()->create(['business_id' => $business->id, 'name' => 'Reno 14 F', 'price' => 900000, 'track_stock' => false]);
+
+        foreach ([2, 1] as $quantity) {
+            $this->actingAs($admin, 'sanctum')->postJson('/api/v1/sales', [
+                'payment_method' => 'cash',
+                'items' => [['product_id' => $product->id, 'quantity' => $quantity]],
+            ])->assertCreated();
+        }
+
+        $response = $this->invoke([
+            'tool' => 'ventas_producto',
+            'arguments' => ['producto' => 'reno 14f'],
+            'context' => $this->context($admin),
+        ])->assertOk();
+
+        $this->assertSame('Reno 14 F', $response->json('data.productos.0.nombre'));
+        $this->assertEquals(3, $response->json('data.productos.0.unidades_vendidas'));
+        $this->assertEquals(2700000, $response->json('data.productos.0.ingreso'));
+        $this->assertSame(2, $response->json('data.productos.0.numero_de_ventas'));
+        $this->assertNotNull($response->json('data.productos.0.ultima_venta'));
+    }
 }

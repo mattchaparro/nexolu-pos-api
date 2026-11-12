@@ -40,7 +40,10 @@ class ProcessWhatsAppInbound implements ShouldQueue
 
     private const CHANNEL = 'whatsapp';
 
-    private const AGENT = 'cajero';
+    // El mismo agente que el chat web, con TODAS las herramientas. Antes era
+    // 'cajero' (solo caja, gastos y clientes): por WhatsApp contestaba «no
+    // tengo una herramienta para el inventario» a casi todo.
+    private const AGENT = 'asistente';
 
     private const CONVERSATION_CACHE_TTL_HOURS = 24;
 

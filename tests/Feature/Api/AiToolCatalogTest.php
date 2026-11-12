@@ -45,5 +45,6 @@ class AiToolCatalogTest extends TestCase
         $this->assertSame(['required_permission' => 'expenses.create', 'required_feature' => 'expenses'], $tools['crear_gasto']);
         $this->assertSame(['required_permission' => 'inventory.add', 'required_feature' => null], $tools['crear_producto']);
         $this->assertSame(['required_permission' => 'clients.manage', 'required_feature' => 'clients'], $tools['crear_cliente']);
+        $this->assertSame(['required_permission' => 'reports.sales', 'required_feature' => null], $tools['ventas_producto']);
     }
 }

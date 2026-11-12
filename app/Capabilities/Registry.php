@@ -33,6 +33,7 @@ use App\Capabilities\Reminders\PendingRemindersCapability;
 use App\Capabilities\Sales\AccountHistoryCapability;
 use App\Capabilities\Sales\OpenTabsCapability;
 use App\Capabilities\Sales\PaymentMethodsCapability;
+use App\Capabilities\Sales\ProductSalesCapability;
 use App\Capabilities\Sales\SalesByDayCapability;
 use App\Capabilities\Sales\SalesBySellerCapability;
 use App\Capabilities\Sales\SalesHistoryCapability;
@@ -55,6 +56,7 @@ class Registry
         'estado_caja' => CashStatusCapability::class,
         'inventario' => InventoryListCapability::class,
         'stock_producto' => ProductStockCapability::class,
+        'ventas_producto' => ProductSalesCapability::class,
         'crear_gasto' => CreateExpenseCapability::class,
         'crear_producto' => CreateProductCapability::class,
         'crear_cliente' => CreateClientCapability::class,
