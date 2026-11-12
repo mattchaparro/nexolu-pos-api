@@ -225,6 +225,50 @@ class BusinessStoreSettingsTest extends TestCase
             ->assertJsonPath('home_blocks.0.title', 'Visible');
     }
 
+    public function test_bio_links_are_saved_and_published(): void
+    {
+        [$business, $owner] = $this->ownerWithModule();
+
+        $this->actingAs($owner, 'sanctum')->putJson('/api/v1/store-settings', [
+            'is_active' => true,
+            'bio_links' => [
+                ['label' => 'TikTok', 'url' => 'https://www.tiktok.com/@mitienda'],
+                ['label' => 'Pide por Rappi', 'url' => 'https://www.rappi.com.co/restaurantes/mitienda'],
+            ],
+        ])->assertOk()->assertJsonCount(2, 'bio_links');
+
+        $this->getJson("/api/v1/storefront/{$business->slug}")
+            ->assertOk()
+            ->assertJsonCount(2, 'bio_links')
+            ->assertJsonPath('bio_links.0.label', 'TikTok')
+            ->assertJsonPath('bio_links.1.url', 'https://www.rappi.com.co/restaurantes/mitienda');
+    }
+
+    /**
+     * Los enlaces se pintan en una página pública: un `javascript:` sería
+     * ejecutar código en nombre de la tienda.
+     */
+    public function test_a_bio_link_that_is_not_http_is_rejected(): void
+    {
+        [, $owner] = $this->ownerWithModule();
+
+        $this->actingAs($owner, 'sanctum')->putJson('/api/v1/store-settings', [
+            'bio_links' => [['label' => 'Truco', 'url' => 'javascript:alert(1)']],
+        ])->assertUnprocessable()->assertJsonValidationErrors('bio_links.0.url');
+    }
+
+    public function test_bio_links_are_capped(): void
+    {
+        [, $owner] = $this->ownerWithModule();
+
+        $this->actingAs($owner, 'sanctum')->putJson('/api/v1/store-settings', [
+            'bio_links' => array_fill(0, BusinessStoreSettings::MAX_BIO_LINKS + 1, [
+                'label' => 'Enlace',
+                'url' => 'https://example.com',
+            ]),
+        ])->assertUnprocessable()->assertJsonValidationErrors('bio_links');
+    }
+
     public function test_the_trust_strip_is_capped_at_three_items(): void
     {
         [$business, $owner] = $this->ownerWithModule();

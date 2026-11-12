@@ -28,7 +28,7 @@ use Illuminate\Support\Facades\Storage;
     'hero_cta_label', 'hero_image_path',
     'trust_enabled', 'trust_items',
     'story_enabled', 'story_eyebrow', 'story_title', 'story_body', 'story_image_path', 'story_stats',
-    'address', 'opening_hours', 'instagram_url', 'facebook_url',
+    'address', 'opening_hours', 'instagram_url', 'facebook_url', 'bio_links',
 ])]
 class BusinessStoreSettings extends Model
 {
@@ -69,6 +69,9 @@ class BusinessStoreSettings extends Model
      */
     public const FONT_PRESETS = ['moderna', 'editorial', 'calida', 'tecnica'];
 
+    /** Enlaces propios en la página de enlaces: más que esto ya no es una bio, es un menú. */
+    public const MAX_BIO_LINKS = 8;
+
     /** Semillas del tema cuando la tienda no eligio nada. */
     public const DEFAULT_PRIMARY = '#4f46e5';
 
@@ -90,6 +93,7 @@ class BusinessStoreSettings extends Model
             'story_enabled' => 'boolean',
             'trust_items' => 'array',
             'story_stats' => 'array',
+            'bio_links' => 'array',
         ];
     }
 

@@ -69,6 +69,9 @@ class StorefrontSettingsResource extends JsonResource
                 'facebook_url' => $this->facebook_url,
             ],
 
+            // Los enlaces propios de la página de enlaces (la de la bio).
+            'bio_links' => array_values($this->bio_links ?? []),
+
             'seo' => [
                 'title' => $this->seo_title ?: $this->displayName(),
                 'description' => $this->seo_description ?: $this->description,
