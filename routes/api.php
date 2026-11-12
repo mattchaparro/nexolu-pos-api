@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\V1\AiChatController;
 use App\Http\Controllers\Api\V1\AiDraftController;
 use App\Http\Controllers\Api\V1\AiInsightController;
 use App\Http\Controllers\Api\V1\AiMessagePackController;
+use App\Http\Controllers\Api\V1\AnnouncementController as UserAnnouncementController;
 use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\AuthController;
@@ -268,6 +269,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::post('/branches/{branch}/deactivate', [BranchController::class, 'deactivate'])->name('branches.deactivate');
         });
 
+        // Difusiones del superadmin que el usuario ve al entrar (una a la vez).
+        Route::get('/announcements/pending', [UserAnnouncementController::class, 'pending'])->name('announcements.pending');
+        Route::post('/announcements/{announcement}/dismiss', [UserAnnouncementController::class, 'dismiss'])->name('announcements.dismiss');
         Route::post('/ai/chat', [AiChatController::class, 'send'])->name('ai.chat');
         Route::post('/ai/chat/stream', [AiChatController::class, 'stream'])->name('ai.chat.stream');
         Route::post('/ai/drafts/{draftId}/confirm', [AiDraftController::class, 'confirm'])->name('ai.drafts.confirm');

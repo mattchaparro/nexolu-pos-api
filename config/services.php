@@ -145,6 +145,15 @@ return [
                 'description' => 'Comprobante de compra al cliente, con el PDF adjunto.',
                 'triggered_by' => 'ReceiptWhatsappSender',
             ],
+            // Difusiones del superadmin a los negocios (SendAnnouncementWhatsApp).
+            // MARKETING, es_CO: {{1}} negocio, {{2}} titulo y texto de la
+            // difusion, boton fijo a Nexolu POS. Vacio = solo aviso en el POS.
+            'novedades' => [
+                'name' => env('WHATSAPP_TEMPLATE_NOVEDADES', ''),
+                'lang' => 'es_CO',
+                'description' => 'Novedades de Nexolú POS para los negocios (difusiones del superadmin).',
+                'triggered_by' => 'SendAnnouncementWhatsApp',
+            ],
             'suscripcion' => [
                 'name' => 'subscription_update',
                 'lang' => 'es_CO',

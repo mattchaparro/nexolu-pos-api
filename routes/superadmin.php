@@ -60,6 +60,7 @@ Route::apiResource('users', UserController::class)->only(['index', 'store']);
 
 Route::post('/impersonate/{user}', [ImpersonateController::class, 'start'])->name('impersonate.start');
 
+Route::get('/announcements/audience', [AnnouncementController::class, 'audience'])->name('announcements.audience');
 Route::apiResource('announcements', AnnouncementController::class)->only(['index', 'store', 'update', 'destroy']);
 
 // Sin destroy - ver la nota en PosPaymentMethodController.

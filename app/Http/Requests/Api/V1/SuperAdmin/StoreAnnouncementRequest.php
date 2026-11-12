@@ -25,6 +25,11 @@ class StoreAnnouncementRequest extends FormRequest
             'cta_url' => ['sometimes', 'nullable', 'string', 'max:500'],
             'audience' => ['required', 'string', Rule::in(['all', 'admin', 'employee'])],
             'active' => ['sometimes', 'boolean'],
+            'business_scope' => ['sometimes', 'string', Rule::in(['in_use', 'active', 'selected'])],
+            'business_ids' => ['required_if:business_scope,selected', 'nullable', 'array'],
+            'business_ids.*' => ['integer', 'exists:businesses,id'],
+            // Ademas del aviso en el POS, un WhatsApp al numero de cada negocio.
+            'send_whatsapp' => ['sometimes', 'boolean'],
         ];
     }
 }

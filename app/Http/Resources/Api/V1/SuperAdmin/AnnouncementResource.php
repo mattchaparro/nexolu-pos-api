@@ -19,7 +19,14 @@ class AnnouncementResource extends JsonResource
             'cta_label' => $this->cta_label,
             'cta_url' => $this->cta_url,
             'audience' => $this->audience,
+            'business_scope' => $this->business_scope,
+            'business_ids' => $this->business_ids,
             'active' => $this->active,
+            // Cuantos usuarios ya lo vieron y lo cerraron en el POS.
+            'seen_count' => $this->whenCounted('dismissals'),
+            'whatsapp_requested' => $this->whatsapp_requested_at !== null,
+            'whatsapp_sent' => (int) $this->whatsapp_sent,
+            'whatsapp_failed' => (int) $this->whatsapp_failed,
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }
