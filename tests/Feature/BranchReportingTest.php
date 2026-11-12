@@ -175,6 +175,38 @@ class BranchReportingTest extends TestCase
             ->assertJsonPath('totals.revenue', 20000);
     }
 
+    /**
+     * El valor del inventario sumaba products.stock, que es el total del
+     * negocio: una sede nueva sin una sola unidad mostraba el inventario
+     * entero de la principal.
+     */
+    public function test_the_inventory_value_is_the_one_of_the_active_branch(): void
+    {
+        [$business, $main, $second, $user] = $this->scenario();
+        $business->update(['feature_flags' => $business->feature_flags + ['inventory_advanced' => true]]);
+        // 10 nacen en la principal (sede por defecto al crear con stock).
+        $product = Product::factory()->for($business)->create(['price' => 1000, 'cost_price' => 400, 'stock' => 10, 'track_stock' => true]);
+        BranchStock::add($business->id, $second->id, 'product_id', $product->id, 4);
+        $product->update(['stock' => 14]);
+        // En el centro comercial se vende mas caro.
+        $this->actingAs($user, 'sanctum')
+            ->withHeader('X-Branch-Id', (string) $second->id)
+            ->putJson("/api/v1/products/{$product->id}/branch-prices", ['prices' => [['branch_id' => $second->id, 'price' => 1500]]])
+            ->assertOk();
+
+        $valueIn = fn (string $branch) => $this->actingAs($user, 'sanctum')
+            ->withHeader('X-Branch-Id', $branch)
+            ->getJson('/api/v1/reports/inventory/summary')
+            ->assertOk()
+            ->json();
+
+        $this->assertEquals(10000, $valueIn((string) $main->id)['inventory_retail_cop']);
+        $this->assertEquals(4000, $valueIn((string) $main->id)['inventory_cost_products_cop']);
+        $this->assertEquals(6000, $valueIn((string) $second->id)['inventory_retail_cop']);
+        $this->assertEquals(1600, $valueIn((string) $second->id)['inventory_cost_products_cop']);
+        $this->assertEquals(14000, $valueIn('all')['inventory_retail_cop']);
+    }
+
     private function productIn(Business $business, Branch $second, float $price, int $stock): Product
     {
         $product = Product::factory()->for($business)->create(['price' => $price, 'stock' => $stock]);

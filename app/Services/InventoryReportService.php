@@ -16,6 +16,7 @@ use App\Support\SortableQuery;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class InventoryReportService
 {
@@ -31,6 +32,14 @@ class InventoryReportService
         $canIngredients = $business->hasFeature('ingredients');
         $variantsEnabled = $business->hasFeature('variants');
         $id = $business->id;
+
+        // Con una sede elegida se valora lo que hay EN ESA SEDE: products.stock
+        // es el total del negocio, y antes la sede nueva (sin una unidad)
+        // mostraba el inventario entero de la principal.
+        $branchId = BranchContext::branchId();
+        if ($branchId !== null) {
+            return $this->branchSummary($id, $branchId, $canInventory, $canIngredients, $variantsEnabled);
+        }
 
         // products.stock/price/cost_price quedan "fantasma" para un producto
         // con variantes (ver ProductAvailability) - se excluyen del lado de
@@ -56,6 +65,63 @@ class InventoryReportService
             'inventory_cost_ingredients_cop' => $canIngredients
                 ? (float) Ingredient::where('business_id', $id)->toBase()->selectRaw('COALESCE(SUM(stock * cost_price), 0) as v')->value('v')
                 : 0.0,
+        ];
+    }
+
+    /**
+     * Valor del inventario de UNA sede: las existencias salen de branch_stocks
+     * y el precio de venta es el de esa sede si tiene uno propio
+     * (branch_product_prices), si no el del catalogo. Mismas exclusiones que
+     * el total: un producto con variantes se valora por sus variantes activas.
+     *
+     * @return array{inventory_retail_cop: float, inventory_cost_products_cop: float, inventory_cost_ingredients_cop: float}
+     */
+    private function branchSummary(int $businessId, int $branchId, bool $canInventory, bool $canIngredients, bool $variantsEnabled): array
+    {
+        $products = DB::table('branch_stocks as bs')
+            ->join('products as p', 'p.id', '=', 'bs.product_id')
+            ->leftJoin('branch_product_prices as bpp', fn ($join) => $join
+                ->on('bpp.product_id', '=', 'p.id')
+                ->where('bpp.branch_id', $branchId))
+            ->where('bs.branch_id', $branchId)
+            ->where('p.business_id', $businessId)
+            ->where('p.track_stock', true)
+            ->whereNull('p.deleted_at')
+            ->when($variantsEnabled, fn ($query) => $query->whereNotExists(fn ($sub) => $sub
+                ->selectRaw('1')
+                ->from('product_variants as pv')
+                ->whereColumn('pv.product_id', 'p.id')
+                ->whereNull('pv.deleted_at')))
+            ->selectRaw('COALESCE(SUM(bs.stock * COALESCE(bpp.price, p.price)), 0) as retail, COALESCE(SUM(bs.stock * p.cost_price), 0) as cost')
+            ->first();
+
+        $variants = $variantsEnabled
+            ? DB::table('branch_stocks as bs')
+                ->join('product_variants as pv', 'pv.id', '=', 'bs.product_variant_id')
+                ->leftJoin('branch_product_prices as bpp', fn ($join) => $join
+                    ->on('bpp.product_variant_id', '=', 'pv.id')
+                    ->where('bpp.branch_id', $branchId))
+                ->where('bs.branch_id', $branchId)
+                ->where('pv.business_id', $businessId)
+                ->where('pv.is_active', true)
+                ->whereNull('pv.deleted_at')
+                ->selectRaw('COALESCE(SUM(bs.stock * COALESCE(bpp.price, pv.price)), 0) as retail, COALESCE(SUM(bs.stock * pv.cost_price), 0) as cost')
+                ->first()
+            : null;
+
+        $ingredientsCost = $canIngredients
+            ? (float) DB::table('branch_stocks as bs')
+                ->join('ingredients as i', 'i.id', '=', 'bs.ingredient_id')
+                ->where('bs.branch_id', $branchId)
+                ->where('i.business_id', $businessId)
+                ->selectRaw('COALESCE(SUM(bs.stock * i.cost_price), 0) as v')
+                ->value('v')
+            : 0.0;
+
+        return [
+            'inventory_retail_cop' => $canInventory ? (float) $products->retail + (float) ($variants->retail ?? 0) : 0.0,
+            'inventory_cost_products_cop' => $canInventory ? (float) $products->cost + (float) ($variants->cost ?? 0) : 0.0,
+            'inventory_cost_ingredients_cop' => $ingredientsCost,
         ];
     }
 
