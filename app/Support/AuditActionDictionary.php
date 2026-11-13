@@ -13,6 +13,10 @@ class AuditActionDictionary
 {
     public static function label(string $action): string
     {
+        if ($action === AccessDenialLogger::ACTION) {
+            return 'Acceso denegado (permiso o módulo)';
+        }
+
         return self::all()[$action] ?? self::fallback($action);
     }
 

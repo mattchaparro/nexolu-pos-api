@@ -322,7 +322,9 @@ class ProductTest extends TestCase
         $allowedCategory = ProductCategory::factory()->create(['business_id' => $business->id]);
         $business->update(['layaway_allowed_category_ids' => [$allowedCategory->id]]);
 
-        $allowed = Product::factory()->create(['business_id' => $business->id, 'category_id' => $allowedCategory->id]);
+        // Stock fijo: la fábrica lo sortea entre 0 y 100, y con 0 el producto
+        // queda agotado y no se puede apartar (fallaba 1 de cada 101 corridas).
+        $allowed = Product::factory()->create(['business_id' => $business->id, 'category_id' => $allowedCategory->id, 'stock' => 5]);
         $otherCategory = ProductCategory::factory()->create(['business_id' => $business->id]);
         $notAllowed = Product::factory()->create(['business_id' => $business->id, 'category_id' => $otherCategory->id]);
 

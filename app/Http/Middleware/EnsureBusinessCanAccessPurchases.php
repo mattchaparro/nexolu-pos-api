@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\AccessDenialLogger;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -18,6 +19,8 @@ class EnsureBusinessCanAccessPurchases
 
         $business = $user->business;
         if ($business && ! $business->canAccessPurchases()) {
+            AccessDenialLogger::record($request, 'purchases');
+
             abort(403, 'Este modulo no esta habilitado para este negocio.');
         }
 

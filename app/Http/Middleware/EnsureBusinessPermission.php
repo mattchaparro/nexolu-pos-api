@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\AccessDenialLogger;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -28,6 +29,8 @@ class EnsureBusinessPermission
                 return $next($request);
             }
         }
+
+        AccessDenialLogger::record($request, 'permission', array_values($permissions));
 
         abort(403, 'No tienes permiso para esta accion.');
     }

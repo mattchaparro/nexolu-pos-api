@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\V1\SuperAdmin\LogActionResource;
+use App\Support\AccessDenialLogger;
 use App\Support\AuditActionDictionary;
 use App\Support\AuditLogQuery;
 use Illuminate\Http\Request;
@@ -31,7 +32,8 @@ class AuditLogController extends Controller
      */
     public function actions(): array
     {
-        return AuditActionDictionary::all();
+        // Solo en la auditoría global: el negocio no ve esta acción.
+        return [...AuditActionDictionary::all(), AccessDenialLogger::ACTION => AuditActionDictionary::label(AccessDenialLogger::ACTION)];
     }
 
     public function export(Request $request): StreamedResponse

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\AccessDenialLogger;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -23,6 +24,8 @@ class EnsureBusinessFeatureEnabled
 
         $business = $user->business;
         if ($business && ! collect($features)->contains(fn (string $feature) => $business->hasFeature($feature))) {
+            AccessDenialLogger::record($request, 'feature', array_values($features));
+
             abort(403, 'Este modulo no esta habilitado para este negocio.');
         }
 

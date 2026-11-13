@@ -21,7 +21,10 @@ class AuditLogQuery
             // no es del dueño ni de su equipo - no debe aparecer en SU
             // auditoria (si sigue interesando verla, esta en forSuperadmin()
             // sin este filtro). Ver el marcador que deja AuditLogger::log().
-            ->whereNull('details->impersonated_by_superadmin_id');
+            ->whereNull('details->impersonated_by_superadmin_id')
+            // Los "no tienes permiso" son diagnóstico de Nexolú (qué pantalla
+            // consulta lo que no debe), no acciones del equipo del negocio.
+            ->where('action', '!=', AccessDenialLogger::ACTION);
 
         self::applySearch($query, $request);
 
