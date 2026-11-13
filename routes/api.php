@@ -147,11 +147,11 @@ Route::get('/public/receipts/{type}/{id}', [PublicReceiptController::class, 'sho
 // online. Lo no publicado responde 404 (ver PublicLinkPageController).
 Route::prefix('v1/link-page/{slug}')
     ->name('api.v1.link-page.public.')
-    ->middleware('throttle:120,1')
+    ->middleware('throttle:120,1,link-page')
     ->group(function () {
         Route::get('/', [PublicLinkPageController::class, 'show'])->name('show');
         Route::get('/whatsapp', [PublicLinkPageController::class, 'whatsapp'])
-            ->middleware('throttle:30,1')
+            ->middleware('throttle:30,1,link-page-whatsapp')
             ->name('whatsapp');
     });
 
@@ -161,9 +161,15 @@ Route::prefix('v1/link-page/{slug}')
 // (ver StorefrontCatalogController). `throttle` porque es superficie abierta
 // a internet: sin el, cualquiera puede barrer el catalogo de todos los
 // negocios a la velocidad que quiera.
+//
+// Cada `throttle` lleva su propio prefijo (tercer parametro). Sin el, Laravel
+// usa la MISMA llave (dominio + IP) para todos: ver la carta llenaba el
+// contador del checkout y el comprador recibia un 429 al hacer el pedido.
+// 300 y no 120 por minuto: en un restaurante todas las mesas que escanean
+// el QR salen por la misma IP del Wi-Fi.
 Route::prefix('v1/storefront/{business}')
     ->name('api.v1.storefront.')
-    ->middleware(['storefront.tenant', 'throttle:120,1'])
+    ->middleware(['storefront.tenant', 'throttle:300,1,storefront'])
     ->group(function () {
         Route::get('/', [StorefrontCatalogController::class, 'settings'])->name('settings');
         Route::get('/categories', [StorefrontCatalogController::class, 'categories'])->name('categories');
@@ -175,19 +181,19 @@ Route::prefix('v1/storefront/{business}')
         // Checkout y seguimiento. `throttle` mas estricto que el catalogo:
         // crear pedidos es escritura desde internet abierto.
         Route::post('/orders', [StorefrontOrderController::class, 'store'])
-            ->middleware('throttle:20,1')
+            ->middleware('throttle:20,1,storefront-orders')
             ->name('orders.store');
         // Validar un cupon mientras el comprador escribe. Throttle propio:
         // es un endpoint publico donde probar codigos al azar es barato, y
         // sin freno seria un adivinador de cupones.
         Route::post('/coupons/validate', [StorefrontCouponController::class, 'validateCode'])
-            ->middleware('throttle:20,1')
+            ->middleware('throttle:20,1,storefront-coupons')
             ->name('coupons.validate');
         // Espejo del carrito, para poder recuperarlo si lo abandona. No hay
         // GET: leer un carrito por token convertiria un token adivinado en
         // el carrito de otro (el enlace de recuperacion viaja firmado).
         Route::post('/cart', [StorefrontCartController::class, 'sync'])
-            ->middleware('throttle:60,1')
+            ->middleware('throttle:120,1,storefront-cart')
             ->name('cart.sync');
         // La firma de la URL es la unica autenticacion, igual que el snooze
         // de inventario bajo. Vence a las 48 horas: un correo se reenvia y
@@ -202,7 +208,7 @@ Route::prefix('v1/storefront/{business}')
         // consume una peticion nuestra contra el proveedor, asi que el
         // sondeo de la tienda no puede convertirse en un martillo.
         Route::post('/orders/{token}/sync-payment', [StorefrontOrderController::class, 'syncPayment'])
-            ->middleware('throttle:30,1')
+            ->middleware('throttle:30,1,storefront-payment-sync')
             ->name('orders.sync-payment');
 
         // El boton de WhatsApp pasa por aca para poder contarlo. Devuelve un
@@ -223,7 +229,7 @@ Route::prefix('v1/storefront/{business}')
         // Escribir una reseña cuelga del PEDIDO y no del producto: el token es
         // la prueba de compra. Mismo throttle estricto que el checkout.
         Route::post('/orders/{token}/reviews', [StorefrontReviewController::class, 'store'])
-            ->middleware('throttle:20,1')
+            ->middleware('throttle:20,1,storefront-reviews')
             ->name('reviews.store');
     });
 

@@ -16,6 +16,7 @@ use App\Http\Middleware\SentryBusinessContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Request;
 use Sentry\Laravel\Integration;
 
@@ -54,6 +55,17 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );
+
+        // El 429 lo lee un comprador o un cajero, no un desarrollador: el
+        // default del framework es "Too Many Attempts." (mismo texto que los
+        // limitadores de login en AppServiceProvider).
+        $exceptions->render(fn (ThrottleRequestsException $e, Request $request) => $request->is('api/*')
+            ? response()->json(
+                ['message' => 'Demasiados intentos. Espera un momento y vuelve a intentar.'],
+                429,
+                $e->getHeaders(),
+            )
+            : null);
 
         Integration::handles($exceptions);
     })->create();
