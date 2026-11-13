@@ -86,6 +86,9 @@ class BusinessStoreSettingsResource extends JsonResource
             // Para que la pantalla pueda mostrar (y copiar) la direccion
             // publica sin tener que componerla a mano.
             'public_url' => rtrim((string) config('app.storefront_url'), '/').'/'.$this->business?->slug,
+            'kind' => $this->business?->storefrontKind() ?? 'store',
+            // La carta del restaurante: lo que va en el QR de las mesas.
+            'menu_url' => rtrim((string) config('app.storefront_url'), '/').'/'.$this->business?->slug.'/menu',
             'published_products_count' => $this->business?->products()
                 ->withoutGlobalScopes()
                 ->where('business_id', $this->business_id)

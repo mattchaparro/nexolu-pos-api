@@ -66,7 +66,12 @@ class OnlineOrderNotifier
             $to = [];
 
             $phone = ChannelPhone::normalize((string) $order->customer_phone);
-            $template = $this->whatsappTemplate($order, $templateKey);
+            // En el menú digital el restaurante le escribe al cliente desde SU
+            // WhatsApp (botón del pedido). Un mensaje desde el número de Nexolú
+            // confunde: el cliente le respondería a un número que no conoce.
+            $template = $order->business?->storefrontKind() === 'menu'
+                ? null
+                : $this->whatsappTemplate($order, $templateKey);
             if ($phone !== null && $template !== null) {
                 $channels[] = 'whatsapp';
                 $to['whatsapp'] = $phone;

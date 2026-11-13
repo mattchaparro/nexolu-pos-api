@@ -8,7 +8,12 @@ use Symfony\Component\HttpFoundation\Response;
 
 class EnsureBusinessFeatureEnabled
 {
-    public function handle(Request $request, Closure $next, string $feature): Response
+    /**
+     * `feature:a,b` deja pasar si el negocio tiene CUALQUIERA de los dos: la
+     * tienda online y el menú digital comparten pantallas (pedidos, ajustes,
+     * fotos de producto) aunque sean módulos distintos.
+     */
+    public function handle(Request $request, Closure $next, string ...$features): Response
     {
         $user = $request->user();
 
@@ -17,7 +22,7 @@ class EnsureBusinessFeatureEnabled
         }
 
         $business = $user->business;
-        if ($business && ! $business->hasFeature($feature)) {
+        if ($business && ! collect($features)->contains(fn (string $feature) => $business->hasFeature($feature))) {
             abort(403, 'Este modulo no esta habilitado para este negocio.');
         }
 

@@ -32,6 +32,9 @@ class StorefrontSettingsResource extends JsonResource
     {
         return [
             'slug' => $this->business?->slug,
+            // 'menu' (carta de restaurante) o 'store' (tienda): cambia cómo se
+            // ve la vitrina, no lo que puede hacer.
+            'kind' => $this->business?->storefrontKind() ?? 'store',
             'name' => $this->displayName(),
             'description' => $this->description,
             // Un negocio que solo subió el ícono cuadrado igual muestra algo en

@@ -30,7 +30,7 @@ class ResolveStorefrontTenant
     {
         $business = $this->resolveBusiness($request);
 
-        if (! $business || ! $business->active || ! $business->hasFeature('online_store')) {
+        if (! $business || ! $business->active || ! $business->hasStorefront()) {
             abort(404);
         }
 

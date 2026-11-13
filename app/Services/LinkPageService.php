@@ -26,7 +26,7 @@ class LinkPageService
     /** Tienda online visible: módulo encendido y publicada por el comerciante. */
     public function hasOpenStore(Business $business, ?BusinessStoreSettings $settings): bool
     {
-        return $business->hasFeature('online_store') && (bool) $settings?->is_active;
+        return $business->hasStorefront() && (bool) $settings?->is_active;
     }
 
     /**
@@ -70,6 +70,8 @@ class LinkPageService
             'icon_url' => $settings?->iconUrl(),
             'theme' => $theme,
             'has_store' => $this->hasOpenStore($business, $settings),
+            // 'menu' para restaurantes: el botón lleva a la carta, no a una tienda.
+            'kind' => $business->storefrontKind(),
             // Tienda solo de menú: el botón de la página dice "Ver el menú".
             'menu_mode' => (bool) $settings?->menu_mode,
             'has_whatsapp' => $this->whatsappNumber($business, $settings) !== null,

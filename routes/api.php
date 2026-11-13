@@ -511,7 +511,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
                 ->name('payment-gateways.destroy');
         });
 
-        Route::middleware(['feature:online_store', 'business-admin'])->group(function () {
+        Route::middleware(['feature:online_store,digital_menu', 'business-admin'])->group(function () {
             // Biblioteca de imagenes del home (las de los bloques). Las
             // ranuras fijas de logo/banner siguen abajo.
             Route::get('/store-settings/images', [BusinessStoreSettingsController::class, 'images'])->name('store-settings.images.index');
@@ -540,9 +540,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
                 ->name('store-settings.images.destroy');
         });
 
-        // Bandeja de pedidos online. Bajo el mismo modulo que la tienda: sin
-        // tienda no hay pedidos que atender.
-        Route::middleware('feature:online_store')->group(function () {
+        // Bandeja de pedidos online. Bajo el mismo modulo que la tienda (o el
+        // menú digital del restaurante): sin vitrina no hay pedidos que atender.
+        Route::middleware('feature:online_store,digital_menu')->group(function () {
             Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
             Route::get('/orders/pending-count', [OrderController::class, 'pendingCount'])->name('orders.pending-count');
             Route::get('/orders/{order}', [OrderController::class, 'show'])->whereNumber('order')->name('orders.show');
@@ -561,8 +561,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // entero, igual que ingredients o variants.
         //
         // Se suben de a una (multipart) mientras se llena el formulario, no
-        // anidadas en el payload del producto.
-        Route::middleware('feature:online_store')->group(function () {
+        // anidadas en el payload del producto. El menú digital también las usa:
+        // la carta muestra la foto de cada plato.
+        Route::middleware('feature:online_store,digital_menu')->group(function () {
             Route::middleware('permission:inventory.view')->group(function () {
                 Route::get('/products/{product}/images', [ProductImageController::class, 'index'])->name('products.images.index');
             });

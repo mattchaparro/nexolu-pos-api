@@ -40,7 +40,7 @@ class BusinessFeaturePresets
      *
      * @var list<string>
      */
-    public const OPT_IN_ONLY = ['online_store', 'multi_branch', 'product_options', 'financing'];
+    public const OPT_IN_ONLY = ['online_store', 'digital_menu', 'multi_branch', 'product_options', 'financing'];
 
     /** @return list<string> */
     public static function setupModes(): array
@@ -61,10 +61,14 @@ class BusinessFeaturePresets
         return self::basic();
     }
 
-    /** Restaurante / café: alineado con plan Full. */
+    /**
+     * Restaurante / café: alineado con plan Full, con su menú digital en vez
+     * de la tienda online. Un restaurante no tiene una "tienda": tiene una
+     * carta que se muestra en un QR y recibe pedidos que van a la cocina.
+     */
     public static function foodService(): array
     {
-        return self::full();
+        return [...self::full(), 'online_store' => false, 'digital_menu' => true];
     }
 
     /** Solo ventas y control básico: plan Básico sin gastos. */
@@ -164,6 +168,7 @@ class BusinessFeaturePresets
             'charges' => false,
             'reminders' => true,
             'online_store' => false,
+            'digital_menu' => false,
             'multi_branch' => false,
             'product_options' => false,
             // Venta financiada por terceros (Addi, Banti...): negocio por negocio.
@@ -203,6 +208,10 @@ class BusinessFeaturePresets
             // ademas activa `business_store_settings.is_active` y publica sus
             // productos (ver ResolveStorefrontTenant).
             'online_store' => true,
+            // El menú digital es del restaurante y no viene con el plan: lo
+            // trae el modo de configuración de restaurante (foodService) o se
+            // enciende desde SuperAdmin. No se mezcla con la tienda online.
+            'digital_menu' => false,
             // No entra con ningun plan: un negocio con una sola sede no gana
             // nada teniendola encendida (solo un selector de mas), y quien
             // abre una segunda sede es una conversacion comercial. Se
@@ -289,6 +298,7 @@ class BusinessFeaturePresets
 
             ['key' => 'multi_branch', 'label' => 'Multisede (sucursales)', 'description' => 'Permite manejar varias sedes con inventario, caja, empleados y numeración de facturas independientes, con reportes por sede y consolidados. Un negocio de una sola sede no la necesita: sigue operando igual sin encenderla.', 'group' => 'Operación'],
 
+            ['key' => 'digital_menu', 'label' => 'Menú digital y pedidos', 'description' => 'La carta del restaurante en internet: un enlace y un QR para las mesas o para WhatsApp, con pedidos a domicilio o para recoger que llegan a la comandera. Es para restaurantes y no requiere la tienda online; habilitarlo no publica nada hasta que el restaurante publique su menú.', 'group' => 'Canales de venta'],
             ['key' => 'online_store', 'label' => 'Tienda online', 'description' => 'Publica un catálogo público en internet con el mismo inventario del POS, para que los clientes compren y paguen en línea. Incluida en el plan Full; habilitarla no publica nada hasta que el comerciante active su tienda y publique productos.', 'group' => 'Canales de venta'],
         ];
 

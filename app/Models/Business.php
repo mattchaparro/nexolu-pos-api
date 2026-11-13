@@ -597,7 +597,7 @@ class Business extends Model
      */
     public function clientLimit(): int
     {
-        if ($this->hasFeature('online_store')) {
+        if ($this->hasStorefront()) {
             return self::CLIENT_LIMIT_ONLINE_STORE;
         }
 
@@ -673,6 +673,26 @@ class Business extends Model
      *
      * @return array<string, bool>
      */
+    /**
+     * Tiene una vitrina pública: la tienda online o el menú digital. Los dos
+     * usan el mismo motor (productos publicados, carrito, pedidos), pero son
+     * productos distintos para negocios distintos.
+     */
+    public function hasStorefront(): bool
+    {
+        return $this->hasFeature('online_store') || $this->hasFeature('digital_menu');
+    }
+
+    /**
+     * Cómo se presenta la vitrina: 'menu' (carta de restaurante) o 'store'
+     * (tienda). Si un negocio tuviera los dos módulos, manda el menú: un
+     * restaurante no vende como tienda.
+     */
+    public function storefrontKind(): string
+    {
+        return $this->hasFeature('digital_menu') ? 'menu' : 'store';
+    }
+
     public function resolvedFeatures(): array
     {
         return collect(array_keys(BusinessFeaturePresets::basic()))

@@ -78,7 +78,7 @@ class PaymentCapabilities
     public static function availableTo(Business $business, string $capability): bool
     {
         return $capability === self::ONLINE
-            ? $business->hasFeature('online_store')
+            ? $business->hasStorefront()
             : true;
     }
 }
