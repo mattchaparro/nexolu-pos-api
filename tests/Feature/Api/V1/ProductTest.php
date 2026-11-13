@@ -313,6 +313,42 @@ class ProductTest extends TestCase
         $this->assertFalse($ids->contains($outOfStock->id));
     }
 
+    /**
+     * Los formularios de otros modulos (apartados, ordenes de servicio, citas,
+     * descuentos, compras) necesitan la lista de productos. Antes exigia
+     * inventory.view y a esos empleados les salia "No tienes permiso" con la
+     * lista vacia (caso real: un empleado con layaways.manage y
+     * service_orders.manage, sin "Ver existencias").
+     */
+    public function test_an_employee_who_manages_layaways_can_list_products_without_seeing_costs(): void
+    {
+        $business = Business::factory()->create();
+        $employee = User::factory()->create(['business_id' => $business->id]);
+        $employee->syncPermissions(['layaways.manage']);
+        Product::factory()->create(['business_id' => $business->id, 'stock' => 5, 'cost_price' => 1234]);
+
+        $response = $this->actingAs($employee, 'sanctum')
+            ->getJson('/api/v1/products?per_page=200')
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+
+        $this->assertArrayNotHasKey('cost_price', $response->json('data.0'));
+    }
+
+    public function test_an_employee_without_any_related_permission_still_cannot_list_products(): void
+    {
+        $business = Business::factory()->create();
+        $employee = User::factory()->create(['business_id' => $business->id]);
+        $employee->syncPermissions(['cash_shift.manage']);
+        $product = Product::factory()->create(['business_id' => $business->id]);
+
+        $this->actingAs($employee, 'sanctum')->getJson('/api/v1/products')->assertForbidden();
+        // El detalle y el resumen siguen siendo de inventario.
+        $employee->syncPermissions(['layaways.manage']);
+        $this->actingAs($employee, 'sanctum')->getJson("/api/v1/products/{$product->id}")->assertForbidden();
+        $this->actingAs($employee, 'sanctum')->getJson('/api/v1/products/summary')->assertForbidden();
+    }
+
     public function test_for_layaway_respects_the_business_category_allowlist(): void
     {
         $business = Business::factory()->create();

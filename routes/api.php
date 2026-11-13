@@ -406,6 +406,18 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // devuelve solo ids, no datos de producto ni de margen.
         Route::get('/products/frequent', [ProductController::class, 'frequent'])->name('products.frequent');
 
+        // La LISTA de productos tambien la necesitan los formularios de otros
+        // modulos (elegir el servicio de una cita o de una orden, los
+        // productos de un apartado, de un descuento o de una compra). Antes
+        // exigia inventory.view a secas: un empleado con layaways.manage o
+        // service_orders.manage y sin "Ver existencias" abria el formulario,
+        // veia "No tienes permiso" y la lista vacia (caso real en produccion).
+        // No filtra nada nuevo: /products/sellable ya esta abierto a todo el
+        // que vende, y ProductResource esconde cost_price sin inventory.view.
+        Route::get('/products', [ProductController::class, 'index'])
+            ->middleware('permission:inventory.view,appointments.manage,service_orders.manage,layaways.manage,discounts.manage,purchases.manage')
+            ->name('products.index');
+
         // inventory.view para leer el catalogo/reportes de inventario,
         // inventory.add para tocarlo - ver PermissionCatalog. apiResource se
         // parte en dos registros con ->only() distinto en vez de uno solo,
@@ -417,7 +429,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::middleware('feature:services')->group(function () {
                 Route::get('/products/services-summary', [ProductController::class, 'servicesSummary'])->name('products.services-summary');
             });
-            Route::apiResource('products', ProductController::class)->only(['index', 'show']);
+            Route::apiResource('products', ProductController::class)->only(['show']);
             Route::get('/product-option-groups', [ProductOptionGroupController::class, 'index'])
                 ->middleware('feature:product_options')
                 ->name('product-option-groups.index');
@@ -594,10 +606,14 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         });
 
         Route::middleware('feature:ingredients')->group(function () {
+            // La lista de insumos tambien la usa el formulario de compras.
+            Route::get('/ingredients', [IngredientController::class, 'index'])
+                ->middleware('permission:inventory.view,purchases.manage')
+                ->name('ingredients.index');
             Route::middleware('permission:inventory.view')->group(function () {
                 // Antes del apiResource, mismo motivo que /products/summary.
                 Route::get('/ingredients/summary', [IngredientController::class, 'summary'])->name('ingredients.summary');
-                Route::apiResource('ingredients', IngredientController::class)->only(['index', 'show']);
+                Route::apiResource('ingredients', IngredientController::class)->only(['show']);
                 Route::get('/ingredient-stock-movements', [IngredientStockMovementController::class, 'index'])->name('ingredient-stock-movements.index');
             });
             Route::middleware('permission:inventory.add')->group(function () {
