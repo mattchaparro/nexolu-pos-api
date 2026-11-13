@@ -56,6 +56,13 @@ return [
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            // Carpeta dentro del bucket (p. ej. 'pos/pos-images'): el bucket se comparte
+            // con los respaldos, que viven en 'pos/pos-backups/'. Se antepone a toda ruta,
+            // también en url(), así que AWS_URL no debe incluirla.
+            'root' => env('AWS_ROOT', ''),
+            // Los nombres son ULID y nunca se reescriben: el navegador y la CDN
+            // pueden guardarlos para siempre.
+            'options' => ['CacheControl' => 'public, max-age=31536000, immutable'],
             'throw' => false,
             'report' => false,
         ],
