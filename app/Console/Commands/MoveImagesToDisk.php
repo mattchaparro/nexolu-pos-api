@@ -88,7 +88,7 @@ class MoveImagesToDisk extends Command
         // configuracion de la tienda, con un solo `disk` para las dos.
         $this->migrar(
             BusinessStoreSettings::withoutGlobalScopes()->where('disk', $origen),
-            fn (BusinessStoreSettings $fila) => [$fila->logo_path, $fila->banner_path],
+            fn (BusinessStoreSettings $fila) => [$fila->logo_path, $fila->icon_path, $fila->banner_path],
             $origen, $destino, $ensayo,
         );
 

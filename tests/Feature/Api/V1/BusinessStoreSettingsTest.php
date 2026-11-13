@@ -234,6 +234,33 @@ class BusinessStoreSettingsTest extends TestCase
         ])->assertUnprocessable()->assertJsonValidationErrors('trust_items');
     }
 
+    /**
+     * Una pestaña vieja del editor todavía manda WhatsApp e Instagram. Se
+     * ignoran: son del negocio y no deben pisar el dato bueno con una copia.
+     */
+    public function test_the_store_editor_no_longer_writes_whatsapp_or_instagram(): void
+    {
+        [$business, $owner] = $this->ownerWithModule();
+        $business->update(['whatsapp_number' => '3109998888', 'instagram_handle' => 'actual']);
+
+        $this->actingAs($owner, 'sanctum')
+            ->putJson('/api/v1/store-settings', [
+                'store_name' => 'Mi Tiendita',
+                'whatsapp_number' => '3000000000',
+                'instagram_url' => 'https://www.instagram.com/pisado',
+            ])
+            ->assertOk()
+            ->assertJsonPath('store_name', 'Mi Tiendita')
+            ->assertJsonPath('whatsapp_number', '3109998888')
+            ->assertJsonPath('instagram_url', 'https://www.instagram.com/actual');
+
+        $this->assertDatabaseHas('business_store_settings', [
+            'business_id' => $business->id,
+            'whatsapp_number' => null,
+            'instagram_url' => null,
+        ]);
+    }
+
     public function test_uploading_a_logo_stores_it_and_replaces_the_previous_one(): void
     {
         Storage::fake('public');

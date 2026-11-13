@@ -39,7 +39,7 @@ class StorefrontContactController extends Controller
         abort_unless($business !== null, 404);
 
         $settings = $business->storeSettings()->withoutGlobalScopes()->first();
-        $phone = ChannelPhone::normalize((string) ($settings?->whatsapp_number ?? ''));
+        $phone = ChannelPhone::normalize((string) ($business->whatsapp_number ?: $settings?->whatsapp_number ?: ''));
         abort_if($phone === null, 404);
 
         $data = $request->validate([

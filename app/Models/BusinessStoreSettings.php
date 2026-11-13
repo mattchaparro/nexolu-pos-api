@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\BranchService;
+use App\Support\SocialProfile;
 use App\Traits\BelongsToBusiness;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -19,7 +20,7 @@ use Illuminate\Support\Facades\Storage;
  * responda - ver App\Http\Middleware\ResolveStorefrontTenant.
  */
 #[Fillable([
-    'business_id', 'fulfillment_branch_id', 'is_active', 'store_name', 'description', 'disk', 'logo_path', 'banner_path',
+    'business_id', 'fulfillment_branch_id', 'is_active', 'store_name', 'description', 'disk', 'logo_path', 'icon_path', 'banner_path',
     'primary_color', 'surface_color', 'accent_color', 'font_preset', 'home_blocks',
     'whatsapp_number', 'shipping_flat_fee', 'shipping_note', 'delivery_estimate', 'min_order_amount', 'pickup_enabled',
     'order_email_enabled', 'order_email',
@@ -109,9 +110,35 @@ class BusinessStoreSettings extends Model
         return $this->fileUrl($this->logo_path);
     }
 
+    /** Ícono cuadrado: el círculo de la página de enlaces. */
+    public function iconUrl(): ?string
+    {
+        return $this->fileUrl($this->icon_path);
+    }
+
     public function bannerUrl(): ?string
     {
         return $this->fileUrl($this->banner_path);
+    }
+
+    /**
+     * WhatsApp, Instagram y TikTok son del NEGOCIO (Ajustes → Negocio, o el
+     * perfil público): un solo dato para la tienda, la página de enlaces y los
+     * recibos. Las columnas `whatsapp_number` e `instagram_url` de esta tabla
+     * eran una copia propia de la tienda que se desfasaba; ya no se escriben,
+     * y solo se leen como respaldo si el negocio nunca llenó el suyo.
+     */
+    public function publicWhatsapp(): ?string
+    {
+        return filled($this->business?->whatsapp_number)
+            ? trim((string) $this->business->whatsapp_number)
+            : (filled($this->whatsapp_number) ? trim((string) $this->whatsapp_number) : null);
+    }
+
+    public function publicInstagramUrl(): ?string
+    {
+        return SocialProfile::instagram($this->business?->instagram_handle)
+            ?? SocialProfile::instagram($this->instagram_url);
     }
 
     public function heroImageUrl(): ?string

@@ -34,14 +34,16 @@ class StorefrontSettingsResource extends JsonResource
             'slug' => $this->business?->slug,
             'name' => $this->displayName(),
             'description' => $this->description,
-            'logo_url' => $this->logoUrl(),
+            // Un negocio que solo subió el ícono cuadrado igual muestra algo en
+            // la cabecera, en vez del nombre en texto.
+            'logo_url' => $this->logoUrl() ?? $this->iconUrl(),
             'banner_url' => $this->bannerUrl(),
 
             // Tres semillas + preset. El storefront deriva el resto de la
             // paleta con contraste garantizado (ver su composable de tema).
             'theme' => $this->theme(),
 
-            'whatsapp_number' => $this->whatsapp_number,
+            'whatsapp_number' => $this->publicWhatsapp(),
             'shipping_flat_fee' => (float) $this->shipping_flat_fee,
             // Como se explica el envio. Las plantillas lo citan con el token
             // `{envio}` en vez de repetir una frase fija que no todos los
@@ -65,7 +67,7 @@ class StorefrontSettingsResource extends JsonResource
             'contact' => [
                 'address' => $this->address,
                 'opening_hours' => $this->opening_hours,
-                'instagram_url' => $this->instagram_url,
+                'instagram_url' => $this->publicInstagramUrl(),
                 'facebook_url' => $this->facebook_url,
             ],
 

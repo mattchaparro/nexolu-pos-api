@@ -199,6 +199,36 @@ class StorefrontCatalogTest extends TestCase
     // Contenido
     // -----------------------------------------------------------------
 
+    public function test_the_store_publishes_the_business_contact_not_a_copy(): void
+    {
+        $business = $this->storefront(['whatsapp_number' => '3111111111', 'instagram_url' => 'https://www.instagram.com/viejo']);
+        $business->update(['whatsapp_number' => '3109998888', 'instagram_handle' => '@actual']);
+
+        $this->getJson("/api/v1/storefront/{$business->slug}")
+            ->assertOk()
+            ->assertJsonPath('whatsapp_number', '3109998888')
+            ->assertJsonPath('contact.instagram_url', 'https://www.instagram.com/actual');
+    }
+
+    /** Quien solo subió el ícono cuadrado igual muestra un logo en la cabecera. */
+    public function test_the_header_logo_falls_back_to_the_square_icon(): void
+    {
+        $business = $this->storefront(['disk' => 'public', 'icon_path' => 'stores/1/icono.png']);
+
+        $this->getJson("/api/v1/storefront/{$business->slug}")
+            ->assertOk()
+            ->assertJsonPath('logo_url', fn ($url) => is_string($url) && str_ends_with($url, 'stores/1/icono.png'));
+    }
+
+    public function test_the_header_logo_wins_over_the_icon_when_both_exist(): void
+    {
+        $business = $this->storefront(['disk' => 'public', 'logo_path' => 'stores/1/logo.png', 'icon_path' => 'stores/1/icono.png']);
+
+        $this->getJson("/api/v1/storefront/{$business->slug}")
+            ->assertOk()
+            ->assertJsonPath('logo_url', fn ($url) => is_string($url) && str_ends_with($url, 'stores/1/logo.png'));
+    }
+
     public function test_settings_expose_the_public_identity_only(): void
     {
         $business = $this->storefront(['store_name' => 'Mi Tiendita', 'whatsapp_number' => '3001234567']);
