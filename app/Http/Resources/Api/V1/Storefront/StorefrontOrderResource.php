@@ -30,6 +30,8 @@ class StorefrontOrderResource extends JsonResource
             'token' => $this->public_token,
             'subtotal' => (float) $this->subtotal,
             'shipping_fee' => (float) $this->shipping_fee,
+            'service_charge' => (float) $this->service_charge,
+            'ipoconsumo' => (float) $this->ipoconsumo,
             // El codigo va congelado en el pedido: el cupon pudo vencerse o
             // desactivarse despues, y el total tiene que seguir explicandose.
             'coupon_code' => $this->coupon_code,

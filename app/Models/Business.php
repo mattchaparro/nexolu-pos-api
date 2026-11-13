@@ -616,6 +616,25 @@ class Business extends Model
         ];
     }
 
+    /**
+     * Lo que un pedido online suma encima de los productos. Es la MISMA
+     * configuracion del POS (domicilio, propina e impoconsumo), no una aparte
+     * de la tienda: el envio es el envio. Una tasa nula = no aplica.
+     *
+     * @return array{delivery_fee: float, service_charge_rate: ?float, ipoconsumo_rate: ?float}
+     */
+    public function onlineOrderRates(): array
+    {
+        $config = $this->chargesConfig();
+        $charges = $this->hasFeature('charges');
+
+        return [
+            'delivery_fee' => $this->delivery_enabled ? (float) $this->delivery_fee : 0.0,
+            'service_charge_rate' => $charges && $config['service_charge_enabled'] ? $config['service_charge_rate'] : null,
+            'ipoconsumo_rate' => $charges && $config['ipoconsumo_enabled'] ? $config['ipoconsumo_rate'] : null,
+        ];
+    }
+
     public function hasFeature(string $feature): bool
     {
         $flags = $this->feature_flags;

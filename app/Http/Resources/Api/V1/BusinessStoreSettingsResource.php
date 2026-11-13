@@ -35,7 +35,6 @@ class BusinessStoreSettingsResource extends JsonResource
             'font_preset' => $this->font_preset,
             // Del negocio (Ajustes → Negocio / perfil público), no de la tienda.
             'whatsapp_number' => $this->publicWhatsapp(),
-            'shipping_flat_fee' => (float) $this->shipping_flat_fee,
             'shipping_note' => $this->shipping_note,
             'delivery_estimate' => $this->delivery_estimate,
             'min_order_amount' => (float) $this->min_order_amount,

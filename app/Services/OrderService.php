@@ -144,14 +144,21 @@ class OrderService
                 ]);
             }
 
-            // El envio sale de la configuracion de la tienda, nunca del
-            // cliente: es un importe que el comprador podria poner en cero.
-            $shipping = $isPickup ? 0.0 : (float) ($settings?->shipping_flat_fee ?? 0);
+            // Envio, propina e impoconsumo salen de la configuracion del
+            // negocio (la misma del POS), nunca del cliente: son importes que
+            // el comprador podria poner en cero.
+            $shipping = $isPickup ? 0.0 : $business->onlineOrderRates()['delivery_fee'];
 
             // El cupon se resuelve y se calcula ACA, contra la base. Del
             // comprador solo se acepta el codigo: aceptar el monto seria
             // dejar que se ponga el descuento que quiera.
             [$coupon, $discountAmount] = $this->resolveCoupon($business, $data['coupon_code'] ?? null, $subtotal);
+
+            // Igual que en el POS: los cargos van sobre la base ya con el
+            // descuento. La propina es sugerida y el comprador la puede quitar.
+            [$serviceCharge, $ipoconsumo] = $this->sales->resolveCharges($business, $subtotal - $discountAmount, [
+                'apply_service_charge' => (bool) ($data['include_service_charge'] ?? true),
+            ]);
 
             $order = Order::create([
                 'business_id' => $business->id,
@@ -159,12 +166,14 @@ class OrderService
                 'status' => Order::STATUS_PENDING,
                 'subtotal' => $subtotal,
                 'shipping_fee' => $shipping,
+                'service_charge' => $serviceCharge,
+                'ipoconsumo' => $ipoconsumo,
                 'discount_id' => $coupon?->id,
                 // El codigo se congela: el cupon puede desactivarse o
                 // borrarse y el pedido tiene que seguir explicando su total.
                 'coupon_code' => $coupon?->code,
                 'discount_amount' => $discountAmount,
-                'total' => round($subtotal + $shipping - $discountAmount, 2),
+                'total' => round($subtotal - $discountAmount + $serviceCharge + $ipoconsumo + $shipping, 2),
                 'customer_name' => trim($data['customer_name']),
                 'customer_phone' => trim($data['customer_phone']),
                 'customer_email' => $data['customer_email'] ?? null,
@@ -367,20 +376,12 @@ class OrderService
             $from = $order->status;
 
             if ($status === Order::STATUS_CONFIRMED) {
-                // Con comandera, el pedido nace como cuenta abierta: aparece en la
-                // pantalla de cocina y se cobra al entregarlo, como cualquier
-                // domicilio. Sin comandera (o ya pagado en línea) se crea la venta
-                // cerrada de siempre.
-                if ($this->sendsToKitchen($order)) {
-                    // El medio de pago se elige al cobrar la cuenta, pero si llega uno
-                    // se valida igual: no se acepta algo que el negocio no tiene.
-                    if ($paymentMethod !== null) {
-                        $order->business->assertValidPaymentMethod($paymentMethod, forbidCredit: true);
-                    }
-                    $sale = $this->openTabFor($actor, $order);
-                } else {
-                    $sale = $this->createSaleFor($actor, $order, $paymentMethod);
-                }
+                // Un pedido online es un pedido, no una cuenta abierta: al
+                // confirmarlo (lo pago la pasarela o el negocio verifico el pago)
+                // nace su venta, y si el negocio usa comandera entra a cocina
+                // desde la venta. Asi un pedido de otro canal (Rappi, etc.) puede
+                // entrar por el mismo camino.
+                $sale = $this->createSaleFor($actor, $order, $paymentMethod);
                 $order->update([
                     'status' => $status,
                     'sale_id' => $sale->id,
@@ -427,41 +428,9 @@ class OrderService
      * hardcodeado contra un negocio con cash/nequi/daviplata/credit).
      */
     /**
-     * Un pedido va a la comandera cuando el negocio la usa y todavía no está
-     * pagado: una cuenta abierta se cobra al cerrarla, y un pedido que ya
-     * pagó la pasarela no tiene nada que cobrar en el mostrador.
+     * Lo que cocina y domicilio necesitan saber en la comanda: número del
+     * pedido, a dónde va y lo que el comprador escribió.
      */
-    public function sendsToKitchen(Order $order): bool
-    {
-        return $order->business->hasFeature('kitchen_board') && $order->paid_at === null;
-    }
-
-    /**
-     * La cuenta abierta del pedido, con todo lo que cocina y domicilio
-     * necesitan saber en la nota: número del pedido, a dónde va y lo que el
-     * comprador escribió.
-     */
-    private function openTabFor(User $actor, Order $order): Sale
-    {
-        $items = $order->items->map(fn (OrderItem $item) => array_filter([
-            'product_id' => $item->product_id,
-            'product_variant_id' => $item->product_variant_id,
-            'quantity' => $item->quantity,
-        ], fn ($value) => $value !== null))->all();
-
-        return app(OpenTabService::class)->openTab($actor, [
-            'items' => $items,
-            'customer_name' => $order->customer_name,
-            'customer_phone' => $order->customer_phone,
-            'client_id' => $order->client_id,
-            'notes' => $this->kitchenNote($order),
-            'is_delivery' => ! $order->is_pickup,
-            'delivery_fee_override' => (float) $order->shipping_fee,
-            'cart_discount_id' => $order->discount_id,
-            'cart_discount_amount' => (float) $order->discount_amount,
-        ]);
-    }
-
     private function kitchenNote(Order $order): string
     {
         $parts = ["Pedido online #{$order->number}"];
@@ -491,22 +460,18 @@ class OrderService
             'quantity' => $item->quantity,
         ], fn ($value) => $value !== null))->all();
 
-        return $this->sales->createSale($actor, [
+        $sale = $this->sales->createSale($actor, [
             'items' => $items,
             'payment_method' => $method,
             'customer_name' => $order->customer_name,
             'customer_phone' => $order->customer_phone,
             'client_id' => $order->client_id,
             'is_delivery' => ! $order->is_pickup,
-            // El envio es el que se le cotizo al comprador (la tarifa de la
-            // tienda), no el domicilio del mostrador: son dos numeros
-            // distintos y el comprador ya vio el suyo.
+            // Envio, propina e impoconsumo: los que se le cotizaron al
+            // comprador con la configuracion del negocio. Se cobran esos
+            // montos aunque la configuracion cambie antes de confirmar.
             'delivery_fee_override' => (float) $order->shipping_fee,
-            // La tienda publica precios finales y nunca cotiza propina ni
-            // ipoconsumo: sumarlos al confirmar le cobraria al comerciante
-            // una diferencia que su cliente jamas acepto.
-            'apply_service_charge' => false,
-            'apply_ipoconsumo' => false,
+            'charges_override' => [(float) $order->service_charge, (float) $order->ipoconsumo],
             // El cupon que el comprador redimio. Va el MONTO ademas del id
             // porque es el que ya pago: recalcularlo aqui haria que un cupon
             // editado despues moviera el total de una venta ya cobrada, y
@@ -514,6 +479,15 @@ class OrderService
             'cart_discount_id' => $order->discount_id,
             'cart_discount_amount' => (float) $order->discount_amount,
         ]);
+
+        // sales.notes es lo que la comandera muestra arriba de los productos.
+        $sale->update(['notes' => $this->kitchenNote($order)]);
+
+        if ($business->hasFeature('kitchen_board')) {
+            app(KitchenBoardService::class)->sendToKitchen($sale);
+        }
+
+        return $sale;
     }
 
     /**

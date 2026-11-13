@@ -22,7 +22,7 @@ use Illuminate\Support\Facades\Storage;
 #[Fillable([
     'business_id', 'fulfillment_branch_id', 'is_active', 'store_name', 'description', 'disk', 'logo_path', 'icon_path', 'banner_path',
     'primary_color', 'surface_color', 'accent_color', 'font_preset', 'home_blocks',
-    'whatsapp_number', 'shipping_flat_fee', 'shipping_note', 'delivery_estimate', 'min_order_amount', 'pickup_enabled', 'menu_mode',
+    'whatsapp_number', 'shipping_note', 'delivery_estimate', 'min_order_amount', 'pickup_enabled', 'menu_mode',
     'order_email_enabled', 'order_email',
     'terms', 'seo_title', 'seo_description',
     'hero_enabled', 'hero_eyebrow', 'hero_title', 'hero_highlight', 'hero_subtitle',
@@ -87,7 +87,6 @@ class BusinessStoreSettings extends Model
             'pickup_enabled' => 'boolean',
             'menu_mode' => 'boolean',
             'order_email_enabled' => 'boolean',
-            'shipping_flat_fee' => 'decimal:2',
             'min_order_amount' => 'decimal:2',
             'hero_enabled' => 'boolean',
             'trust_enabled' => 'boolean',

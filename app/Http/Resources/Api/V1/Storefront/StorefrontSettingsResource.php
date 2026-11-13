@@ -47,7 +47,14 @@ class StorefrontSettingsResource extends JsonResource
             'theme' => $this->theme(),
 
             'whatsapp_number' => $this->publicWhatsapp(),
-            'shipping_flat_fee' => (float) $this->shipping_flat_fee,
+            // Envio, propina e impoconsumo salen de la configuracion del
+            // negocio (la misma del POS), nunca de una tarifa de la tienda.
+            // La llave conserva su nombre historico.
+            'shipping_flat_fee' => $this->business?->onlineOrderRates()['delivery_fee'] ?? 0.0,
+            // Porcentajes; nulo = el negocio no los cobra. La propina es
+            // sugerida: el comprador la puede quitar en el checkout.
+            'service_charge_rate' => $this->business?->onlineOrderRates()['service_charge_rate'],
+            'ipoconsumo_rate' => $this->business?->onlineOrderRates()['ipoconsumo_rate'],
             // Como se explica el envio. Las plantillas lo citan con el token
             // `{envio}` en vez de repetir una frase fija que no todos los
             // negocios pueden cumplir.

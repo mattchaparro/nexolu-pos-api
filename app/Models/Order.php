@@ -18,7 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * OrderService y el docblock de la migracion.
  */
 #[Fillable([
-    'business_id', 'number', 'status', 'subtotal', 'shipping_fee', 'total',
+    'business_id', 'number', 'status', 'subtotal', 'shipping_fee', 'service_charge', 'ipoconsumo', 'total',
     'discount_id', 'coupon_code', 'discount_amount',
     'customer_name', 'customer_phone', 'customer_email',
     'is_pickup', 'shipping_address', 'shipping_city', 'shipping_notes',
@@ -74,6 +74,8 @@ class Order extends Model
         return [
             'subtotal' => 'decimal:2',
             'shipping_fee' => 'decimal:2',
+            'service_charge' => 'decimal:2',
+            'ipoconsumo' => 'decimal:2',
             'total' => 'decimal:2',
             'is_pickup' => 'boolean',
             'expires_at' => 'datetime',

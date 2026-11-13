@@ -25,6 +25,14 @@ class KitchenTicketResource extends JsonResource
             // del domicilio): quien cocina tiene que verla en la comanda.
             'notes' => $this->notes,
             'is_delivery' => (bool) $this->is_delivery,
+            // Pedido online: ya esta cobrado (o el negocio verifico el pago) y
+            // sale de la comandera al despacharse, no al cobrarse.
+            'online_order' => $this->onlineOrder ? [
+                'number' => $this->onlineOrder->number,
+                'status' => $this->onlineOrder->status,
+                'is_pickup' => (bool) $this->onlineOrder->is_pickup,
+                'is_paid_online' => $this->onlineOrder->paid_at !== null,
+            ] : null,
             'kitchen_status' => KitchenBoardService::normalizeStatus($this->kitchen_status),
             'created_at' => $this->created_at?->format('H:i'),
             'items' => $this->items->map(fn ($item) => [

@@ -26,7 +26,7 @@ class KitchenBoardController extends Controller
     {
         $saleItemIds = array_map('intval', $request->validated('sale_item_ids', []));
 
-        $this->kitchenBoard->updateStatus($sale, $request->validated('kitchen_status'), $saleItemIds);
+        $this->kitchenBoard->updateStatus($sale, $request->validated('kitchen_status'), $saleItemIds, $request->user());
 
         AuditLogger::log('kitchen.status_changed', [
             'sale_id' => $sale->id,
@@ -34,6 +34,20 @@ class KitchenBoardController extends Controller
             'sale_item_ids' => $saleItemIds,
         ]);
 
-        return new KitchenTicketResource($sale->fresh(['items.product', 'items.options', 'user', 'table']));
+        return new KitchenTicketResource($sale->fresh(['items.product', 'items.options', 'user', 'table', 'onlineOrder']));
+    }
+
+    /** Pedido online que sale del local: enviado (domicilio) o entregado (recoge). */
+    public function dispatchOrder(Request $request, Sale $sale): KitchenTicketResource
+    {
+        $order = $this->kitchenBoard->dispatch($request->user(), $sale);
+
+        AuditLogger::log('kitchen.order_dispatched', [
+            'sale_id' => $sale->id,
+            'order_id' => $order->id,
+            'status' => $order->status,
+        ]);
+
+        return new KitchenTicketResource($sale->fresh(['items.product', 'items.options', 'user', 'table', 'onlineOrder']));
     }
 }

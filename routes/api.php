@@ -748,6 +748,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::middleware('feature:kitchen_board')->prefix('kitchen')->name('kitchen.')->group(function () {
             Route::get('/tickets', [KitchenBoardController::class, 'index'])->name('tickets.index');
             Route::post('/tickets/{sale}/status', [KitchenBoardController::class, 'updateStatus'])->name('tickets.status.update');
+            Route::post('/tickets/{sale}/dispatch', [KitchenBoardController::class, 'dispatchOrder'])->name('tickets.dispatch');
         });
 
         // Venta financiada por terceros. El cajero solo lista las activas para

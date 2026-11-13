@@ -45,14 +45,17 @@ class StorefrontOrderTest extends TestCase
 
         $this->business = Business::factory()->create([
             'subscription_plan' => 'full',
-            // Sin comandera: aquí se prueba la venta cerrada al confirmar. El flujo
-            // con comandera (cuenta abierta) vive en OnlineOrderKitchenTest.
-            'feature_flags' => [...BusinessFeaturePresets::full(), 'online_store' => true, 'kitchen_board' => false],
+            // Sin comandera: el flujo con comandera vive en OnlineOrderKitchenTest.
+            'feature_flags' => [...BusinessFeaturePresets::full(), 'online_store' => true, 'kitchen_board' => false, 'charges' => true],
+            // El envio de la tienda es el domicilio del negocio.
+            'delivery_enabled' => true,
+            'delivery_fee' => 5000,
+            'service_charge_enabled' => false,
+            'ipoconsumo_enabled' => false,
         ]);
         BusinessStoreSettings::factory()->create([
             'business_id' => $this->business->id,
             'is_active' => true,
-            'shipping_flat_fee' => 5000,
         ]);
         $this->owner = User::factory()->create(['business_id' => $this->business->id, 'is_business_owner' => true]);
         $this->owner->assignRole('admin');
@@ -342,20 +345,14 @@ class StorefrontOrderTest extends TestCase
     }
 
     /**
-     * Regresion: SaleService ignoraba el envio recibido y usaba
-     * `businesses.delivery_fee` (el domicilio del MOSTRADOR), y encima le
-     * sumaba propina e ipoconsumo. Resultado: la venta cobraba un total
-     * distinto del que el comprador acepto en la tienda. Encontrado con
-     * datos reales - un pedido de $50.000 (45.000 + 5.000 de envio) creo una
-     * venta de $50.000 compuesta de 45.000 + 500 de domicilio + 4.500 de
-     * propina: el mismo numero por casualidad, con la plata en otro lado.
+     * La venta cobra lo que el comprador acepto en la tienda, linea por
+     * linea: envio y propina con la configuracion del negocio (la misma del
+     * POS), no recalculados al confirmar. Antes la tienda tenia su propio
+     * envio y la venta terminaba mezclando las dos tarifas.
      */
     public function test_the_sale_charges_exactly_what_the_buyer_was_quoted(): void
     {
         $this->business->update([
-            'delivery_enabled' => true,
-            // El domicilio del mostrador, distinto del envio de la tienda.
-            'delivery_fee' => 500,
             'service_charge_enabled' => true,
             'service_charge_rate' => 10,
         ]);
@@ -369,16 +366,16 @@ class StorefrontOrderTest extends TestCase
         ])->assertCreated();
 
         $order = Order::withoutGlobalScopes()->where('business_id', $this->business->id)->firstOrFail();
-        $this->assertEqualsWithDelta(50000, (float) $order->total, 0.01);
+        $this->assertEqualsWithDelta(54500, (float) $order->total, 0.01);
 
         $this->actingAs($this->owner, 'sanctum')
             ->patchJson("/api/v1/orders/{$order->id}/status", ['status' => Order::STATUS_CONFIRMED])
             ->assertOk();
 
         $sale = Sale::withoutGlobalScopes()->findOrFail($order->fresh()->sale_id);
-        $this->assertEqualsWithDelta(50000, (float) $sale->total, 0.01, 'La venta cobra lo cotizado');
-        $this->assertEqualsWithDelta(5000, (float) $sale->delivery_fee, 0.01, 'El envio es el de la tienda');
-        $this->assertEqualsWithDelta(0, (float) $sale->service_charge_amount, 0.01, 'La tienda no cotiza propina');
+        $this->assertEqualsWithDelta(54500, (float) $sale->total, 0.01, 'La venta cobra lo cotizado');
+        $this->assertEqualsWithDelta(5000, (float) $sale->delivery_fee, 0.01, 'El envio es el domicilio del negocio');
+        $this->assertEqualsWithDelta(4500, (float) $sale->service_charge_amount, 0.01, 'La propina sugerida que el comprador acepto');
     }
 
     // -----------------------------------------------------------------

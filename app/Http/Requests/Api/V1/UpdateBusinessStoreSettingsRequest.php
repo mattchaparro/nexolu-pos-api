@@ -44,7 +44,6 @@ class UpdateBusinessStoreSettingsRequest extends FormRequest
             // WhatsApp e Instagram ya no se aceptan aquí: son del negocio y se
             // editan en PUT /link-page o en Ajustes (ver BusinessStoreSettings::publicWhatsapp).
             // Una pestaña vieja que los mande se ignora en vez de pisar el dato bueno.
-            'shipping_flat_fee' => ['sometimes', 'numeric', 'min:0'],
             'shipping_note' => ['sometimes', 'nullable', 'string', 'max:160'],
             'delivery_estimate' => ['sometimes', 'nullable', 'string', 'max:120'],
             'min_order_amount' => ['sometimes', 'numeric', 'min:0'],

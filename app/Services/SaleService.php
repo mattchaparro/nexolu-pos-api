@@ -367,6 +367,14 @@ class SaleService
      */
     public function resolveCharges(Business $business, float $base, array $data): array
     {
+        // Interno, como delivery_fee_override: un pedido online ya le cotizo
+        // al comprador su propina e impoconsumo, y la venta cobra esos mismos
+        // montos aunque la configuracion cambie entre el pedido y su
+        // confirmacion. Ningun FormRequest lo valida, asi que no llega por HTTP.
+        if (array_key_exists('charges_override', $data)) {
+            return [(float) $data['charges_override'][0], (float) $data['charges_override'][1]];
+        }
+
         if (! $business->hasFeature('charges')) {
             return [0.0, 0.0];
         }
@@ -389,10 +397,11 @@ class SaleService
     }
 
     /**
-     * `delivery_fee_override` es para llamadores INTERNOS que ya cobraron el
-     * envio con otra tarifa (hoy: los pedidos de la tienda online, que cotizan
-     * `business_store_settings.shipping_flat_fee`, independiente del domicilio
-     * del mostrador). No sale del request HTTP a proposito -
+     * `delivery_fee_override` es para llamadores INTERNOS que ya le cotizaron
+     * el envio al cliente (hoy: los pedidos de la tienda online, que guardan
+     * el domicilio del negocio al momento de pedir; si la tarifa cambia antes
+     * de confirmar, se cobra la que el comprador vio). No sale del request
+     * HTTP a proposito -
      * StoreSaleRequest no lo valida, asi que un cajero no puede fijar el
      * monto del domicilio a mano; el resto de ventas sigue tomandolo de la
      * configuracion del negocio como siempre.

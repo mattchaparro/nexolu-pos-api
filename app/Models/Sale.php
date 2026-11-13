@@ -105,6 +105,12 @@ class Sale extends Model
         return $this->belongsTo(Discount::class, 'cart_discount_id');
     }
 
+    /** El pedido online del que salio esta venta, si salio de uno. */
+    public function onlineOrder(): HasOne
+    {
+        return $this->hasOne(Order::class, 'sale_id');
+    }
+
     public function table(): BelongsTo
     {
         return $this->belongsTo(BusinessTable::class, 'table_id');

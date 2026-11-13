@@ -45,6 +45,9 @@ class StoreStorefrontOrderRequest extends FormRequest
             'shipping_address' => ['required_if:is_pickup,false', 'nullable', 'string', 'max:200'],
             'shipping_city' => ['required_if:is_pickup,false', 'nullable', 'string', 'max:80'],
             'shipping_notes' => ['sometimes', 'nullable', 'string', 'max:400'],
+            // La propina es sugerida: el comprador puede quitarla. El monto
+            // igual lo calcula el servidor con la tasa del negocio.
+            'include_service_charge' => ['sometimes', 'boolean'],
         ];
     }
 

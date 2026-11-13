@@ -22,7 +22,6 @@ class BusinessStoreSettingsFactory extends Factory
             'store_name' => fake()->company(),
             'description' => fake()->optional()->sentence(),
             'primary_color' => '#4f46e5',
-            'shipping_flat_fee' => 0,
             'min_order_amount' => 0,
             'pickup_enabled' => false,
         ];
