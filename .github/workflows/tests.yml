@@ -71,6 +71,7 @@ jobs:
           mysql -h 127.0.0.1 -u root testing < database/legacy-schema/schema.sql
           php artisan migrate:baseline
           php artisan migrate --force
+          php artisan db:seed --class=RoleSeeder --force
           php artisan permissions:sync
 
       - name: Execute tests
