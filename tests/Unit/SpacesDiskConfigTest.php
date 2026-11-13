@@ -21,12 +21,12 @@ class SpacesDiskConfigTest extends TestCase
             'filesystems.disks.s3.bucket' => 'demo-bucket',
             'filesystems.disks.s3.endpoint' => 'https://nyc3.digitaloceanspaces.com',
             'filesystems.disks.s3.url' => 'https://demo-bucket.nyc3.cdn.digitaloceanspaces.com',
-            'filesystems.disks.s3.root' => 'pos-images',
+            'filesystems.disks.s3.root' => 'pos/pos-images',
         ]);
         Storage::forgetDisk('s3');
 
         $this->assertSame(
-            'https://demo-bucket.nyc3.cdn.digitaloceanspaces.com/pos-images/stores/7/abc.webp',
+            'https://demo-bucket.nyc3.cdn.digitaloceanspaces.com/pos/pos-images/stores/7/abc.webp',
             Storage::disk('s3')->url('stores/7/abc.webp'),
         );
     }
