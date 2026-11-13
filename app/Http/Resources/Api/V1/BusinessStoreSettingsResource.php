@@ -27,12 +27,14 @@ class BusinessStoreSettingsResource extends JsonResource
             'store_name' => $this->store_name,
             'description' => $this->description,
             'logo_url' => $this->logoUrl(),
+            'icon_url' => $this->iconUrl(),
             'banner_url' => $this->bannerUrl(),
             'primary_color' => $this->primary_color,
             'surface_color' => $this->surface_color,
             'accent_color' => $this->accent_color,
             'font_preset' => $this->font_preset,
-            'whatsapp_number' => $this->whatsapp_number,
+            // Del negocio (Ajustes → Negocio / perfil público), no de la tienda.
+            'whatsapp_number' => $this->publicWhatsapp(),
             'shipping_flat_fee' => (float) $this->shipping_flat_fee,
             'shipping_note' => $this->shipping_note,
             'delivery_estimate' => $this->delivery_estimate,
@@ -78,7 +80,7 @@ class BusinessStoreSettingsResource extends JsonResource
 
             'address' => $this->address,
             'opening_hours' => $this->opening_hours,
-            'instagram_url' => $this->instagram_url,
+            'instagram_url' => $this->publicInstagramUrl(),
             'facebook_url' => $this->facebook_url,
             // Para que la pantalla pueda mostrar (y copiar) la direccion
             // publica sin tener que componerla a mano.

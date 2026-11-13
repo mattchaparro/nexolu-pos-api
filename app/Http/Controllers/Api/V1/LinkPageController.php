@@ -59,23 +59,12 @@ class LinkPageController extends Controller
             }
         }
 
-        // Redes: viven en el negocio (Ajustes → Negocio) para que salgan en
-        // todo lado. Si la tienda tiene su propio Instagram/WhatsApp, ese
-        // gana en la página pública (LinkPageService), así que se actualiza
-        // también: si no, el cambio no se vería.
-        if (array_key_exists('instagram', $data)) {
-            $business->instagram_handle = filled($data['instagram']) ? trim((string) $data['instagram']) : null;
-            if (filled($settings->instagram_url)) {
-                $settings->instagram_url = $this->linkPage->instagramUrl($business->instagram_handle);
-            }
-        }
-        if (array_key_exists('tiktok', $data)) {
-            $business->tiktok_handle = filled($data['tiktok']) ? trim((string) $data['tiktok']) : null;
-        }
-        if (array_key_exists('whatsapp', $data)) {
-            $business->whatsapp_number = filled($data['whatsapp']) ? trim((string) $data['whatsapp']) : null;
-            if (filled($settings->whatsapp_number)) {
-                $settings->whatsapp_number = $business->whatsapp_number;
+        // WhatsApp, Instagram y TikTok son del negocio (Ajustes → Negocio): un
+        // solo dato que leen la tienda, esta página y los recibos. La tienda
+        // ya no guarda copia propia, así que escribir aquí basta.
+        foreach (['instagram' => 'instagram_handle', 'tiktok' => 'tiktok_handle', 'whatsapp' => 'whatsapp_number'] as $input => $column) {
+            if (array_key_exists($input, $data)) {
+                $business->{$column} = filled($data[$input]) ? trim((string) $data[$input]) : null;
             }
         }
 
@@ -86,10 +75,32 @@ class LinkPageController extends Controller
     }
 
     /**
-     * Logo de la página. Es la misma ranura que el logo de la tienda: un
-     * negocio tiene un logo, no uno por pantalla.
+     * Logo de la marca: el horizontal, con el nombre escrito (cabecera de la
+     * tienda). Es la misma ranura que en el editor de la tienda: un negocio
+     * tiene un logo, no uno por pantalla.
      */
     public function uploadLogo(Request $request): JsonResponse
+    {
+        return $this->storeImage($request, 'logo_path');
+    }
+
+    public function deleteLogo(Request $request): JsonResponse
+    {
+        return $this->removeImage($request, 'logo_path');
+    }
+
+    /** Ícono cuadrado: el círculo de la página de enlaces. */
+    public function uploadIcon(Request $request): JsonResponse
+    {
+        return $this->storeImage($request, 'icon_path');
+    }
+
+    public function deleteIcon(Request $request): JsonResponse
+    {
+        return $this->removeImage($request, 'icon_path');
+    }
+
+    private function storeImage(Request $request, string $column): JsonResponse
     {
         $request->validate([
             // `image` obliga a que sea decodificable; SVG queda fuera porque
@@ -105,17 +116,19 @@ class LinkPageController extends Controller
             thumbnailDimension: null,
         );
 
-        $this->images->delete($settings->disk, [$settings->logo_path]);
-        $settings->update(['disk' => $stored['disk'], 'logo_path' => $stored['path']]);
+        // `disk` es uno solo para todas las imágenes de la fila: si el
+        // anterior estaba en otro disco, se borra de ese antes de cambiarlo.
+        $this->images->delete($settings->disk, [$settings->{$column}]);
+        $settings->update(['disk' => $stored['disk'], $column => $stored['path']]);
 
         return response()->json($this->state($settings->fresh()));
     }
 
-    public function deleteLogo(Request $request): JsonResponse
+    private function removeImage(Request $request, string $column): JsonResponse
     {
         $settings = $this->settingsFor($request);
-        $this->images->delete($settings->disk, [$settings->logo_path]);
-        $settings->update(['logo_path' => null]);
+        $this->images->delete($settings->disk, [$settings->{$column}]);
+        $settings->update([$column => null]);
 
         return response()->json($this->state($settings->fresh()));
     }
@@ -151,9 +164,12 @@ class LinkPageController extends Controller
                 'surface_color' => $theme['surface'],
                 'font_preset' => $theme['font'],
                 'has_logo' => filled($settings->logo_path),
-                'instagram' => $business->instagram_handle,
+                'has_icon' => filled($settings->icon_path),
+                'logo_url' => $settings->logoUrl(),
+                'icon_url' => $settings->iconUrl(),
+                'instagram' => $business->instagram_handle ?: $settings->instagram_url,
                 'tiktok' => $business->tiktok_handle,
-                'whatsapp' => $settings->whatsapp_number ?: $business->whatsapp_number,
+                'whatsapp' => $business->whatsapp_number ?: $settings->whatsapp_number,
                 'facebook_url' => $settings->facebook_url,
             ],
         ];

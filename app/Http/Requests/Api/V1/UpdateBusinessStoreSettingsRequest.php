@@ -41,7 +41,9 @@ class UpdateBusinessStoreSettingsRequest extends FormRequest
             // Catalogo cerrado: la clave se traduce a familias concretas en el
             // storefront, asi que un valor libre romperia la tipografia.
             'font_preset' => ['sometimes', Rule::in(BusinessStoreSettings::FONT_PRESETS)],
-            'whatsapp_number' => ['sometimes', 'nullable', 'string', 'max:20'],
+            // WhatsApp e Instagram ya no se aceptan aquí: son del negocio y se
+            // editan en PUT /link-page o en Ajustes (ver BusinessStoreSettings::publicWhatsapp).
+            // Una pestaña vieja que los mande se ignora en vez de pisar el dato bueno.
             'shipping_flat_fee' => ['sometimes', 'numeric', 'min:0'],
             'shipping_note' => ['sometimes', 'nullable', 'string', 'max:160'],
             'delivery_estimate' => ['sometimes', 'nullable', 'string', 'max:120'],
@@ -90,7 +92,6 @@ class UpdateBusinessStoreSettingsRequest extends FormRequest
             'address' => ['sometimes', 'nullable', 'string', 'max:200'],
             'opening_hours' => ['sometimes', 'nullable', 'string', 'max:120'],
             // url estricta: son enlaces que se pintan en la tienda publica.
-            'instagram_url' => ['sometimes', 'nullable', 'url', 'max:255'],
             'facebook_url' => ['sometimes', 'nullable', 'url', 'max:255'],
         ];
     }

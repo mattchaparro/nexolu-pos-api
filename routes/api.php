@@ -322,6 +322,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::put('/link-page', [LinkPageController::class, 'update'])->name('link-page.update');
             Route::post('/link-page/logo', [LinkPageController::class, 'uploadLogo'])->name('link-page.logo.store');
             Route::delete('/link-page/logo', [LinkPageController::class, 'deleteLogo'])->name('link-page.logo.destroy');
+            Route::post('/link-page/icon', [LinkPageController::class, 'uploadIcon'])->name('link-page.icon.store');
+            Route::delete('/link-page/icon', [LinkPageController::class, 'deleteIcon'])->name('link-page.icon.destroy');
             Route::put('/business/payment-methods', [PosPaymentMethodController::class, 'update'])->name('business.payment-methods.update');
         });
 

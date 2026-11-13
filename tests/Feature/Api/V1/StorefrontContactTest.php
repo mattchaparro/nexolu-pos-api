@@ -79,6 +79,26 @@ class StorefrontContactTest extends TestCase
         $this->assertStringNotContainsString('sitio-malicioso', (string) $response->headers->get('Location'));
     }
 
+    /** El WhatsApp es del negocio: si lo cambió en Ajustes, la tienda lo usa. */
+    public function test_the_business_whatsapp_wins_over_the_old_store_copy(): void
+    {
+        $this->business->update(['whatsapp_number' => '310 999 8888']);
+
+        $this->get("/api/v1/storefront/{$this->business->slug}/whatsapp")
+            ->assertRedirectContains('wa.me/573109998888');
+    }
+
+    public function test_the_business_whatsapp_is_enough_without_any_store_copy(): void
+    {
+        $this->business->update(['whatsapp_number' => '3109998888']);
+        BusinessStoreSettings::withoutGlobalScopes()
+            ->where('business_id', $this->business->id)
+            ->update(['whatsapp_number' => null]);
+
+        $this->get("/api/v1/storefront/{$this->business->slug}/whatsapp")
+            ->assertRedirectContains('wa.me/573109998888');
+    }
+
     public function test_a_context_with_a_strange_shape_is_rejected(): void
     {
         $this->getJson("/api/v1/storefront/{$this->business->slug}/whatsapp?context=".urlencode('<script>alert(1)</script>'))

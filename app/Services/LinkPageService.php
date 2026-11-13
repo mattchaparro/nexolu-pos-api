@@ -5,14 +5,16 @@ namespace App\Services;
 use App\Models\Business;
 use App\Models\BusinessStoreSettings;
 use App\Support\ChannelPhone;
+use App\Support\SocialProfile;
 
 /**
  * La página de enlaces del negocio (la de la bio de Instagram o TikTok).
  *
  * Es para todos los negocios, no solo los que tienen tienda online: junta lo
- * que el negocio ya tiene configurado. Cada dato sale primero de la tienda
- * (si la tiene, es lo que el comerciante cuidó para el público) y si no, de
- * Ajustes del negocio. Lo único propio de esta página son `bio_links`.
+ * que el negocio ya tiene configurado. WhatsApp, Instagram y TikTok son del
+ * negocio (un solo dato para todo); nombre, descripción, logos y estilo son
+ * de la marca y se comparten con la tienda. Lo único propio de esta página
+ * son `bio_links`.
  */
 class LinkPageService
 {
@@ -39,7 +41,7 @@ class LinkPageService
 
     public function whatsappNumber(Business $business, ?BusinessStoreSettings $settings): ?string
     {
-        return ChannelPhone::normalize((string) ($settings?->whatsapp_number ?: $business->whatsapp_number ?: ''));
+        return ChannelPhone::normalize((string) ($business->whatsapp_number ?: $settings?->whatsapp_number ?: ''));
     }
 
     public function publicUrl(Business $business): string
@@ -61,41 +63,21 @@ class LinkPageService
             'slug' => $business->slug,
             'name' => $settings?->store_name ?: $business->name,
             'description' => $settings?->description,
+            // Dos logos: el de la marca (horizontal, con el nombre) y un ícono
+            // cuadrado. La página usa el ícono en su círculo; si no hay,
+            // pinta el logo sin recortarlo.
             'logo_url' => $settings?->logoUrl() ?: ($business->logo_path ? asset($business->logo_path) : null),
+            'icon_url' => $settings?->iconUrl(),
             'theme' => $theme,
             'has_store' => $this->hasOpenStore($business, $settings),
             'has_whatsapp' => $this->whatsappNumber($business, $settings) !== null,
-            'instagram_url' => $settings?->instagram_url ?: $this->instagramUrl($business->instagram_handle),
-            'tiktok_url' => $this->profileUrl('https://www.tiktok.com/@', $business->tiktok_handle),
+            'instagram_url' => SocialProfile::instagram($business->instagram_handle)
+                ?? SocialProfile::instagram($settings?->instagram_url),
+            'tiktok_url' => SocialProfile::tiktok($business->tiktok_handle),
             'facebook_url' => $settings?->facebook_url,
             'address' => $settings?->address ?: $business->address,
             'opening_hours' => $settings?->opening_hours,
             'bio_links' => array_values($settings?->bio_links ?? []),
         ];
-    }
-
-    /** URL del perfil de Instagram a partir de lo que escribió el usuario. */
-    public function instagramUrl(?string $handle): ?string
-    {
-        return $this->profileUrl('https://www.instagram.com/', $handle);
-    }
-
-    /**
-     * En Ajustes el usuario escribe "@mitienda", "mitienda" o pega la URL
-     * completa: los tres tienen que terminar en el mismo enlace.
-     */
-    private function profileUrl(string $base, ?string $handle): ?string
-    {
-        $handle = trim((string) $handle);
-        if ($handle === '') {
-            return null;
-        }
-        if (preg_match('#^https?://#i', $handle)) {
-            return $handle;
-        }
-
-        $handle = ltrim($handle, '@');
-
-        return preg_match('/^[A-Za-z0-9._]{1,60}$/', $handle) ? $base.$handle : null;
     }
 }
