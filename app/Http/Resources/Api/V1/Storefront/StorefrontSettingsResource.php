@@ -54,6 +54,8 @@ class StorefrontSettingsResource extends JsonResource
             'delivery_estimate' => $this->delivery_estimate,
             'min_order_amount' => (float) $this->min_order_amount,
             'pickup_enabled' => (bool) $this->pickup_enabled,
+            // Solo menú: se ve la carta pero no se piden productos.
+            'menu_mode' => (bool) $this->menu_mode,
             // Si el comprador va a pagar en la pasarela o a coordinar el
             // pago con la tienda. Solo el hecho, nunca con que proveedor:
             // eso es informacion del comercio, no del comprador.

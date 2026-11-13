@@ -125,6 +125,14 @@ class OrderService
             $isPickup = (bool) ($data['is_pickup'] ?? false);
             $settings = $business->storeSettings()->withoutGlobalScope('business')->first();
 
+            // Modo menú: la tienda solo muestra la carta. Esconder el carrito en
+            // la pantalla no basta, cualquiera puede llamar al endpoint.
+            if ($settings?->menu_mode) {
+                throw ValidationException::withMessages([
+                    'items' => 'Este negocio muestra su menú pero todavía no recibe pedidos por aquí.',
+                ]);
+            }
+
             $lines = $this->resolveLines($business, $data['items']);
             $subtotal = array_sum(array_column($lines, 'subtotal'));
 
@@ -344,7 +352,20 @@ class OrderService
             $from = $order->status;
 
             if ($status === Order::STATUS_CONFIRMED) {
-                $sale = $this->createSaleFor($actor, $order, $paymentMethod);
+                // Con comandera, el pedido nace como cuenta abierta: aparece en la
+                // pantalla de cocina y se cobra al entregarlo, como cualquier
+                // domicilio. Sin comandera (o ya pagado en línea) se crea la venta
+                // cerrada de siempre.
+                if ($this->sendsToKitchen($order)) {
+                    // El medio de pago se elige al cobrar la cuenta, pero si llega uno
+                    // se valida igual: no se acepta algo que el negocio no tiene.
+                    if ($paymentMethod !== null) {
+                        $order->business->assertValidPaymentMethod($paymentMethod, forbidCredit: true);
+                    }
+                    $sale = $this->openTabFor($actor, $order);
+                } else {
+                    $sale = $this->createSaleFor($actor, $order, $paymentMethod);
+                }
                 $order->update([
                     'status' => $status,
                     'sale_id' => $sale->id,
@@ -390,6 +411,56 @@ class OrderService
      * negocio que no lo tenga (asi se encontro este bug: 'transfer'
      * hardcodeado contra un negocio con cash/nequi/daviplata/credit).
      */
+    /**
+     * Un pedido va a la comandera cuando el negocio la usa y todavía no está
+     * pagado: una cuenta abierta se cobra al cerrarla, y un pedido que ya
+     * pagó la pasarela no tiene nada que cobrar en el mostrador.
+     */
+    public function sendsToKitchen(Order $order): bool
+    {
+        return $order->business->hasFeature('kitchen_board') && $order->paid_at === null;
+    }
+
+    /**
+     * La cuenta abierta del pedido, con todo lo que cocina y domicilio
+     * necesitan saber en la nota: número del pedido, a dónde va y lo que el
+     * comprador escribió.
+     */
+    private function openTabFor(User $actor, Order $order): Sale
+    {
+        $items = $order->items->map(fn (OrderItem $item) => array_filter([
+            'product_id' => $item->product_id,
+            'product_variant_id' => $item->product_variant_id,
+            'quantity' => $item->quantity,
+        ], fn ($value) => $value !== null))->all();
+
+        return app(OpenTabService::class)->openTab($actor, [
+            'items' => $items,
+            'customer_name' => $order->customer_name,
+            'customer_phone' => $order->customer_phone,
+            'client_id' => $order->client_id,
+            'notes' => $this->kitchenNote($order),
+            'is_delivery' => ! $order->is_pickup,
+            'delivery_fee_override' => (float) $order->shipping_fee,
+            'cart_discount_id' => $order->discount_id,
+            'cart_discount_amount' => (float) $order->discount_amount,
+        ]);
+    }
+
+    private function kitchenNote(Order $order): string
+    {
+        $parts = ["Pedido online #{$order->number}"];
+        $parts[] = $order->is_pickup
+            ? 'Recoge en el local'
+            : 'Domicilio: '.trim($order->shipping_address.', '.$order->shipping_city, ', ');
+        if (filled($order->shipping_notes)) {
+            $parts[] = 'Nota: '.trim((string) $order->shipping_notes);
+        }
+
+        // sales.notes es varchar(255).
+        return mb_substr(implode(' · ', $parts), 0, 255);
+    }
+
     private function createSaleFor(User $actor, Order $order, ?string $paymentMethod): Sale
     {
         $business = $order->business;

@@ -20,6 +20,10 @@ class KitchenTicketResource extends JsonResource
             'id' => $this->id,
             'table_name' => $this->table?->name,
             'customer_name' => $this->customer_name,
+            'customer_phone' => $this->customer_phone,
+            // La nota de la cuenta ("sin cebolla", "alergia a la nuez", dirección
+            // del domicilio): quien cocina tiene que verla en la comanda.
+            'notes' => $this->notes,
             'is_delivery' => (bool) $this->is_delivery,
             'kitchen_status' => KitchenBoardService::normalizeStatus($this->kitchen_status),
             'created_at' => $this->created_at?->format('H:i'),

@@ -49,6 +49,7 @@ class UpdateBusinessStoreSettingsRequest extends FormRequest
             'delivery_estimate' => ['sometimes', 'nullable', 'string', 'max:120'],
             'min_order_amount' => ['sometimes', 'numeric', 'min:0'],
             'pickup_enabled' => ['sometimes', 'boolean'],
+            'menu_mode' => ['sometimes', 'boolean'],
             // El home: una lista ordenada de bloques tipados. Cada tipo
             // trae sus reglas de StoreHomeBlocks para que agregar un bloque
             // nuevo no obligue a tocar este archivo.

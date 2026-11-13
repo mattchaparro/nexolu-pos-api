@@ -45,7 +45,9 @@ class StorefrontOrderTest extends TestCase
 
         $this->business = Business::factory()->create([
             'subscription_plan' => 'full',
-            'feature_flags' => [...BusinessFeaturePresets::full(), 'online_store' => true],
+            // Sin comandera: aquí se prueba la venta cerrada al confirmar. El flujo
+            // con comandera (cuenta abierta) vive en OnlineOrderKitchenTest.
+            'feature_flags' => [...BusinessFeaturePresets::full(), 'online_store' => true, 'kitchen_board' => false],
         ]);
         BusinessStoreSettings::factory()->create([
             'business_id' => $this->business->id,

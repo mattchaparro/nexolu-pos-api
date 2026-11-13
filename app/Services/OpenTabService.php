@@ -31,8 +31,15 @@ class OpenTabService
     {
         return DB::transaction(function () use ($user, $data) {
             $business = $user->business;
-            $isDelivery = (bool) $business->delivery_enabled && (bool) ($data['is_delivery'] ?? false);
-            $deliveryFee = $isDelivery ? (float) $business->delivery_fee : 0.0;
+            // Un pedido online trae su propia tarifa de envío (la que se le cotizó
+            // al comprador) y no depende de que el mostrador tenga domicilio
+            // activado: por eso `delivery_fee_override` manda sobre el negocio.
+            // Ningún formulario del POS lo envía; solo lo arma OrderService.
+            $hasOwnFee = array_key_exists('delivery_fee_override', $data);
+            $isDelivery = (bool) ($data['is_delivery'] ?? false) && ($hasOwnFee || (bool) $business->delivery_enabled);
+            $deliveryFee = $isDelivery
+                ? (float) ($hasOwnFee ? $data['delivery_fee_override'] : $business->delivery_fee)
+                : 0.0;
 
             $sale = Sale::create([
                 'business_id' => $business->id,
@@ -55,7 +62,7 @@ class OpenTabService
             $total = $this->saleService->applyItems($user, $sale, $business, $data['items']);
 
             [$cartDiscountId, $cartDiscountAmount, $total] = $this->saleService->applyCartDiscount(
-                $business, $total, $data['cart_discount_id'] ?? null
+                $business, $total, $data['cart_discount_id'] ?? null, $data['cart_discount_amount'] ?? null
             );
 
             $sale->update([

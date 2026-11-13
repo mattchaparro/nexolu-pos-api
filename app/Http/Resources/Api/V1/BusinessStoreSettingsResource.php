@@ -40,6 +40,7 @@ class BusinessStoreSettingsResource extends JsonResource
             'delivery_estimate' => $this->delivery_estimate,
             'min_order_amount' => (float) $this->min_order_amount,
             'pickup_enabled' => (bool) $this->pickup_enabled,
+            'menu_mode' => (bool) $this->menu_mode,
             // La pagina de inicio, tal cual esta guardada: con los ids de
             // imagen SIN resolver, al reves que el Resource publico. El
             // editor necesita el id para saber que foto esta elegida; el
