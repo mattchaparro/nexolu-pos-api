@@ -39,4 +39,12 @@ docker compose exec -T pos-web php artisan permissions:sync
 echo "==> Confirmando que el worker de cola quedo arriba (no queue:listen)"
 docker compose logs --tail=5 pos-queue
 
+# La caché de build crecía sin límite: cada deploy dejaba sus capas
+# (236 entradas, 4,6 GB el 2026-11-12) y dockerd llegó a ocupar ~500 MB de
+# RAM en un droplet de 2 GB, empujando a MySQL al swap. Se conserva hasta
+# 1 GB (lo del último build, para que el siguiente siga siendo rápido) y se
+# borra lo demás. Solo caché de build: no toca imágenes en uso ni volúmenes.
+echo "==> Recortando la caché de build de Docker"
+docker builder prune -f --max-used-space 1gb >/dev/null || true
+
 echo "==> Listo. Verificar: curl -s https://pos-backend.nexolu.co/up"
