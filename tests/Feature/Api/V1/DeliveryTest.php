@@ -88,7 +88,14 @@ class DeliveryTest extends TestCase
         ])->assertCreated()->json('id');
     }
 
-    public function test_a_counter_delivery_is_ready_to_take_with_its_address(): void
+    private function kitchenReady(int $saleId): void
+    {
+        $this->actingAs($this->owner, 'sanctum')
+            ->postJson("/api/v1/kitchen/tickets/{$saleId}/status", ['kitchen_status' => 'ready'])
+            ->assertOk();
+    }
+
+    public function test_a_counter_delivery_goes_through_the_kitchen_before_the_courier(): void
     {
         $saleId = $this->counterDelivery();
         $this->actingAs($this->owner, 'sanctum')->postJson('/api/v1/sales', [
@@ -96,7 +103,18 @@ class DeliveryTest extends TestCase
             'items' => [['product_id' => $this->product->id, 'quantity' => 1]],
         ])->assertCreated();
 
-        $this->actingAs($this->courier(), 'sanctum')
+        // La venta del mostrador sin domicilio no va a cocina; la de domicilio si.
+        $this->actingAs($this->owner, 'sanctum')->getJson('/api/v1/kitchen/tickets')
+            ->assertJsonCount(1)
+            ->assertJsonPath('0.id', $saleId)
+            ->assertJsonPath('0.delivery_address', 'Calle 10 # 5-20, Sibaté');
+        $courier = $this->courier();
+        $this->actingAs($courier, 'sanctum')->getJson('/api/v1/deliveries')
+            ->assertJsonPath('0.is_ready', false);
+
+        $this->kitchenReady($saleId);
+
+        $this->actingAs($courier, 'sanctum')
             ->getJson('/api/v1/deliveries')
             ->assertOk()
             ->assertJsonCount(1)
@@ -111,6 +129,7 @@ class DeliveryTest extends TestCase
     public function test_the_courier_takes_it_and_only_they_mark_it_delivered(): void
     {
         $saleId = $this->counterDelivery();
+        $this->kitchenReady($saleId);
         $pedro = $this->courier('Pedro');
         $juan = $this->courier('Juan');
 
@@ -129,9 +148,11 @@ class DeliveryTest extends TestCase
             ->assertOk()
             ->assertJsonPath('status', 'delivered');
 
-        // Los entregados de hoy siguen en la lista, para cuadrar la plata.
+        // Los entregados de hoy siguen en la lista, para cuadrar la plata, y
+        // ya no estan en la comandera.
         $this->actingAs($pedro, 'sanctum')->getJson('/api/v1/deliveries')
             ->assertJsonPath('0.status', 'delivered');
+        $this->actingAs($this->owner, 'sanctum')->getJson('/api/v1/kitchen/tickets')->assertJsonCount(0);
     }
 
     public function test_without_the_permission_an_employee_cannot_see_deliveries(): void
@@ -202,6 +223,27 @@ class DeliveryTest extends TestCase
             ->assertJsonPath('0.is_open_tab', true)
             ->assertJsonPath('0.is_ready', true)
             ->assertJsonPath('0.total', 24000);
+    }
+
+    public function test_a_sale_with_name_and_phone_creates_the_client_or_reuses_it(): void
+    {
+        $first = $this->counterDelivery(['customer_name' => 'Rosa Nueva', 'customer_phone' => '3109998877']);
+        $client = Client::query()->where('phone', '3109998877')->firstOrFail();
+        $this->assertSame('Rosa Nueva', $client->name);
+        $this->assertSame($client->id, Sale::findOrFail($first)->client_id);
+        $this->assertSame('Calle 10 # 5-20, Sibaté', $client->address, 'Su primera entrega queda como su direccion');
+
+        // Mismo telefono: la misma ficha, no una repetida.
+        $second = $this->counterDelivery(['customer_name' => 'Rosa', 'customer_phone' => '3109998877']);
+        $this->assertSame($client->id, Sale::findOrFail($second)->client_id);
+        $this->assertSame(1, Client::query()->where('phone', '3109998877')->count());
+
+        // Solo el nombre (la cuenta "Juan" de una mesa) no crea ficha.
+        $this->actingAs($this->owner, 'sanctum')->postJson('/api/v1/sales', [
+            'payment_method' => 'cash',
+            'customer_name' => 'Juan',
+            'items' => [['product_id' => $this->product->id, 'quantity' => 1]],
+        ])->assertCreated()->assertJsonPath('client_id', null);
     }
 
     public function test_the_client_keeps_a_usual_address_apart_from_each_delivery(): void

@@ -44,7 +44,9 @@ class SaleService
                 'customer_name' => $data['customer_name'] ?? null,
                 'customer_phone' => $data['customer_phone'] ?? null,
                 'customer_identification' => $data['customer_identification'] ?? null,
-                'client_id' => $data['client_id'] ?? null,
+                'client_id' => app(ClientDirectoryService::class)->resolveForSale(
+                    $business, $data['client_id'] ?? null, $data['customer_name'] ?? null, $data['customer_phone'] ?? null,
+                ),
                 'is_delivery' => $flags['is_delivery'],
                 'delivery_fee' => $flags['delivery_fee'],
                 'delivery_address' => $flags['is_delivery'] && filled($data['delivery_address'] ?? null) ? trim($data['delivery_address']) : null,
@@ -96,6 +98,13 @@ class SaleService
                 'service_charge_amount' => $serviceChargeAmount,
                 'ipoconsumo_amount' => $ipoconsumoAmount,
             ]);
+
+            // Un domicilio vendido en el mostrador (pedido por telefono) se
+            // cocina igual que una mesa: va a la comandera, y el domiciliario
+            // lo puede tomar cuando la cocina lo marca listo.
+            if ($flags['is_delivery'] && $business->hasFeature('kitchen_board')) {
+                app(KitchenBoardService::class)->sendToKitchen($sale);
+            }
 
             return Telemetry::span('sale.finalize', 'Consecutivo, cuenta por cobrar y respuesta', function () use ($sale) {
                 $this->ensureInvoiceNumber($sale);

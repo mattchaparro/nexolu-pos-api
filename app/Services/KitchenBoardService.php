@@ -12,8 +12,8 @@ use Illuminate\Validation\ValidationException;
 /**
  * Comandera de cocina: seguimiento de preparacion por item.
  *
- * Entran dos cosas: las cuentas abiertas (mesas/comandas, salen al cobrarse)
- * y los pedidos online confirmados. Un pedido online NO es una cuenta
+ * Entran las cuentas abiertas (mesas/comandas, salen al cobrarse), los
+ * pedidos online confirmados y los domicilios vendidos en el mostrador. Un pedido online NO es una cuenta
  * abierta: su venta ya esta cerrada (lo pago la pasarela o el negocio
  * verifico el pago), y sale de la comandera cuando se despacha o se entrega.
  */
@@ -39,9 +39,14 @@ class KitchenBoardService
             ->where('business_id', $businessId)
             ->where(fn (Builder $query) => $query
                 ->where('status', 'open')
-                ->orWhere(fn (Builder $online) => $online
+                // Ventas ya cobradas que la cocina todavia tiene que hacer: un
+                // pedido online que no ha salido, o un domicilio del mostrador
+                // que el domiciliario no ha tomado.
+                ->orWhere(fn (Builder $paid) => $paid
                     ->whereNotNull('kitchen_status')
-                    ->whereHas('onlineOrder', fn (Builder $order) => $order->whereIn('status', self::ORDER_IN_KITCHEN))))
+                    ->where(fn (Builder $pending) => $pending
+                        ->whereHas('onlineOrder', fn (Builder $order) => $order->whereIn('status', self::ORDER_IN_KITCHEN))
+                        ->orWhere('delivery_status', DeliveryService::STATUS_PENDING))))
             // Un domicilio que ya tomo el domiciliario salio de la cocina.
             ->where(fn (Builder $query) => $query
                 ->whereNull('delivery_status')
