@@ -374,7 +374,15 @@ class OpenTabService
             $deliveryFee = (float) $sale->delivery_fee;
             if (array_key_exists('is_delivery', $data) && $business->delivery_enabled) {
                 $isDelivery = (bool) $data['is_delivery'];
-                $deliveryFee = $isDelivery ? (float) $business->delivery_fee : 0.0;
+                // Si ya era domicilio conserva la tarifa con la que se abrio:
+                // la de un pedido del menu digital (envio de la tienda) no es
+                // la del POS, y el comprador ya acepto ese total. La del
+                // negocio solo aplica cuando el domicilio se marca al cobrar.
+                $deliveryFee = match (true) {
+                    ! $isDelivery => 0.0,
+                    (bool) $sale->is_delivery => (float) $sale->delivery_fee,
+                    default => (float) $business->delivery_fee,
+                };
             }
 
             [$serviceChargeAmount, $ipoconsumoAmount] = $this->saleService->resolveCharges(

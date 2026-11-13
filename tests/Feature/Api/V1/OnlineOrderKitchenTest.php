@@ -181,6 +181,26 @@ class OnlineOrderKitchenTest extends TestCase
         $this->assertNull($order->fresh()->sale_id);
     }
 
+    public function test_closing_the_tab_keeps_the_shipping_fee_the_buyer_saw(): void
+    {
+        // Ensayo del 13-nov: el menu cobraba $5.000 de envio, el POS tiene
+        // $500 de domicilio, y al cobrar la cuenta el total bajaba.
+        $this->business->update(['delivery_enabled' => true, 'delivery_fee' => 500, 'service_charge_enabled' => false]);
+        $product = $this->product($this->business, 17000);
+
+        $this->checkout($this->business, [
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->assertCreated();
+        $sale = Sale::findOrFail($this->confirm($this->business)->sale_id);
+        $this->assertSame('21000.00', $sale->total);
+
+        $this->actingAs($this->owner, 'sanctum')
+            ->postJson("/api/v1/open-tabs/{$sale->id}/close", ['payment_method' => 'cash', 'is_delivery' => true])
+            ->assertOk()
+            ->assertJsonPath('delivery_fee', '4000.00')
+            ->assertJsonPath('total', '21000.00');
+    }
+
     public function test_a_pickup_order_is_not_a_delivery_and_says_so_in_the_note(): void
     {
         $product = $this->product($this->business);
