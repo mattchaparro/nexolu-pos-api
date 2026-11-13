@@ -57,6 +57,15 @@ class Sale extends Model
 {
     use BelongsToBranch, BelongsToBusiness, HasFactory, NormalizesPaymentMethod;
 
+    /**
+     * Medio reservado de lo que cobro la pasarela (Bold, Wompi) en un pedido
+     * online cuando el negocio no tiene ese medio en su catalogo (si lo
+     * tiene, se usa el suyo: ver Business::onlinePaymentMethodFor). Como
+     * 'financiado', no es del catalogo: esa plata llega a la cuenta de la
+     * pasarela, no a la caja ni a Nequi, y se muestra aparte.
+     */
+    public const ONLINE_PAYMENT_METHOD = 'online';
+
     protected function casts(): array
     {
         return [

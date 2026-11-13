@@ -47,6 +47,7 @@ class SalesReportService
             'user:id,name',
             'table:id,name',
             'paymentSplits',
+            'onlineOrder:id,sale_id,number,paid_at,payment_provider',
         ];
 
         $closedSales = Sale::where('business_id', $businessId)
@@ -158,6 +159,9 @@ class SalesReportService
             'is_non_revenue' => (bool) $s->is_non_revenue,
             'is_credit' => (bool) $s->is_credit,
             'table_name' => $s->table?->name,
+            // De donde salio: un pedido online (con su numero) o un domicilio.
+            'order_number' => $s->onlineOrder?->number,
+            'is_delivery' => (bool) $s->is_delivery,
             'customer_name' => $s->customer_name,
             'customer_phone' => $s->customer_phone,
             'user_name' => $s->user?->name,
@@ -249,6 +253,19 @@ class SalesReportService
             'open_total' => (float) $openSales->sum('total'),
             'total_all' => $closedSales->count() + $openSales->count(),
             'courtesy_total' => $courtesyTotal,
+            // Lo que el total ya incluye y conviene ver aparte: cuanto vino de
+            // pedidos online, cuanto fue envio, cuanto es propina (es del
+            // equipo) y cuanto impoconsumo (es del Estado).
+            'online_orders' => [
+                'count' => $revenueSales->filter(fn (Sale $s) => $s->onlineOrder !== null)->count(),
+                'total' => round((float) $revenueSales->filter(fn (Sale $s) => $s->onlineOrder !== null)->sum('total'), 2),
+            ],
+            'deliveries' => [
+                'count' => $revenueSales->where('is_delivery', true)->count(),
+                'fees_total' => round((float) $revenueSales->where('is_delivery', true)->sum('delivery_fee'), 2),
+            ],
+            'service_charge_total' => round((float) $revenueSales->sum('service_charge_amount'), 2),
+            'ipoconsumo_total' => round((float) $revenueSales->sum('ipoconsumo_amount'), 2),
             'total_discounts_day' => (float) $closedSales->sum(
                 fn ($s) => $s->items->sum('discount_amount') + $s->cart_discount_amount
             ),

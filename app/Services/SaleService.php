@@ -124,6 +124,12 @@ class SaleService
             return [$method, $business->isCreditPaymentMethod($method)];
         }
 
+        // Interno (ningun FormRequest lo valida): un pedido que ya cobro la
+        // pasarela queda con su medio reservado, no con uno del negocio.
+        if (! empty($data['paid_online'])) {
+            return [(string) $data['paid_online'], false];
+        }
+
         if (! empty($data['payment_method'])) {
             $method = strtolower(trim((string) $data['payment_method']));
             $business->assertValidPaymentMethod($method);

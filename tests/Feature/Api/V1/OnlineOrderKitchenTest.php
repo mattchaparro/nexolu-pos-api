@@ -144,7 +144,9 @@ class OnlineOrderKitchenTest extends TestCase
 
         $order->refresh();
         $this->assertNotNull($order->paid_at);
-        $this->assertNotSame('open', Sale::withoutGlobalScopes()->findOrFail($order->sale_id)->status);
+        $sale = Sale::withoutGlobalScopes()->findOrFail($order->sale_id);
+        $this->assertNotSame('open', $sale->status);
+        $this->assertSame('online', $sale->payment_method, 'Sin Bold en su catalogo: "Pago en linea", nunca Nequi ni efectivo');
 
         $this->actingAs($this->owner, 'sanctum')
             ->getJson('/api/v1/kitchen/tickets')
@@ -152,6 +154,58 @@ class OnlineOrderKitchenTest extends TestCase
             ->assertJsonCount(1)
             ->assertJsonPath('0.online_order.number', $order->number)
             ->assertJsonPath('0.online_order.is_paid_online', true);
+    }
+
+    public function test_a_business_with_its_own_bold_method_gets_the_online_payment_there(): void
+    {
+        // El QR o datafono Bold del mostrador y el cobro en linea caen en la
+        // misma cuenta: en el cierre son la misma fila.
+        $this->business->update(['payment_methods' => [
+            ['id' => 'cash', 'label' => 'Efectivo'],
+            ['id' => 'nequi', 'label' => 'Nequi'],
+            ['id' => 'bold_qr', 'label' => 'QR Bold'],
+        ]]);
+        $product = $this->product($this->business);
+        $this->checkout($this->business, ['items' => [['product_id' => $product->id, 'quantity' => 1]]])->assertCreated();
+        $order = Order::withoutGlobalScopes()->where('business_id', $this->business->id)->firstOrFail();
+        $order->forceFill(['payment_provider' => 'bold'])->save();
+
+        $this->assertTrue(app(OnlineOrderPaymentService::class)->approve($order));
+
+        $this->assertSame('qr_bold', Sale::withoutGlobalScopes()->findOrFail($order->fresh()->sale_id)->payment_method);
+    }
+
+    public function test_the_daily_summary_shows_online_orders_deliveries_and_tips_apart(): void
+    {
+        $this->business->update(['service_charge_enabled' => true, 'service_charge_rate' => 10]);
+        $product = $this->product($this->business, 20000);
+
+        // Uno pagado en linea y uno cobrado a mano, los dos a domicilio.
+        $this->checkout($this->business, ['items' => [['product_id' => $product->id, 'quantity' => 1]]])->assertCreated();
+        $paid = Order::withoutGlobalScopes()->where('business_id', $this->business->id)->firstOrFail();
+        $paid->forceFill(['payment_provider' => 'bold'])->save();
+        app(OnlineOrderPaymentService::class)->approve($paid);
+        $this->checkout($this->business, ['items' => [['product_id' => $product->id, 'quantity' => 1]]])->assertCreated();
+        $manual = Order::withoutGlobalScopes()->where('business_id', $this->business->id)->whereNull('sale_id')->firstOrFail();
+        $this->actingAs($this->owner, 'sanctum')
+            ->patchJson("/api/v1/orders/{$manual->id}/status", ['status' => Order::STATUS_CONFIRMED, 'payment_method' => 'cash'])
+            ->assertOk();
+
+        $summary = $this->actingAs($this->owner, 'sanctum')
+            ->getJson('/api/v1/reports/sales/daily?date='.today()->toDateString())
+            ->assertOk()
+            ->assertJsonPath('online_orders.count', 2)
+            ->assertJsonPath('online_orders.total', 52000)
+            ->assertJsonPath('deliveries.count', 2)
+            ->assertJsonPath('deliveries.fees_total', 8000)
+            ->assertJsonPath('service_charge_total', 4000)
+            ->json();
+
+        $online = collect($summary['payment_breakdown'])->firstWhere('id', 'online');
+        $this->assertSame('Pago en línea', $online['label']);
+        $this->assertEquals(26000, $online['total']);
+        $this->assertEquals(26000, collect($summary['payment_breakdown'])->firstWhere('id', 'cash')['total']);
+        $this->assertContains($paid->number, array_column($summary['recent_sales'], 'order_number'));
     }
 
     public function test_the_kitchen_ticket_carries_the_notes_of_the_order(): void

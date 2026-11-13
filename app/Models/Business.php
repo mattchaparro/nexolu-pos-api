@@ -423,6 +423,29 @@ class Business extends Model
         return ($this->financing_payout_mode ?? self::FINANCING_PAYOUT_ON_SALE) === self::FINANCING_PAYOUT_ON_SALE;
     }
 
+    /**
+     * Con que medio queda una venta que cobro la pasarela `$provider` (bold,
+     * wompi). Si el negocio ya tiene ese medio (su QR o datafono Bold en el
+     * mostrador), es el mismo: la plata cae en la misma cuenta y el cierre
+     * la tiene que ver junta. Si no, el reservado "Pago en linea" -- nunca
+     * uno del negocio que no sea de la pasarela (Nequi, efectivo).
+     */
+    public function onlinePaymentMethodFor(?string $provider): string
+    {
+        $provider = strtolower(trim((string) $provider));
+        if ($provider !== '') {
+            foreach ($this->enabledPaymentMethods() as $method) {
+                $id = strtolower((string) ($method['id'] ?? ''));
+                $label = strtolower((string) ($method['label'] ?? ''));
+                if ($id === $provider || ($label !== '' && str_contains($label, $provider))) {
+                    return (string) $method['id'];
+                }
+            }
+        }
+
+        return Sale::ONLINE_PAYMENT_METHOD;
+    }
+
     public function paymentMethodLabelsMap(): array
     {
         return collect($this->paymentMethods())
@@ -430,6 +453,7 @@ class Business extends Model
                 (string) $method['id'] => (string) ($method['label'] ?? ucfirst(str_replace('_', ' ', (string) $method['id']))),
             ])
             ->put(FinancingCredit::PAYMENT_METHOD, 'Financiadoras')
+            ->put(Sale::ONLINE_PAYMENT_METHOD, 'Pago en línea')
             ->all();
     }
 

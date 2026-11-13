@@ -448,11 +448,16 @@ class OrderService
     private function createSaleFor(User $actor, Order $order, ?string $paymentMethod): Sale
     {
         $business = $order->business;
-        $method = $paymentMethod ?? $business->allowedPaymentMethodIds()[0] ?? 'cash';
+        $paidOnline = $order->paid_at !== null;
+        $method = $paidOnline
+            ? $business->onlinePaymentMethodFor($order->payment_provider)
+            : ($paymentMethod ?? $business->allowedPaymentMethodIds()[0] ?? 'cash');
 
         // Fiar un pedido online no tiene sentido: no hay mostrador donde
         // fiarle a nadie ni cuenta de cliente que respalde la deuda.
-        $business->assertValidPaymentMethod($method, forbidCredit: true);
+        if (! $paidOnline) {
+            $business->assertValidPaymentMethod($method, forbidCredit: true);
+        }
 
         $items = $order->items->map(fn (OrderItem $item) => array_filter([
             'product_id' => $item->product_id,
@@ -463,6 +468,9 @@ class OrderService
         $sale = $this->sales->createSale($actor, [
             'items' => $items,
             'payment_method' => $method,
+            // El medio de la pasarela no tiene que estar en el catalogo del
+            // negocio (el reservado "Pago en linea" no lo esta).
+            'paid_online' => $paidOnline ? $method : null,
             'customer_name' => $order->customer_name,
             'customer_phone' => $order->customer_phone,
             'client_id' => $order->client_id,

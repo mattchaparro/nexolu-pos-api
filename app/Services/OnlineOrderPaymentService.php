@@ -78,14 +78,16 @@ class OnlineOrderPaymentService
                     return null;
                 }
 
+                // Pagado ANTES de confirmar: asi la venta nace con el medio
+                // "Pago en linea" y no con uno del negocio (Nequi, efectivo),
+                // que mezclaba la plata de la pasarela con la de la caja.
+                $fresco->forceFill(['paid_at' => now()])->save();
                 $this->orders->transition(
                     $owner,
                     $fresco,
                     Order::STATUS_CONFIRMED,
                     'Pago aprobado por '.($fresco->payment_provider ?? 'la pasarela'),
-                    $this->paymentMethodFor($business),
                 );
-                $fresco->forceFill(['paid_at' => now()])->save();
 
                 return $fresco;
             });
@@ -118,33 +120,5 @@ class OnlineOrderPaymentService
         $this->orders->notifyBuyer($facturado->fresh(['items']), Order::STATUS_CONFIRMED);
 
         return true;
-    }
-
-    /**
-     * Con que medio se registra una venta cobrada por la pasarela.
-     *
-     * El catalogo de medios lo define cada negocio, asi que no se puede
-     * fijar uno por codigo (asi se rompio el confirmar manual: 'transfer'
-     * cableado contra un negocio que no lo tenia). Se busca el mas parecido
-     * a "pago electronico" entre los habilitados y, si no hay ninguno, se
-     * cae al primero que no sea fiado -- el proveedor real igual queda
-     * registrado en `orders.payment_provider`.
-     */
-    public function paymentMethodFor(Business $business): ?string
-    {
-        $allowed = $business->allowedPaymentMethodIds();
-        foreach (['card', 'tarjeta', 'transfer', 'transferencia', 'nequi', 'daviplata'] as $preferred) {
-            if (in_array($preferred, $allowed, true)) {
-                return $preferred;
-            }
-        }
-
-        foreach ($allowed as $method) {
-            if (! $business->isCreditPaymentMethod($method)) {
-                return $method;
-            }
-        }
-
-        return null;
     }
 }
