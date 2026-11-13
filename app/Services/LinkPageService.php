@@ -70,6 +70,8 @@ class LinkPageService
             'icon_url' => $settings?->iconUrl(),
             'theme' => $theme,
             'has_store' => $this->hasOpenStore($business, $settings),
+            // Tienda solo de menú: el botón de la página dice "Ver el menú".
+            'menu_mode' => (bool) $settings?->menu_mode,
             'has_whatsapp' => $this->whatsappNumber($business, $settings) !== null,
             'instagram_url' => SocialProfile::instagram($business->instagram_handle)
                 ?? SocialProfile::instagram($settings?->instagram_url),

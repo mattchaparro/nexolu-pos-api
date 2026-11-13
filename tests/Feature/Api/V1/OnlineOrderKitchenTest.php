@@ -221,5 +221,9 @@ class OnlineOrderKitchenTest extends TestCase
         $this->getJson("/api/v1/storefront/{$this->business->slug}")
             ->assertOk()
             ->assertJsonPath('menu_mode', true);
+
+        $this->getJson("/api/v1/link-page/{$this->business->slug}")
+            ->assertOk()
+            ->assertJsonPath('menu_mode', true);
     }
 }
