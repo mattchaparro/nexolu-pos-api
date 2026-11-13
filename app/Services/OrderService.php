@@ -15,6 +15,7 @@ use App\Models\StoreCart;
 use App\Models\User;
 use App\Services\Messaging\Contracts\MessagingChannel;
 use App\Support\ChannelPhone;
+use App\Support\ProductAvailability;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -203,6 +204,20 @@ class OrderService
     }
 
     /**
+     * Con receta, `products.stock` nunca se mueve (el descuento va a los
+     * insumos): lo que se puede pedir sale del insumo mas escaso, igual que
+     * en Vender. Sin receta, la columna de siempre.
+     */
+    private function productStock(Business $business, Product $product): float
+    {
+        if ($product->track_stock && $business->hasFeature('ingredients') && $product->ingredients()->exists()) {
+            return ProductAvailability::effectiveStock($product, true);
+        }
+
+        return (float) $product->stock;
+    }
+
+    /**
      * Relee cada linea contra la base: precio, nombre y disponibilidad. Lo
      * unico que se respeta del cliente es QUE quiere y CUANTO.
      *
@@ -251,7 +266,7 @@ class OrderService
 
             $available = $variant
                 ? (float) $variant->stock - ($reserved['variants'][$variant->id] ?? 0)
-                : (float) $product->stock - ($reserved['products'][$product->id] ?? 0);
+                : $this->productStock($business, $product) - ($reserved['products'][$product->id] ?? 0);
 
             if ($product->track_stock && $available < $quantity) {
                 $label = $variant ? "{$product->name} ({$this->variantLabel($variant)})" : $product->name;

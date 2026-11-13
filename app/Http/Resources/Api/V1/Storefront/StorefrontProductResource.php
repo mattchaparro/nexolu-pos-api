@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Api\V1\Storefront;
 
 use App\Models\Product;
+use App\Support\ProductAvailability;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
@@ -168,11 +169,27 @@ class StorefrontProductResource extends JsonResource
         $stock = $hasVariants
             ? (float) $this->variants->where('is_active', true)
                 ->sum(fn ($variant) => max(0, $variant->stockAt() - self::reservedForVariant($variant->id)))
-            : $this->stockAt() - self::reservedForProduct($this->id);
+            : $this->sellableStock() - self::reservedForProduct($this->id);
 
         return [
             'in_stock' => $stock > 0,
             'quantity' => self::visibleStock($stock),
         ];
+    }
+
+    /**
+     * Con receta, `products.stock` es una columna que nunca se mueve: lo
+     * vendible sale del insumo mas escaso, igual que en Vender (ver
+     * ProductAvailability::effectiveStock). El controlador solo carga
+     * `ingredients` si el negocio tiene el modulo, asi que sin el modulo
+     * esto sigue siendo el saldo propio de la sede.
+     */
+    private function sellableStock(): float
+    {
+        if ($this->relationLoaded('ingredients') && $this->ingredients->isNotEmpty()) {
+            return ProductAvailability::effectiveStock($this->resource, true);
+        }
+
+        return $this->stockAt();
     }
 }

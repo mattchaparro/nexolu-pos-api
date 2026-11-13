@@ -238,8 +238,10 @@ class StorefrontCatalogTest extends TestCase
             ->assertJsonPath('name', 'Mi Tiendita')
             ->assertJsonPath('slug', $business->slug);
 
+        // Como clave JSON y no como texto suelto: la descripcion de la factory
+        // es texto al azar y "deleniti" contiene "nit".
         foreach (['nit', 'feature_flags', 'subscription_plan', 'trial_ends_at'] as $forbidden) {
-            $this->assertStringNotContainsString($forbidden, $response->getContent());
+            $this->assertStringNotContainsString("\"{$forbidden}\":", $response->getContent());
         }
     }
 

@@ -124,6 +124,7 @@ class StorefrontCatalogController extends Controller
                 'category',
                 'images',
                 'variants' => fn ($q) => $q->where('is_active', true)->withBranchStock()->withBranchPrice(),
+                ...$this->recipeRelation(),
             ])
             ->with('variants.attributeValues.productAttribute');
 
@@ -193,6 +194,14 @@ class StorefrontCatalogController extends Controller
                     ->orWhere(fn (Builder $simple) => $simple
                         ->whereDoesntHave('variants', fn (Builder $v) => $v->where('is_active', true))
                         ->where('stock', '>', 0));
+
+                // Con receta lo vendible sale de los insumos y no de la
+                // columna stock (que nunca se mueve): no se puede saber en
+                // SQL, asi que pasa y el Resource lo marca agotado si no
+                // alcanza.
+                if ($this->recipeRelation() !== []) {
+                    $disponible->orWhereHas('ingredients');
+                }
             });
         }
 
@@ -241,7 +250,7 @@ class StorefrontCatalogController extends Controller
         ));
 
         $sugeridos = $this->crossSells->forProducts($ids, publicOnly: true);
-        $sugeridos->load(['images', 'variants' => fn ($q) => $q->where('is_active', true)]);
+        $sugeridos->load(['images', 'variants' => fn ($q) => $q->where('is_active', true), ...$this->recipeRelation()]);
 
         $idsSugeridos = $sugeridos->pluck('id')->all();
         StorefrontProductResource::useReservations($this->orders->reservedUnits($business->id, $idsSugeridos));
@@ -308,7 +317,7 @@ class StorefrontCatalogController extends Controller
     {
         $product = Product::query()
             ->tap(fn (Builder $q) => $this->visible($q))
-            ->with(['category', 'images'])
+            ->with(['category', 'images', ...$this->recipeRelation()])
             ->with(['variants' => fn ($q) => $q->where('is_active', true)->with('attributeValues.productAttribute')])
             ->find((int) $request->route('productId'));
 
@@ -328,7 +337,7 @@ class StorefrontCatalogController extends Controller
 
         // Se cargan las mismas relaciones que la ficha: sin esto las tarjetas
         // sugeridas saldrian sin foto ni precio de variante.
-        $sugeridos->load(['images', 'variants' => fn ($q) => $q->where('is_active', true)]);
+        $sugeridos->load(['images', 'variants' => fn ($q) => $q->where('is_active', true), ...$this->recipeRelation()]);
         StorefrontProductResource::useCrossSells($sugeridos);
 
         return new StorefrontProductResource($product);
@@ -340,6 +349,22 @@ class StorefrontCatalogController extends Controller
      * estar activo en el POS: pausarlo desde el catalogo tiene que sacarlo de
      * internet en el acto, sin un segundo interruptor que recordar.
      */
+    /**
+     * Insumos de la receta con el saldo de la sede de despacho, solo si el
+     * negocio maneja insumos: StorefrontProductResource calcula con ellos lo
+     * vendible de un plato (ver ProductAvailability::effectiveStock).
+     *
+     * @return array<string, \Closure>
+     */
+    private function recipeRelation(): array
+    {
+        if (TenantContext::current()?->hasFeature('ingredients') !== true) {
+            return [];
+        }
+
+        return ['ingredients' => fn ($q) => $q->withBranchStock()];
+    }
+
     private function visible(Builder $query): Builder
     {
         return $query->where('is_published', true)
