@@ -132,6 +132,72 @@ class LinkPageTest extends TestCase
             ->assertForbidden();
     }
 
+    /**
+     * Sin tienda online también se personaliza: nombre, descripción, colores,
+     * tipografía y redes. Son los mismos campos del tema de la tienda.
+     */
+    public function test_a_business_without_store_customizes_its_page(): void
+    {
+        [$business, $owner] = $this->owner();
+
+        $this->actingAs($owner, 'sanctum')->putJson('/api/v1/link-page', [
+            'enabled' => true,
+            'name' => 'Uñas de Ana',
+            'description' => 'Uñas, cejas y pestañas en Sibaté.',
+            'primary_color' => '#be185d',
+            'surface_color' => '#fdf2f8',
+            'font_preset' => 'calida',
+            'instagram' => '@unasdeana',
+            'tiktok' => 'unasdeana',
+            'whatsapp' => '3001234567',
+            'facebook_url' => 'https://www.facebook.com/unasdeana',
+        ])
+            ->assertOk()
+            ->assertJsonPath('settings.instagram', '@unasdeana')
+            ->assertJsonPath('settings.font_preset', 'calida');
+
+        $this->getJson("/api/v1/link-page/{$business->slug}")
+            ->assertOk()
+            ->assertJsonPath('name', 'Uñas de Ana')
+            ->assertJsonPath('description', 'Uñas, cejas y pestañas en Sibaté.')
+            ->assertJsonPath('theme.primary', '#be185d')
+            ->assertJsonPath('theme.surface', '#fdf2f8')
+            ->assertJsonPath('theme.font', 'calida')
+            ->assertJsonPath('instagram_url', 'https://www.instagram.com/unasdeana')
+            ->assertJsonPath('tiktok_url', 'https://www.tiktok.com/@unasdeana')
+            ->assertJsonPath('facebook_url', 'https://www.facebook.com/unasdeana')
+            ->assertJsonPath('has_whatsapp', true);
+
+        // Las redes quedan en el negocio: salen también en Ajustes.
+        $this->assertSame('@unasdeana', $business->fresh()->instagram_handle);
+    }
+
+    /** Con tienda, su propio Instagram ganaba y el cambio no se veía. */
+    public function test_changing_instagram_also_updates_the_store_one(): void
+    {
+        [$business, $owner] = $this->owner(true);
+        BusinessStoreSettings::create([
+            'business_id' => $business->id,
+            'is_active' => true,
+            'instagram_url' => 'https://www.instagram.com/viejo',
+        ]);
+
+        $this->actingAs($owner, 'sanctum')->putJson('/api/v1/link-page', ['instagram' => 'nuevo'])->assertOk();
+
+        $this->getJson("/api/v1/link-page/{$business->slug}")
+            ->assertJsonPath('instagram_url', 'https://www.instagram.com/nuevo');
+    }
+
+    public function test_a_colour_that_is_not_a_hex_is_rejected(): void
+    {
+        [, $owner] = $this->owner();
+
+        $this->actingAs($owner, 'sanctum')
+            ->putJson('/api/v1/link-page', ['primary_color' => 'red; background:url(x)'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('primary_color');
+    }
+
     public function test_the_whatsapp_button_counts_the_click_and_goes_to_the_saved_number(): void
     {
         [$business, $owner] = $this->owner(false, ['whatsapp_number' => '300 123 4567']);

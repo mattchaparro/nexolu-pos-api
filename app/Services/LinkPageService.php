@@ -65,13 +65,19 @@ class LinkPageService
             'theme' => $theme,
             'has_store' => $this->hasOpenStore($business, $settings),
             'has_whatsapp' => $this->whatsappNumber($business, $settings) !== null,
-            'instagram_url' => $settings?->instagram_url ?: $this->profileUrl('https://www.instagram.com/', $business->instagram_handle),
+            'instagram_url' => $settings?->instagram_url ?: $this->instagramUrl($business->instagram_handle),
             'tiktok_url' => $this->profileUrl('https://www.tiktok.com/@', $business->tiktok_handle),
             'facebook_url' => $settings?->facebook_url,
             'address' => $settings?->address ?: $business->address,
             'opening_hours' => $settings?->opening_hours,
             'bio_links' => array_values($settings?->bio_links ?? []),
         ];
+    }
+
+    /** URL del perfil de Instagram a partir de lo que escribió el usuario. */
+    public function instagramUrl(?string $handle): ?string
+    {
+        return $this->profileUrl('https://www.instagram.com/', $handle);
     }
 
     /**
