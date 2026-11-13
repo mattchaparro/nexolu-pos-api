@@ -35,6 +35,11 @@ use Illuminate\Support\Collection;
     'client_id',
     'is_delivery',
     'delivery_fee',
+    'delivery_address',
+    'delivery_status',
+    'courier_id',
+    'delivery_taken_at',
+    'delivered_at',
     'is_non_revenue',
     'non_revenue_reason',
     'is_credit',
@@ -65,11 +70,26 @@ class Sale extends Model
             'ipoconsumo_amount' => 'decimal:2',
             'kitchen_updated_at' => 'datetime',
             'closed_at' => 'datetime',
+            'delivery_taken_at' => 'datetime',
+            'delivered_at' => 'datetime',
         ];
     }
 
     protected static function booted(): void
     {
+        // Toda venta que se vuelve domicilio queda "por llevar" en la pantalla
+        // de Domicilios; si deja de serlo antes de salir, se quita. Solo
+        // cuando cambia is_delivery: las ventas viejas (estado nulo) no
+        // aparecen por volver a guardarse.
+        static::saving(function (Sale $sale) {
+            if ($sale->is_delivery && $sale->delivery_status === null && (! $sale->exists || $sale->isDirty('is_delivery'))) {
+                $sale->delivery_status = 'pending';
+            }
+            if (! $sale->is_delivery && $sale->delivery_status === 'pending') {
+                $sale->delivery_status = null;
+            }
+        });
+
         static::creating(function (Sale $sale) {
             if ($sale->status !== 'open' && $sale->closed_at === null) {
                 $sale->closed_at = now();
@@ -88,6 +108,12 @@ class Sale extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** Quien lleva (o llevo) el domicilio. */
+    public function courier(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'courier_id');
     }
 
     public function closedByUser(): BelongsTo

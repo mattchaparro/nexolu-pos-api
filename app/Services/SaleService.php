@@ -47,10 +47,15 @@ class SaleService
                 'client_id' => $data['client_id'] ?? null,
                 'is_delivery' => $flags['is_delivery'],
                 'delivery_fee' => $flags['delivery_fee'],
+                'delivery_address' => $flags['is_delivery'] && filled($data['delivery_address'] ?? null) ? trim($data['delivery_address']) : null,
                 'is_non_revenue' => $flags['is_non_revenue'],
                 'non_revenue_reason' => $flags['is_non_revenue'] ? ($data['non_revenue_reason'] ?? 'Cortesia') : null,
                 'is_credit' => false,
             ]);
+
+            app(DeliveryService::class)->rememberClientAddress(
+                $sale->client_id, $sale->delivery_address, (bool) ($data['save_address_to_client'] ?? false),
+            );
 
             $total = $this->applyItems($user, $sale, $business, $data['items']);
 

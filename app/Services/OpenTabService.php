@@ -55,9 +55,14 @@ class OpenTabService
                 'client_id' => $data['client_id'] ?? null,
                 'is_delivery' => $isDelivery,
                 'delivery_fee' => $deliveryFee,
+                'delivery_address' => $isDelivery && filled($data['delivery_address'] ?? null) ? trim($data['delivery_address']) : null,
                 'kitchen_status' => 'pending',
                 'kitchen_updated_at' => now(),
             ]);
+
+            app(DeliveryService::class)->rememberClientAddress(
+                $sale->client_id, $sale->delivery_address, (bool) ($data['save_address_to_client'] ?? false),
+            );
 
             $total = $this->saleService->applyItems($user, $sale, $business, $data['items']);
 
@@ -95,6 +100,9 @@ class OpenTabService
         }
         if (! empty($data['table_id'])) {
             $changes['table_id'] = (int) $data['table_id'];
+        }
+        if (array_key_exists('delivery_address', $data)) {
+            $changes['delivery_address'] = filled($data['delivery_address']) ? trim($data['delivery_address']) : null;
         }
 
         $sale->update($changes);
@@ -463,8 +471,15 @@ class OpenTabService
                 'ipoconsumo_amount' => $ipoconsumoAmount,
                 'is_delivery' => $isDelivery,
                 'delivery_fee' => $deliveryFee,
+                'delivery_address' => $isDelivery && filled($data['delivery_address'] ?? null)
+                    ? trim($data['delivery_address'])
+                    : ($isDelivery ? $sale->delivery_address : null),
                 'total' => $totalWithCharges,
             ]);
+
+            app(DeliveryService::class)->rememberClientAddress(
+                $sale->client_id, $sale->delivery_address, (bool) ($data['save_address_to_client'] ?? false),
+            );
 
             $fresh = $sale->fresh();
             $this->saleService->ensureInvoiceNumber($fresh);

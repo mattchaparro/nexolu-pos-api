@@ -42,6 +42,10 @@ class KitchenBoardService
                 ->orWhere(fn (Builder $online) => $online
                     ->whereNotNull('kitchen_status')
                     ->whereHas('onlineOrder', fn (Builder $order) => $order->whereIn('status', self::ORDER_IN_KITCHEN))))
+            // Un domicilio que ya tomo el domiciliario salio de la cocina.
+            ->where(fn (Builder $query) => $query
+                ->whereNull('delivery_status')
+                ->orWhere('delivery_status', DeliveryService::STATUS_PENDING))
             ->whereHas('items')
             ->with(['items.product:id,name', 'items.options', 'user:id,name', 'table:id,name', 'onlineOrder'])
             ->orderBy('created_at')
@@ -60,9 +64,9 @@ class KitchenBoardService
     }
 
     /**
-     * Pedido online listo que sale del local: a domicilio queda "enviado" (y
-     * el comprador recibe el aviso), si lo recogen queda "entregado". Con eso
-     * deja la comandera.
+     * Pedido online para recoger que el cliente ya se llevo: queda
+     * "entregado" y deja la comandera. Los domicilios no salen de aca sino de
+     * la pantalla de Domicilios, cuando un domiciliario los toma.
      */
     public function dispatch(User $actor, Sale $sale): Order
     {
@@ -72,8 +76,13 @@ class KitchenBoardService
                 'sale' => 'Esta comanda no es un pedido online pendiente de salir.',
             ]);
         }
+        if (! $order->is_pickup) {
+            throw ValidationException::withMessages([
+                'sale' => 'Los domicilios salen desde Domicilios, cuando un domiciliario los toma.',
+            ]);
+        }
 
-        $status = $order->is_pickup ? Order::STATUS_DELIVERED : Order::STATUS_SHIPPED;
+        $status = Order::STATUS_DELIVERED;
         $orders = app(OrderService::class);
         $order = $orders->transition($actor, $order, $status, 'Despachado desde la comandera');
         $orders->notifyBuyer($order, $status);

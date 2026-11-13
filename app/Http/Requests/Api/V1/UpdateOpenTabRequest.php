@@ -29,6 +29,11 @@ class UpdateOpenTabRequest extends FormRequest
         return [
             'table_id' => ['sometimes', 'nullable', 'integer', BusinessScopedExists::for('business_tables', $this->user()?->business_id)],
             'notes' => ['sometimes', 'nullable', 'string', 'max:255'],
+            // A donde va el domicilio (de esta venta; la ficha del cliente
+            // guarda la habitual aparte).
+            'delivery_address' => ['sometimes', 'nullable', 'string', 'max:255'],
+            // Cambiar tambien la direccion habitual en la ficha del cliente.
+            'save_address_to_client' => ['sometimes', 'boolean'],
         ];
     }
 

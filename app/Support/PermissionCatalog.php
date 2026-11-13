@@ -71,6 +71,12 @@ class PermissionCatalog
             'description' => 'Permite cobrar una venta con inicial y el resto financiado por Addi, Banti u otra financiadora.',
         ],
         [
+            'name' => 'deliveries.handle',
+            'category' => 'ventas',
+            'label' => 'Hacer domicilios',
+            'description' => 'Ve los domicilios listos para salir, los toma y los marca como entregados. Para el domiciliario: con solo este permiso no ve ventas ni caja.',
+        ],
+        [
             'name' => 'sales.reverse',
             'category' => 'ventas',
             'label' => 'Anular ventas y cuentas abiertas',

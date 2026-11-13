@@ -46,6 +46,11 @@ class CloseOpenTabRequest extends FormRequest
             'apply_service_charge' => ['sometimes', 'boolean'],
             'apply_ipoconsumo' => ['sometimes', 'boolean'],
             'is_delivery' => ['sometimes', 'boolean'],
+            // A donde va el domicilio (de esta venta; la ficha del cliente
+            // guarda la habitual aparte).
+            'delivery_address' => ['sometimes', 'nullable', 'string', 'max:255'],
+            // Cambiar tambien la direccion habitual en la ficha del cliente.
+            'save_address_to_client' => ['sometimes', 'boolean'],
         ];
     }
 

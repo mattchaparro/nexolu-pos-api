@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\V1\CashClosingController;
 use App\Http\Controllers\Api\V1\CashShiftController;
 use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\DashboardController;
+use App\Http\Controllers\Api\V1\DeliveryController;
 use App\Http\Controllers\Api\V1\DiscountController;
 use App\Http\Controllers\Api\V1\EmployeeController;
 use App\Http\Controllers\Api\V1\ExpenseController;
@@ -745,6 +746,13 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // Sin permission: middleware a proposito, igual que legacy (comandera
         // accesible por igual a admin y a cualquier empleado con el feature
         // habilitado - no es una accion administrativa sensible).
+        // Domicilios: el domiciliario es un empleado con este permiso.
+        Route::middleware('permission:deliveries.handle')->prefix('deliveries')->name('deliveries.')->group(function () {
+            Route::get('/', [DeliveryController::class, 'index'])->name('index');
+            Route::post('/{sale}/take', [DeliveryController::class, 'take'])->name('take');
+            Route::post('/{sale}/deliver', [DeliveryController::class, 'deliver'])->name('deliver');
+        });
+
         Route::middleware('feature:kitchen_board')->prefix('kitchen')->name('kitchen.')->group(function () {
             Route::get('/tickets', [KitchenBoardController::class, 'index'])->name('tickets.index');
             Route::post('/tickets/{sale}/status', [KitchenBoardController::class, 'updateStatus'])->name('tickets.status.update');

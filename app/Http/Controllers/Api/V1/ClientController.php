@@ -75,7 +75,7 @@ class ClientController extends Controller
                     ->orWhere('identification', 'like', $term);
             })
             ->limit(10)
-            ->get(['id', 'name', 'phone', 'identification', 'email']);
+            ->get(['id', 'name', 'phone', 'identification', 'email', 'address']);
 
         return response()->json($clients);
     }

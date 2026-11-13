@@ -25,6 +25,7 @@ class KitchenTicketResource extends JsonResource
             // del domicilio): quien cocina tiene que verla en la comanda.
             'notes' => $this->notes,
             'is_delivery' => (bool) $this->is_delivery,
+            'delivery_address' => $this->delivery_address,
             // Pedido online: ya esta cobrado (o el negocio verifico el pago) y
             // sale de la comandera al despacharse, no al cobrarse.
             'online_order' => $this->onlineOrder ? [

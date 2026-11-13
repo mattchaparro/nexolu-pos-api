@@ -329,6 +329,12 @@ class OrderService
             ->first();
 
         if ($existing) {
+            // La direccion habitual solo se llena si no tenia: si pidio a otra
+            // parte, la del pedido queda en el pedido.
+            if (blank($existing->address) && $this->clientAddress($data) !== null) {
+                $existing->update(['address' => $this->clientAddress($data)]);
+            }
+
             return $existing;
         }
 
@@ -344,8 +350,20 @@ class OrderService
             'name' => trim((string) $data['customer_name']),
             'phone' => $phone,
             'email' => $data['customer_email'] ?? null,
+            'address' => $this->clientAddress($data),
             'notes' => 'Creado desde la tienda online',
         ]);
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function clientAddress(array $data): ?string
+    {
+        if ((bool) ($data['is_pickup'] ?? false)) {
+            return null;
+        }
+        $address = trim(trim((string) ($data['shipping_address'] ?? '')).', '.trim((string) ($data['shipping_city'] ?? '')), ', ');
+
+        return $address !== '' ? mb_substr($address, 0, 255) : null;
     }
 
     private function nextNumber(int $businessId): int
@@ -427,24 +445,6 @@ class OrderService
      * negocio que no lo tenga (asi se encontro este bug: 'transfer'
      * hardcodeado contra un negocio con cash/nequi/daviplata/credit).
      */
-    /**
-     * Lo que cocina y domicilio necesitan saber en la comanda: número del
-     * pedido, a dónde va y lo que el comprador escribió.
-     */
-    private function kitchenNote(Order $order): string
-    {
-        $parts = ["Pedido online #{$order->number}"];
-        $parts[] = $order->is_pickup
-            ? 'Recoge en el local'
-            : 'Domicilio: '.trim($order->shipping_address.', '.$order->shipping_city, ', ');
-        if (filled($order->shipping_notes)) {
-            $parts[] = 'Nota: '.trim((string) $order->shipping_notes);
-        }
-
-        // sales.notes es varchar(255).
-        return mb_substr(implode(' · ', $parts), 0, 255);
-    }
-
     private function createSaleFor(User $actor, Order $order, ?string $paymentMethod): Sale
     {
         $business = $order->business;
@@ -471,6 +471,7 @@ class OrderService
             // comprador con la configuracion del negocio. Se cobran esos
             // montos aunque la configuracion cambie antes de confirmar.
             'delivery_fee_override' => (float) $order->shipping_fee,
+            'delivery_address' => $order->is_pickup ? null : trim($order->shipping_address.', '.$order->shipping_city, ', '),
             'charges_override' => [(float) $order->service_charge, (float) $order->ipoconsumo],
             // El cupon que el comprador redimio. Va el MONTO ademas del id
             // porque es el que ya pago: recalcularlo aqui haria que un cupon
@@ -480,8 +481,13 @@ class OrderService
             'cart_discount_amount' => (float) $order->discount_amount,
         ]);
 
-        // sales.notes es lo que la comandera muestra arriba de los productos.
-        $sale->update(['notes' => $this->kitchenNote($order)]);
+        // La nota es solo lo que escribio el comprador ("sin cebolla"): el
+        // numero del pedido y la direccion van en sus propios campos, y la
+        // comandera y el domiciliario los muestran aparte. sales.notes es
+        // varchar(255).
+        $sale->update([
+            'notes' => filled($order->shipping_notes) ? mb_substr(trim((string) $order->shipping_notes), 0, 255) : null,
+        ]);
 
         if ($business->hasFeature('kitchen_board')) {
             app(KitchenBoardService::class)->sendToKitchen($sale);

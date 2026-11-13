@@ -113,9 +113,9 @@ class OnlineOrderKitchenTest extends TestCase
         $this->assertNotSame('open', $sale->status, 'Un pedido online es un pedido, no una cuenta abierta');
         $this->assertTrue((bool) $sale->is_delivery);
         $this->assertEquals(4000, (float) $sale->delivery_fee, 'El envío es el domicilio del negocio');
-        $this->assertStringContainsString("Pedido online #{$order->number}", (string) $sale->notes);
-        $this->assertStringContainsString('Calle 10 # 5-20', (string) $sale->notes);
-        $this->assertStringContainsString('Sin cebolla', (string) $sale->notes);
+        // La nota es la del comprador; la direccion va aparte.
+        $this->assertSame('Sin cebolla, por favor', $sale->notes);
+        $this->assertSame('Calle 10 # 5-20, Sibaté', $sale->delivery_address);
 
         $this->actingAs($this->owner, 'sanctum')
             ->getJson('/api/v1/kitchen/tickets')
@@ -125,6 +125,8 @@ class OnlineOrderKitchenTest extends TestCase
             ->assertJsonPath('0.customer_name', 'Ana Comprador')
             ->assertJsonPath('0.customer_phone', '3001234567')
             ->assertJsonPath('0.is_delivery', true)
+            ->assertJsonPath('0.delivery_address', 'Calle 10 # 5-20, Sibaté')
+            ->assertJsonPath('0.notes', 'Sin cebolla, por favor')
             ->assertJsonPath('0.kitchen_status', 'pending')
             ->assertJsonPath('0.online_order.number', $order->number)
             ->assertJsonPath('0.online_order.is_paid_online', false)
@@ -251,10 +253,15 @@ class OnlineOrderKitchenTest extends TestCase
             ->assertJsonPath('total', 24000);
     }
 
-    public function test_the_kitchen_moves_the_order_and_dispatching_takes_it_off_the_board(): void
+    public function test_the_kitchen_moves_the_order_and_handing_it_over_takes_it_off_the_board(): void
     {
         $product = $this->product($this->business);
-        $this->checkout($this->business, ['items' => [['product_id' => $product->id, 'quantity' => 1]]])->assertCreated();
+        $this->checkout($this->business, [
+            'is_pickup' => true,
+            'shipping_address' => null,
+            'shipping_city' => null,
+            'items' => [['product_id' => $product->id, 'quantity' => 1]],
+        ])->assertCreated();
         $order = $this->confirm($this->business);
 
         $this->actingAs($this->owner, 'sanctum')
@@ -269,7 +276,7 @@ class OnlineOrderKitchenTest extends TestCase
             ->postJson("/api/v1/kitchen/tickets/{$order->sale_id}/dispatch")
             ->assertOk();
 
-        $this->assertSame(Order::STATUS_SHIPPED, $order->fresh()->status);
+        $this->assertSame(Order::STATUS_DELIVERED, $order->fresh()->status);
         $this->actingAs($this->owner, 'sanctum')
             ->getJson('/api/v1/kitchen/tickets')
             ->assertOk()
@@ -307,7 +314,7 @@ class OnlineOrderKitchenTest extends TestCase
             ->assertUnprocessable();
     }
 
-    public function test_a_pickup_order_is_not_a_delivery_and_says_so_in_the_note(): void
+    public function test_a_pickup_order_is_not_a_delivery(): void
     {
         $product = $this->product($this->business);
         $this->checkout($this->business, [
@@ -322,7 +329,8 @@ class OnlineOrderKitchenTest extends TestCase
 
         $this->assertFalse((bool) $sale->is_delivery);
         $this->assertSame(0.0, (float) $sale->delivery_fee);
-        $this->assertStringContainsString('Recoge en el local', (string) $sale->notes);
+        $this->assertNull($sale->delivery_address);
+        $this->assertNull($sale->delivery_status, 'Lo que se recoge no es un domicilio');
     }
 
     public function test_a_menu_only_store_refuses_orders(): void

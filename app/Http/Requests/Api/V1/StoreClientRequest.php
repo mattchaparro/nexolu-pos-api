@@ -29,6 +29,7 @@ class StoreClientRequest extends FormRequest
             'phone' => ['sometimes', 'nullable', 'string', 'max:20'],
             'identification' => ['sometimes', 'nullable', 'string', 'max:20'],
             'email' => ['sometimes', 'nullable', 'email', 'max:150'],
+            'address' => ['sometimes', 'nullable', 'string', 'max:255'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
         ];
     }

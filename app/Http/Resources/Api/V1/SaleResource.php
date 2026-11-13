@@ -29,6 +29,8 @@ class SaleResource extends JsonResource
             'ipoconsumo_amount' => $this->ipoconsumo_amount,
             'is_delivery' => $this->is_delivery,
             'delivery_fee' => $this->delivery_fee,
+            'delivery_address' => $this->delivery_address,
+            'delivery_status' => $this->delivery_status,
             'is_non_revenue' => $this->is_non_revenue,
             'non_revenue_reason' => $this->non_revenue_reason,
             'is_credit' => $this->is_credit,
