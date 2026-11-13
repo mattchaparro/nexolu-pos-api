@@ -1,0 +1,95 @@
+# Despliega pos-backend.nexolu.co. La imagen Docker se construye aquí, en
+# GitHub, y se guarda en ghcr.io; el droplet solo la descarga y reinicia.
+# Construirla allá era lo que llenaba la RAM y el swap en cada deploy.
+#
+# Dos formas de lanzarlo:
+#   - Publicar un release (p. ej. v1.4.0) en GitHub.
+#   - Actions → Release → Run workflow, eligiendo la rama o el tag.
+#
+# Volver atrás: lanzarlo a mano sobre el tag anterior. El droplet guarda las
+# últimas 3 imágenes, así que es casi instantáneo. Ojo: las migraciones no se
+# deshacen solas.
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-pos-api
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/mattchaparro/nexolu-pos-api
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Versión
+        id: version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "value=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # La imagen no lleva secretos: el .env queda fuera (.dockerignore) y en
+      # el droplet lo pone docker compose con env_file.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.version.outputs.value }}
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          # Caché de capas en GitHub: si solo cambió código PHP, no se
+          # reinstalan composer ni npm.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://pos-backend.nexolu.co/up
+    steps:
+      - name: Desplegar en el droplet
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # La llave solo puede correr nexolu-infra/scripts/ci-deploy.sh en
+          # el droplet; esto es su argumento, no un comando de shell.
+          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "root@$DEPLOY_HOST" "pos-api ${{ needs.image.outputs.version }}" < /dev/null

@@ -1,47 +1,77 @@
+# Suite completa contra MySQL, igual que en local.
+#
+# Antes escuchaba la rama `master` (la rama es `main`, así que nunca corría
+# en los push) y probaba PHP 8.3, que ya no instala las dependencias: fallaba
+# todos los días a medianoche sin que nadie lo viera.
 name: Tests
 
 on:
   push:
-    branches:
-      - master
-      - '*.x'
+    branches: [main]
   pull_request:
-  schedule:
-    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
-    strategy:
-      fail-fast: true
-      matrix:
-        php: [8.3, 8.4, 8.5]
+    services:
+      mysql:
+        # La misma versión que producción (nexolu-infra/docker-compose.yml).
+        image: mysql:8.4
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: testing
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=5s --health-timeout=5s --health-retries=20
 
-    name: PHP ${{ matrix.php }}
+    env:
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: testing
+      DB_USERNAME: root
+      DB_PASSWORD: ''
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: ${{ matrix.php }}
-          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite
+          # La de la imagen de producción (Dockerfile: php:8.4-fpm-alpine).
+          php-version: '8.4'
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, pdo_mysql, gd, redis
           coverage: none
 
       - name: Install Composer dependencies
         run: composer install --prefer-dist --no-interaction --no-progress
 
       - name: Copy environment file
-        run: cp .env.example .env
+        run: cp .env.example .env && php artisan key:generate
 
-      - name: Generate app key
-        run: php artisan key:generate
+      # Igual que la base `testing` local: el esquema viejo una vez, después
+      # el baseline y las migraciones nuevas (ver CLAUDE.md, "Database &
+      # migrations"). Las pruebas usan DatabaseTransactions, no
+      # RefreshDatabase.
+      - name: Preparar la base de pruebas
+        env:
+          APP_ENV: testing
+        run: |
+          mysql -h 127.0.0.1 -u root testing < database/legacy-schema/schema.sql
+          php artisan migrate:baseline
+          php artisan migrate --force
+          php artisan permissions:sync
 
       - name: Execute tests
-        run: php artisan test
+        run: php artisan test --compact
