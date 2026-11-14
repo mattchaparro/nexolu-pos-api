@@ -57,6 +57,26 @@ class DeliveryService
     }
 
     /**
+     * Pedidos online para recoger que el cliente todavia no se llevo. Con la
+     * comandera fisica los despacha la caja (Despacho), no la cocina.
+     *
+     * @return Collection<int, Sale>
+     */
+    public function pickups(int $businessId): Collection
+    {
+        return Sale::query()
+            ->where('business_id', $businessId)
+            ->whereHas('onlineOrder', fn (Builder $order) => $order
+                ->where('is_pickup', true)
+                ->whereIn('status', KitchenBoardService::ORDER_IN_KITCHEN))
+            ->where('created_at', '>=', now()->subDay())
+            ->with(['items.product:id,name', 'courier:id,name', 'onlineOrder'])
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
      * Listo para salir: la cocina lo termino, o no pasa por cocina (venta de
      * mostrador, o negocio sin comandera).
      */
@@ -70,8 +90,40 @@ class DeliveryService
     /** El domiciliario lo toma: queda a su nombre y "en camino". */
     public function take(User $courier, Sale $sale): Sale
     {
-        $sale = DB::transaction(function () use ($courier, $sale) {
-            // Bloqueo: dos domiciliarios tocando "Lo llevo" a la vez.
+        return $this->dispatch($courier, $sale, $courier, requireReady: true);
+    }
+
+    /**
+     * La caja lo despacha («Salió a domicilio»): con la comandera fisica
+     * nadie marca nada en la cocina, asi que la cajera ve el plato listo y
+     * lo manda, con el domiciliario que lo lleva o sin asignar (uno externo,
+     * o se asigna despues).
+     */
+    public function dispatchFromCounter(User $actor, Sale $sale, ?int $courierId): Sale
+    {
+        $courier = null;
+        if ($courierId !== null) {
+            $courier = User::query()->where('business_id', $actor->business_id)->find($courierId);
+            if ($courier === null || ! $courier->hasPermissionTo('deliveries.handle')) {
+                throw ValidationException::withMessages([
+                    'courier_id' => 'Ese empleado no hace domicilios.',
+                ]);
+            }
+        }
+
+        return $this->dispatch($actor, $sale, $courier, requireReady: false);
+    }
+
+    /**
+     * Sale del local: queda "en camino" (el pedido online, "enviado") y en el
+     * mostrador se imprime la factura con el ticket del domiciliario. Los dos
+     * caminos (el domiciliario toca «Lo llevo», la caja toca «Salió a
+     * domicilio») pasan por aqui, para que imprima y avise lo mismo.
+     */
+    private function dispatch(User $actor, Sale $sale, ?User $courier, bool $requireReady): Sale
+    {
+        $sale = DB::transaction(function () use ($actor, $sale, $courier, $requireReady) {
+            // Bloqueo: dos personas despachando el mismo domicilio a la vez.
             $fresh = Sale::query()->whereKey($sale->id)->lockForUpdate()->firstOrFail();
 
             if ($fresh->delivery_status !== self::STATUS_PENDING) {
@@ -80,19 +132,20 @@ class DeliveryService
                     'delivery' => $who ? "Este domicilio ya lo lleva {$who}." : 'Este domicilio ya no está por llevar.',
                 ]);
             }
-            if (! $this->isReady($fresh, $courier->business)) {
+            if ($requireReady && ! $this->isReady($fresh, $actor->business)) {
                 throw ValidationException::withMessages([
                     'delivery' => 'Todavía está en cocina.',
                 ]);
             }
 
             $fresh->update([
-                'courier_id' => $courier->id,
+                'courier_id' => $courier?->id,
                 'delivery_status' => self::STATUS_ON_THE_WAY,
                 'delivery_taken_at' => now(),
             ]);
 
-            $this->moveOrder($courier, $fresh, Order::STATUS_SHIPPED);
+            $this->moveOrder($actor, $fresh, Order::STATUS_SHIPPED);
+            app(PrintJobService::class)->enqueueDelivery($fresh->fresh(), $actor);
 
             return $fresh;
         });
@@ -102,15 +155,19 @@ class DeliveryService
         return $sale;
     }
 
-    /** Entregado. Lo marca quien lo lleva, o un administrador. */
-    public function deliver(User $actor, Sale $sale): Sale
+    /**
+     * Entregado. Lo marca quien lo lleva o un administrador; desde la caja
+     * (Despacho) tambien, porque es ahi donde el domiciliario vuelve con la
+     * plata. Si salio sin domiciliario asignado, cualquiera.
+     */
+    public function deliver(User $actor, Sale $sale, bool $fromCounter = false): Sale
     {
         if ($sale->delivery_status !== self::STATUS_ON_THE_WAY) {
             throw ValidationException::withMessages([
                 'delivery' => 'Este domicilio no va en camino.',
             ]);
         }
-        if ($sale->courier_id !== $actor->id && ! $actor->hasRole('admin')) {
+        if (! $fromCounter && $sale->courier_id !== null && $sale->courier_id !== $actor->id && ! $actor->hasRole('admin')) {
             throw ValidationException::withMessages([
                 'delivery' => 'Solo quien lo lleva puede marcarlo como entregado.',
             ]);

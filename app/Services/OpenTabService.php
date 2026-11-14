@@ -82,6 +82,8 @@ class OpenTabService
             // pierde wasRecentlyCreated, con lo que el controller devolveria
             // 200 en vez de 201 al crear (JsonResource infiere el status del
             // modelo). Mismo cuidado que ya tuvimos en SaleService::createSale.
+            app(KitchenPrintService::class)->sync($sale, $user);
+
             return $sale->load('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'table');
         });
     }
@@ -124,6 +126,7 @@ class OpenTabService
 
             $sale->increment('total', $addedTotal);
             $sale->update(['kitchen_status' => 'pending', 'kitchen_updated_at' => now()]);
+            app(KitchenPrintService::class)->sync($sale, $user);
 
             // partialPayments viaja en la respuesta a proposito: el frontend
             // asigna esta venta a su estado local (activeSale) y de ahi
@@ -244,6 +247,14 @@ class OpenTabService
                 $this->comboService->restore($user, $sale, $currentItem, 'Reduccion de cantidad al sincronizar cuenta abierta');
             }
 
+            // Estado de cocina por plato antes de recrear las lineas: lo que
+            // la cocina ya tenia listo (o en preparacion) y no se aumento
+            // sigue igual. Antes cada edicion (un descuento, un precio) volvia
+            // todo a "pendiente" en la comandera digital.
+            $previousKitchenStatusByLine = $sale->items
+                ->groupBy(fn (SaleItem $item) => $lineKey((int) $item->product_id, $item->product_variant_id))
+                ->map(fn ($group) => $this->leastAdvancedKitchenStatus($group->pluck('kitchen_status')));
+
             $sale->items()->delete();
 
             $discountsEnabled = $business->hasFeature('discounts');
@@ -272,6 +283,10 @@ class OpenTabService
                     ? Discount::resolveActive($business->id, 'item', $item['discount_id'] ?? null, $subtotal)
                     : [null, 0.0];
 
+                $key = $lineKey($productId, $variant?->id);
+                $wasIncreased = (int) ($desiredQtyByLine[$key] ?? 0) > (int) ($currentQtyByLine[$key] ?? 0);
+                $kitchenStatus = $wasIncreased ? KitchenBoardService::STATUS_PENDING : ($previousKitchenStatusByLine[$key] ?? KitchenBoardService::STATUS_PENDING);
+
                 $createdLine = SaleItem::create([
                     'sale_id' => $sale->id,
                     'product_id' => $productId,
@@ -282,7 +297,7 @@ class OpenTabService
                     'subtotal' => $subtotal,
                     'discount_id' => $discountId,
                     'discount_amount' => $discountAmount,
-                    'kitchen_status' => 'pending',
+                    'kitchen_status' => $kitchenStatus,
                     'kitchen_updated_at' => now(),
                 ]);
 
@@ -294,11 +309,12 @@ class OpenTabService
                 $recalculatedTotal += $subtotal - $discountAmount;
             }
 
-            $sale->update([
-                'total' => $recalculatedTotal + (float) $sale->delivery_fee,
-                'kitchen_status' => 'pending',
-                'kitchen_updated_at' => now(),
-            ]);
+            $sale->update(['total' => $recalculatedTotal + (float) $sale->delivery_fee]);
+            app(KitchenBoardService::class)->syncSaleStatus($sale);
+
+            // Platos que se agregaron (ADICION) o se quitaron (ANULADO) desde
+            // la ultima comanda impresa.
+            app(KitchenPrintService::class)->sync($sale, $user);
 
             // partialPayments viaja en la respuesta a proposito: el frontend
             // asigna esta venta a su estado local (activeSale) y de ahi
@@ -491,6 +507,7 @@ class OpenTabService
             $fresh = $sale->fresh();
             $this->saleService->ensureInvoiceNumber($fresh);
             $this->saleService->syncReceivable($fresh->fresh());
+            app(PrintJobService::class)->enqueueReceipt($fresh->fresh(), $user);
 
             return $fresh->fresh()->load('items.product', 'items.options', 'items.productVariant.attributeValues.productAttribute', 'paymentSplits');
         });
@@ -512,6 +529,9 @@ class OpenTabService
                     'sale' => 'No se puede eliminar la cuenta: hay pagos parciales registrados. Cierra la cuenta con el saldo pendiente o contacta al administrador.',
                 ]);
             }
+
+            // La cocina recibe lo que ya tenia impreso como ANULADO.
+            app(KitchenPrintService::class)->voidAll($sale, $user);
 
             $ingredientsEnabled = $sale->business->hasFeature('ingredients');
             $sale->loadMissing([
@@ -547,6 +567,22 @@ class OpenTabService
 
             $sale->delete();
         });
+    }
+
+    /**
+     * El estado menos avanzado de un grupo de lineas del mismo plato.
+     *
+     * @param  Collection<int, ?string>  $statuses
+     */
+    private function leastAdvancedKitchenStatus(Collection $statuses): string
+    {
+        $normalized = $statuses->map(fn (?string $status) => KitchenBoardService::normalizeStatus($status));
+
+        return match (true) {
+            $normalized->contains(KitchenBoardService::STATUS_PENDING) => KitchenBoardService::STATUS_PENDING,
+            $normalized->contains(KitchenBoardService::STATUS_PREPARING) => KitchenBoardService::STATUS_PREPARING,
+            default => KitchenBoardService::STATUS_READY,
+        };
     }
 
     private function assertOpen(Sale $sale): void

@@ -7,6 +7,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\StoreSaleRequest;
 use App\Http\Resources\Api\V1\SaleResource;
 use App\Models\Sale;
+use App\Services\KitchenPrintService;
+use App\Services\PrintJobService;
 use App\Services\ReceiptPdfService;
 use App\Services\SaleService;
 use App\Services\TerminalChargeService;
@@ -50,6 +52,15 @@ class SaleController extends Controller
 
             if ($reference) {
                 app(TerminalChargeService::class)->redeem($reference, $sale);
+            }
+
+            // Venta del mostrador: la factura sale al cobrar. Un domicilio va
+            // primero a la cocina, y su factura sale con el ticket del
+            // domiciliario cuando sale del local (DeliveryService::dispatch).
+            if ($sale->is_delivery) {
+                app(KitchenPrintService::class)->sync($sale, $request->user());
+            } else {
+                app(PrintJobService::class)->enqueueReceipt($sale, $request->user());
             }
 
             return $sale;

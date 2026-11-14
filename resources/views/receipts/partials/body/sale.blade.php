@@ -76,12 +76,15 @@
             <td class="right">{{ \App\Support\ReceiptFormatter::money((float) $sale->delivery_fee) }}</td>
         </tr>
     @endif
-    <tr>
-        <td>Pago</td>
-        <td class="right">
-            {{ $sale->is_non_revenue ? 'Cortesía' : \App\Support\ReceiptFormatter::paymentMethodLabel($business, $sale->payment_method) }}
-        </td>
-    </tr>
+    {{-- Pago dividido: una fila por medio, no el id interno «mixed». --}}
+    @foreach (\App\Support\ReceiptFormatter::paymentLines($business, $sale) as $paymentLine)
+        <tr>
+            <td>{{ $loop->first ? 'Pago' : '' }} {{ $paymentLine['amount'] !== null ? $paymentLine['label'] : '' }}</td>
+            <td class="right">
+                {{ $paymentLine['amount'] !== null ? \App\Support\ReceiptFormatter::money($paymentLine['amount']) : $paymentLine['label'] }}
+            </td>
+        </tr>
+    @endforeach
     <tr class="grand-total">
         <td>TOTAL</td>
         <td class="right">{{ \App\Support\ReceiptFormatter::money((float) $sale->total) }}</td>

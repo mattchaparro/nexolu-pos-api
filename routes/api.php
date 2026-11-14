@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\V1\ClientController;
 use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DeliveryController;
 use App\Http\Controllers\Api\V1\DiscountController;
+use App\Http\Controllers\Api\V1\DispatchController;
 use App\Http\Controllers\Api\V1\EmployeeController;
 use App\Http\Controllers\Api\V1\ExpenseController;
 use App\Http\Controllers\Api\V1\ExpenseTypeController;
@@ -52,6 +53,8 @@ use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\PaymentMethodsController;
 use App\Http\Controllers\Api\V1\PlanCatalogController;
 use App\Http\Controllers\Api\V1\PosPaymentMethodController;
+use App\Http\Controllers\Api\V1\PrintAgentApiController;
+use App\Http\Controllers\Api\V1\PrintingController;
 use App\Http\Controllers\Api\V1\ProductAttributeController;
 use App\Http\Controllers\Api\V1\ProductCategoryController;
 use App\Http\Controllers\Api\V1\ProductController;
@@ -257,6 +260,25 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::post('/auth/sso/exchange', SsoExchangeController::class)
         ->name('auth.sso.exchange')
         ->middleware('throttle:10,1');
+
+    // Nexolu Print Agent (servicio de Windows en el local). Fuera del grupo
+    // de empleados: se autentica con su propio token (print.agent), que no
+    // abre ninguna ruta del POS. Vincular es publico con un codigo de 6
+    // digitos que vence en 10 minutos; el throttle estricto es lo que hace
+    // inutil adivinarlo.
+    Route::prefix('print-agent')->name('print-agent.')->group(function () {
+        Route::post('/pair', [PrintAgentApiController::class, 'pair'])
+            ->middleware('throttle:10,1,print-agent-pair')
+            ->name('pair');
+
+        // ~1 consulta cada 2 s por equipo, mas los ack: 240/min de margen.
+        Route::middleware(['print.agent', 'throttle:240,1,print-agent'])->group(function () {
+            Route::post('/heartbeat', [PrintAgentApiController::class, 'heartbeat'])->name('heartbeat');
+            Route::post('/jobs/claim', [PrintAgentApiController::class, 'claim'])->name('jobs.claim');
+            Route::post('/jobs/{job}/ack', [PrintAgentApiController::class, 'acknowledge'])->name('jobs.ack');
+            Route::post('/jobs/{job}/fail', [PrintAgentApiController::class, 'fail'])->name('jobs.fail');
+        });
+    });
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])
         ->middleware('throttle:password-recovery')
         ->name('password.forgot');
@@ -757,6 +779,36 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::get('/tickets', [KitchenBoardController::class, 'index'])->name('tickets.index');
             Route::post('/tickets/{sale}/status', [KitchenBoardController::class, 'updateStatus'])->name('tickets.status.update');
             Route::post('/tickets/{sale}/dispatch', [KitchenBoardController::class, 'dispatchOrder'])->name('tickets.dispatch');
+        });
+
+        // Despacho: la caja mueve el estado de lo que sale cuando la cocina
+        // trabaja con papel. Cualquier empleado de la caja.
+        Route::middleware('feature:kitchen_printing')->prefix('dispatch')->name('dispatch.')->group(function () {
+            Route::get('/', [DispatchController::class, 'index'])->name('index');
+            Route::post('/{sale}/send-out', [DispatchController::class, 'sendOut'])->name('send-out');
+            Route::post('/{sale}/delivered', [DispatchController::class, 'delivered'])->name('delivered');
+            Route::post('/{sale}/picked-up', [DispatchController::class, 'pickedUp'])->name('picked-up');
+            Route::post('/{sale}/kitchen-ticket', [DispatchController::class, 'reprintKitchen'])->name('kitchen-ticket');
+        });
+
+        // Impresion automatica. El estado (aviso rojo) y reimprimir son de
+        // cualquier empleado; configurar equipos e impresoras, del admin.
+        Route::middleware('feature:auto_printing')->prefix('printing')->name('printing.')->group(function () {
+            Route::get('/status', [PrintingController::class, 'status'])->name('status');
+            Route::post('/sales/{sale}/receipt', [PrintingController::class, 'reprintReceipt'])->name('sales.receipt');
+
+            Route::middleware('business-admin')->group(function () {
+                Route::get('/', [PrintingController::class, 'index'])->name('index');
+                Route::put('/settings', [PrintingController::class, 'updateSettings'])->name('settings.update');
+                Route::post('/agents', [PrintingController::class, 'storeAgent'])->name('agents.store');
+                Route::post('/agents/{agent}/pairing-code', [PrintingController::class, 'pairingCode'])->name('agents.pairing-code');
+                Route::delete('/agents/{agent}', [PrintingController::class, 'destroyAgent'])->name('agents.destroy');
+                Route::post('/printers', [PrintingController::class, 'storePrinter'])->name('printers.store');
+                Route::put('/printers/{printer}', [PrintingController::class, 'updatePrinter'])->name('printers.update');
+                Route::delete('/printers/{printer}', [PrintingController::class, 'destroyPrinter'])->name('printers.destroy');
+                Route::post('/printers/{printer}/test', [PrintingController::class, 'testPrinter'])->name('printers.test');
+                Route::post('/jobs/{job}/retry', [PrintingController::class, 'retryJob'])->name('jobs.retry');
+            });
         });
 
         // Venta financiada por terceros. El cajero solo lista las activas para

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\AuthenticatePrintAgent;
 use App\Http\Middleware\EnsureBusinessAdmin;
 use App\Http\Middleware\EnsureBusinessCanAccessPurchases;
 use App\Http\Middleware\EnsureBusinessFeatureEnabled;
@@ -49,6 +50,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'storefront.tenant' => ResolveStorefrontTenant::class,
             'branch.context' => ResolveBranch::class,
             'subscription.active' => EnsureSubscriptionActive::class,
+            'print.agent' => AuthenticatePrintAgent::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

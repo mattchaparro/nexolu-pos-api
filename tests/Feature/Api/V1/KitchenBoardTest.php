@@ -84,4 +84,38 @@ class KitchenBoardTest extends TestCase
             ->getJson('/api/v1/kitchen/tickets')
             ->assertStatus(403);
     }
+
+    /**
+     * Editar una cuenta recrea todas sus lineas (OpenTabService::syncItems).
+     * Antes eso devolvia a "pendiente" lo que la cocina ya tenia listo.
+     */
+    public function test_editing_a_tab_keeps_what_the_kitchen_already_finished(): void
+    {
+        $business = Business::factory()->create();
+        $user = User::factory()->create(['business_id' => $business->id]);
+        $user->assignRole('admin');
+        $burger = Product::factory()->create(['business_id' => $business->id, 'track_stock' => false, 'price' => 20000]);
+        $soda = Product::factory()->create(['business_id' => $business->id, 'track_stock' => false, 'price' => 5000]);
+        $saleId = $this->actingAs($user, 'sanctum')->postJson('/api/v1/open-tabs', [
+            'items' => [['product_id' => $burger->id, 'quantity' => 1], ['product_id' => $soda->id, 'quantity' => 1]],
+        ])->assertCreated()->json('id');
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/kitchen/tickets/{$saleId}/status", ['kitchen_status' => 'ready'])
+            ->assertOk();
+
+        // Mismo pedido: nada vuelve a pendiente.
+        $this->actingAs($user, 'sanctum')->putJson("/api/v1/open-tabs/{$saleId}/items", [
+            'items' => [['product_id' => $burger->id, 'quantity' => 1], ['product_id' => $soda->id, 'quantity' => 1]],
+        ])->assertOk();
+        $this->assertSame('ready', Sale::find($saleId)->kitchen_status);
+
+        // Una gaseosa mas: solo esa linea vuelve a pendiente.
+        $this->actingAs($user, 'sanctum')->putJson("/api/v1/open-tabs/{$saleId}/items", [
+            'items' => [['product_id' => $burger->id, 'quantity' => 1], ['product_id' => $soda->id, 'quantity' => 2]],
+        ])->assertOk();
+        $statuses = SaleItem::where('sale_id', $saleId)->pluck('kitchen_status', 'product_id');
+        $this->assertSame('ready', $statuses[$burger->id]);
+        $this->assertSame('pending', $statuses[$soda->id]);
+        $this->assertSame('pending', Sale::find($saleId)->kitchen_status);
+    }
 }
