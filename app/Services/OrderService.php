@@ -501,6 +501,17 @@ class OrderService
             app(KitchenBoardService::class)->sendToKitchen($sale);
         }
 
+        // Comanda impresa en cocina. Para recoger, la factura sale ya (va
+        // con la bolsa); la de un domicilio sale cuando el pedido sale del
+        // local, junto con el ticket del domiciliario. El pedido todavia no
+        // tiene sale_id (se guarda al volver de aqui): se enlaza a mano para
+        // que la comanda diga «Pedido online #N» y «PARA RECOGER».
+        $sale->setRelation('onlineOrder', $order);
+        app(KitchenPrintService::class)->sync($sale, $actor);
+        if ($order->is_pickup) {
+            app(PrintJobService::class)->enqueueReceipt($sale, $actor);
+        }
+
         return $sale;
     }
 

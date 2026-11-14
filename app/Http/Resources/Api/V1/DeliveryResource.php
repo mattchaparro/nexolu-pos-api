@@ -28,6 +28,8 @@ class DeliveryResource extends JsonResource
             'customer_name' => $this->customer_name,
             'customer_phone' => $this->customer_phone,
             'address' => $this->delivery_address,
+            // Pedido online para recoger: lo muestra Despacho junto a los domicilios.
+            'is_pickup' => (bool) ($order?->is_pickup && ! $this->is_delivery),
             // Lo que escribio el comprador ("sin cebolla", "el timbre no
             // sirve"), o la nota de la cuenta si salio del POS.
             'notes' => $order ? $order->shipping_notes : $this->notes,

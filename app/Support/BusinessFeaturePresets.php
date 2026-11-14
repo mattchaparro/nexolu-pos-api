@@ -40,7 +40,7 @@ class BusinessFeaturePresets
      *
      * @var list<string>
      */
-    public const OPT_IN_ONLY = ['online_store', 'digital_menu', 'multi_branch', 'product_options', 'financing'];
+    public const OPT_IN_ONLY = ['online_store', 'digital_menu', 'multi_branch', 'product_options', 'financing', 'auto_printing', 'kitchen_printing'];
 
     /** @return list<string> */
     public static function setupModes(): array
@@ -173,6 +173,8 @@ class BusinessFeaturePresets
             'product_options' => false,
             // Venta financiada por terceros (Addi, Banti...): negocio por negocio.
             'financing' => false,
+            'auto_printing' => false,
+            'kitchen_printing' => false,
         ];
     }
 
@@ -222,6 +224,13 @@ class BusinessFeaturePresets
             'product_options' => false,
             // Venta financiada por terceros (Addi, Banti...): negocio por negocio.
             'financing' => false,
+            // Impresion automatica con el Nexolu Print Agent: requiere instalar
+            // el agente y comprar impresoras, asi que se enciende negocio por
+            // negocio desde SuperAdmin, nunca con el plan.
+            'auto_printing' => false,
+            // Comandera fisica: la cocina recibe papel en vez de mirar la
+            // pantalla. Requiere `auto_printing`.
+            'kitchen_printing' => false,
         ];
     }
 
@@ -271,6 +280,8 @@ class BusinessFeaturePresets
             ['key' => 'kitchen_board', 'label' => 'Comandera (cocina)', 'description' => 'Tablero de comandas para que cocina vea y actualice el estado de cada pedido.', 'group' => 'POS y ventas'],
             ['key' => 'product_options', 'label' => 'Opciones de elección y combos', 'description' => 'Permite configurar en cada producto grupos de opciones (salsas, toppings, tamaños) con recargo e insumo, reutilizables entre productos, que se eligen al vender y salen en la comanda y el recibo. Pensado para restaurantes; apagado por defecto.', 'group' => 'POS y ventas'],
             ['key' => 'financing', 'label' => 'Venta financiada por terceros', 'description' => 'Permite vender con una inicial y el resto financiado por Addi, Banti u otra financiadora, y llevar cuánto le debe cada financiadora al negocio y cuándo lo giró. Apagado por defecto.', 'group' => 'POS y ventas'],
+            ['key' => 'auto_printing', 'label' => 'Impresoras (impresión automática)', 'description' => 'Conecta las impresoras térmicas del local con el Nexolú Print Agent: la factura sale sola al cobrar (con copias y apertura del cajón) y se puede reimprimir desde el POS. Requiere instalar el agente en un computador del local; apagado por defecto.', 'group' => 'POS y ventas'],
+            ['key' => 'kitchen_printing', 'label' => 'Comandera física (cocina con papel)', 'description' => 'Cada comanda sale impresa en la cocina (solo lo nuevo en las adiciones, y lo anulado aparte), y la caja despacha los pedidos y domicilios desde la pantalla de Despacho. Requiere «Impresoras»; apagado por defecto.', 'group' => 'POS y ventas'],
             ['key' => 'cash_receipts_pdf', 'label' => 'Recibos de caja en PDF', 'description' => 'Genera y envía el comprobante de venta, apartado u orden de servicio como PDF descargable o por WhatsApp/correo.', 'group' => 'POS y ventas'],
 
             ['key' => 'inventory', 'label' => 'Inventario básico', 'description' => 'Lleva el stock de cada producto y lo descuenta automáticamente con cada venta.', 'group' => 'Inventario'],

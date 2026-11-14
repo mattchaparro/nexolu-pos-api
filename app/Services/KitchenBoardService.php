@@ -136,7 +136,7 @@ class KitchenBoardService
      * si algo sigue pendiente, la comanda completa se muestra pendiente,
      * aunque otro item ya este listo.
      */
-    private function syncSaleStatus(Sale $sale): void
+    public function syncSaleStatus(Sale $sale): void
     {
         $statuses = $sale->items()
             ->pluck('kitchen_status')
